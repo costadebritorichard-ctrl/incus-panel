@@ -37,6 +37,15 @@ uma bridge gerenciada existente ou cria uma rede NAT. Na criação, disco e rede
 ausentes no profile são escolhidos automaticamente entre os recursos disponíveis.
 Internet na TV Box é necessária para baixar imagens remotas.
 
+O modo leve é padrão no socket local: atualização manual da tela, eventos
+desativados, uma criação por vez e acompanhamento a cada 5 segundos. Novos
+containers recebem 128 MiB de RAM, limite de meio núcleo de CPU e não iniciam
+automaticamente após reiniciar a TV Box. A criação exige ao menos 256 MiB de
+memória disponível; essa verificação não garante que um download/descompactação
+do Incus caiba na memória. Os limites não alteram containers já existentes.
+O serviço do painel recebe limites próprios de CPU/memória no systemd; o daemon
+Incus e a extração de imagens são processos separados desses limites.
+
 Para escolher o endereço: `sudo python3 deploy/install.py --address 192.168.1.50`.
 Para atualizar, execute `git pull` e o mesmo comando de instalação; senha e
 configuração existentes são preservadas. Uma instalação anterior em modo de

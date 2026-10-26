@@ -6,29 +6,10 @@ import urllib.request
 
 from .core import PanelError, architecture
 
-URL = 'https://images.linuxcontainers.org/streams/v1/images.json'
+URL = 'https://images.linuxcontainers.org/streams/v1/index.json'
 _cache = None
 _expires = 0
 _lock = threading.Lock()
-
-
-def choices(products, arch):
-    result = []
-    for product in products.values():
-        if architecture(product.get('arch')) != architecture(arch) or product.get('variant') != 'default':
-            continue
-        versions = product.get('versions', {})
-        if not versions:
-            continue
-        items = versions[max(versions)].get('items', {})
-        if not any(key in items for key in ('root.tar.xz', 'root.squashfs')):
-            continue
-        aliases = product.get('aliases', '').split(',')
-        alias = next((a for a in aliases if a.count('/') == 1), None)
-        if alias:
-            result.append({'id': 'remote:' + alias, 'remote_image': alias,
-                           'label': f"{product.get('os', '')} {product.get('release_title', product.get('release', ''))}".strip()})
-    return sorted(result, key=lambda i: (not i['remote_image'].startswith(('debian/', 'alpine/')), i['label']))
 
 
 def remote_images(arch):
@@ -37,13 +18,28 @@ def remote_images(arch):
         if _cache is None or time.monotonic() >= _expires:
             try:
                 with urllib.request.urlopen(URL, timeout=12) as response:
-                    raw = response.read(16 * 1024 * 1024 + 1)
-                if len(raw) > 16 * 1024 * 1024:
+                    raw = response.read(1024 * 1024 + 1)
+                if len(raw) > 1024 * 1024:
                     raise ValueError('Catálogo muito grande')
-                products = json.loads(raw)['products']
-                if not isinstance(products, dict):
+                products = json.loads(raw)['index']['images']['products']
+                if not isinstance(products, list):
                     raise ValueError('Catálogo inválido')
                 _cache, _expires = products, time.monotonic() + 600
             except (OSError, ValueError, KeyError) as exc:
                 raise PanelError(503, 'Não foi possível consultar as imagens. Confira Internet, DNS e data/hora da TV box.') from exc
-        return choices(_cache, arch)
+        return index_choices(_cache, arch)
+
+
+def index_choices(products, arch):
+    """Somente famílias de containers leves; o índice evita carregar o histórico inteiro."""
+    result = {}
+    for entry in products:
+        parts = entry.split(':')
+        if len(parts) != 4:
+            continue
+        distro, release, image_arch, variant = parts
+        if distro not in ('alpine', 'debian') or variant != 'default' or architecture(image_arch) != architecture(arch):
+            continue
+        alias = distro + '/' + release
+        result[alias] = {'id': 'remote:' + alias, 'remote_image': alias, 'label': distro.capitalize() + ' ' + release}
+    return sorted(result.values(), key=lambda i: i['label'])

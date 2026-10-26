@@ -127,7 +127,7 @@ class Application:
 
     def event_status(self, token, session, host, project):
         client = self.service.context(session["user"], host, project)
-        if not self.config.get("enable_events", False) or self.config.get("demo"):
+        if self.service.low_resource or not self.config.get("enable_events", False) or self.config.get("demo"):
             return {"enabled": False, "connected": False, "version": 0}
         key = (token, host, project)
         with self.lock:
@@ -184,7 +184,7 @@ class Application:
 
     def public_session(self, session):
         user = session["user"]
-        return {"username": user["username"], "role": user["role"], "scopes": user["scopes"], "host_metrics": user.get("host_metrics", False), "csrf": session["csrf"], "expires": session["expires"], "demo": self.config.get("demo", False), "read_only": self.config.get("read_only", True), "enable_console": self.config.get("enable_console", False), "manage_all_instances": self.config.get("manage_all_instances", False) and user["role"] == "administrador", "allow_remote_images": self.config.get("allow_remote_images", False), "hosts": [{"id": h["id"], "alias": h["alias"], "transport": h.get("transport", "tls")} for h in self.config["hosts"] if h["id"] in user["scopes"]], "mutable_instances": {h: {p: values for p, values in projects.items() if p in user["scopes"].get(h, [])} for h, projects in self.config.get("mutable_instances", {}).items() if h in user["scopes"]}}
+        return {"username": user["username"], "role": user["role"], "scopes": user["scopes"], "host_metrics": user.get("host_metrics", False), "csrf": session["csrf"], "expires": session["expires"], "demo": self.config.get("demo", False), "read_only": self.config.get("read_only", True), "enable_console": self.config.get("enable_console", False), "low_resource": self.service.low_resource, "manage_all_instances": self.config.get("manage_all_instances", False) and user["role"] == "administrador", "allow_remote_images": self.config.get("allow_remote_images", False), "hosts": [{"id": h["id"], "alias": h["alias"], "transport": h.get("transport", "tls")} for h in self.config["hosts"] if h["id"] in user["scopes"]], "mutable_instances": {h: {p: values for p, values in projects.items() if p in user["scopes"].get(h, [])} for h, projects in self.config.get("mutable_instances", {}).items() if h in user["scopes"]}}
 
 
 class Handler(BaseHTTPRequestHandler):

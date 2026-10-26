@@ -3,7 +3,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
-from incus_panel.catalog import choices, remote_images
+from incus_panel.catalog import index_choices, remote_images
 from incus_panel.core import Demo, PanelError, Service
 from incus_panel.server import Application, demo_config
 from incus_panel.unix_transport import UnixIncus
@@ -119,12 +119,8 @@ class LaunchContracts(unittest.TestCase):
 
 class CatalogContracts(unittest.TestCase):
     def test_catalog_filters_architecture_variant_and_vm_only(self):
-        base = {'arch': 'armhf', 'variant': 'default', 'os': 'Debian', 'release_title': '12', 'aliases': 'debian/bookworm,debian/12', 'versions': {'20261026': {'items': {'root.tar.xz': {}}}}}
-        wrong_arch = {**base, 'arch': 'amd64'}
-        cloud = {**base, 'variant': 'cloud'}
-        vm = {**base, 'versions': {'20261026': {'items': {'disk.qcow2': {}}}}}
-        result = choices({'valid': base, 'wrong': wrong_arch, 'cloud': cloud, 'vm': vm}, 'armv7l')
-        self.assertEqual(result, [{'id': 'remote:debian/bookworm', 'remote_image': 'debian/bookworm', 'label': 'Debian 12'}])
+        result = index_choices(['debian:bookworm:armhf:default', 'debian:bookworm:amd64:default', 'debian:bookworm:armhf:cloud', 'freebsd:14.5:armhf:default'], 'armv7l')
+        self.assertEqual(result, [{'id': 'remote:debian/bookworm', 'remote_image': 'debian/bookworm', 'label': 'Debian bookworm'}])
 
     def test_download_error_is_actionable(self):
         with patch('incus_panel.catalog._cache', None), patch('urllib.request.urlopen', side_effect=OSError('DNS')):

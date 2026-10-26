@@ -67,6 +67,41 @@ criação e início com fixture, ausência de confirmação digitada e erro ass�
 visível. Use `python tests/create_fixture.py` e um Chromium/Edge de teste com CDP
 na porta 9223 antes de executar `node scripts/browser-create-smoke.mjs`.
 Essa fixture é simulada e fica exclusivamente em `127.0.0.1:8082`.
+
+## Equipamentos com pouca memória
+
+O socket local ativa o modo leve por padrão, inclusive para configurações antigas
+sem a opção `low_resource`. Não há atualização periódica do inventário ou assinatura
+de eventos. Use o botão Atualizar. A criação consulta o progresso a cada 5 segundos,
+continua em segundo plano e permite apenas uma criação de cada vez.
+
+O catálogo remoto usa apenas o índice de produtos (leitura limitada a 1 MiB), em
+vez do histórico completo de versões; oferece Alpine e Debian da arquitetura local.
+Novos containers criados pelo botão recebem 128 MiB de RAM e um limite de CPU de
+`50ms/100ms`. Não iniciam automaticamente após reboot. Containers anteriores não
+são alterados. Aplicações que exigem mais memória podem falhar com esse limite.
+
+Antes da criação, o painel exige `MemAvailable` de pelo menos 256 MiB. Isso é uma
+precaução e não uma garantia: o download e a extração rodam no daemon Incus e podem
+consumir mais recursos. O serviço do painel tem `CPUQuota=25%`, `MemoryHigh=96M` e
+`MemoryMax=160M`; esses limites dependem do suporte a cgroups do equipamento e
+não abrangem o daemon Incus. Se o painel atingir seu limite, ele poderá reiniciar.
+
+Se a TV Box cair, não repita imediatamente a criação. Quando recuperar o acesso,
+pare o painel e verifique memória e logs da inicialização anterior:
+
+```bash
+sudo systemctl stop incus-panel
+free -h
+sudo journalctl -k -b -1 --no-pager | tail -n 60
+incus list
+```
+
+Sem esses registros, a causa pode continuar desconhecida; memória, temperatura,
+alimentação, armazenamento e kernel precisam ser considerados. Ausência de logs
+persistentes pode impedir a consulta do boot anterior. Atualize o código e execute
+o instalador para aplicar os limites do serviço; a instalação reinicia o painel.
+
 Tarefas do painel ficam em memória; após reiniciar o serviço, consulte Containers
 ou as operações reais do Incus para verificar criações que estavam em andamento.
 

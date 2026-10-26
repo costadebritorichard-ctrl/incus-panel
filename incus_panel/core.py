@@ -172,6 +172,8 @@ class Demo:
 class Service:
     def __init__(self, config, clients=None):
         self.config = config
+        self.low_resource = config.get('low_resource', any(h.get('transport') == 'unix' for h in config['hosts']))
+        self.creation_lock = threading.Lock()
         def connect(host):
             if clients and host["id"] in clients:
                 return clients[host["id"]]
@@ -251,9 +253,22 @@ class Service:
         return redact(data)
 
     def launch(self, user, host, project, body):
+        self.context(user, host, project)
+        if not self.creation_lock.acquire(blocking=False):
+            raise PanelError(429, 'Já existe uma criação em andamento. Aguarde antes de criar outro container.')
+        try:
+            return self._launch(user, host, project, body)
+        except Exception:
+            self.creation_lock.release()
+            raise
+
+    def _launch(self, user, host, project, body):
         client = self.context(user, host, project)
         if self.config.get('read_only', True) or user['role'] != 'administrador' or not self.config.get('manage_all_instances'):
             raise PanelError(403, 'Criação automática exige administrador local.')
+        if self.low_resource and not self.config.get('demo') and any(h['id'] == host and h.get('transport') == 'unix' for h in self.config['hosts']):
+            from .resources import check_creation_memory
+            check_creation_memory()
         target = 'container-' + uuid.uuid4().hex[:10]
         with self.lock:
             if len(self.launches) >= 100:
@@ -303,7 +318,7 @@ class Service:
                         if code != 200 or state.get('err'):
                             raise PanelError(409, state.get('err') or 'O Incus não concluiu a operação.')
                         break
-                    time.sleep(1)
+                    time.sleep(5 if self.low_resource else 1)
                 else:
                     raise PanelError(504, 'Tempo de espera excedido. Confira o estado no Incus antes de repetir.')
                 if phase == 'create':
@@ -322,6 +337,8 @@ class Service:
         except Exception as exc:
             with self.lock:
                 job.update(status='Failure', status_code=400, err=redact(str(exc))[:2000] if isinstance(exc, PanelError) else 'Falha ao acompanhar a criação. Confira o estado no Incus.')
+        finally:
+            self.creation_lock.release()
 
     def mutate(self, user, host, project, action, target, body, launch_devices=None):
         client = self.context(user, host, project)
@@ -355,6 +372,8 @@ class Service:
                 payload['source'] = {'type': 'image', 'mode': 'pull', 'server': 'https://images.linuxcontainers.org', 'protocol': 'simplestreams', 'alias': remote}
             if launch_devices is not None:
                 payload['devices'] = launch_devices
+                if self.low_resource:
+                    payload['config'] = {'limits.memory': '128MiB', 'limits.cpu.allowance': '50ms/100ms', 'boot.autostart': 'false'}
             path = "/1.0/instances"
         else:
             instance = client.request("GET", path, project)["metadata"]

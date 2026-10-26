@@ -14,6 +14,8 @@ try{
   await wait("!!document.querySelector('#login-form')");
   await evaluate("document.querySelector('[name=username]').value='test';document.querySelector('[name=password]').value='local-browser-fixture';document.querySelector('#login-form').requestSubmit()");
   await wait("!document.querySelector('#shell').hidden");
+  assert.equal(await evaluate('session.low_resource'),true);
+  assert.equal(await evaluate('timer===undefined'),true);
   await evaluate("location.hash='create'");
   await wait("!!document.querySelector('#content form select')");
   assert.equal(await evaluate("document.querySelectorAll('#content form select').length"),1);

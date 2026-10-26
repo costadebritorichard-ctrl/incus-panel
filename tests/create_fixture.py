@@ -16,6 +16,6 @@ class Fixture(Demo):
         return result
 
 config = demo_config()
-config.update(manage_all_instances=True, origin='http://127.0.0.1:8082')
+config.update(manage_all_instances=True, low_resource=True, origin='http://127.0.0.1:8082')
 config['users'] = [{'username': 'test', 'password_hash': password_hash('local-browser-fixture'), 'role': 'administrador', 'host_metrics': True, 'scopes': {'demo': ['laboratorio']}}]
 serve(config, 8082, {'demo': Fixture()})

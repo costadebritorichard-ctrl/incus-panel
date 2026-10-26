@@ -137,7 +137,7 @@ async function render() {
       const memory=resources.data?.memory;
       const cards=[['Containers',instances.length,`${running} em execução · ${instances.filter(i=>i.status==='Stopped').length} parados`],['Memória do host',bytes(memory?.used),memory?'de '+bytes(memory.total):'Fonte indisponível ou não autorizada'],['Arquitetura',server.environment?.kernel_architecture||'n/d','Containers LXC · sem criação de VM'],['Incus',server.environment?.server_version||'n/d',server.environment?.server_clustered?'Cluster configurado':'Servidor standalone']];
       container.append(el('div',{class:'cards'},cards.map(([label,value,note])=>el('div',{class:'card'},el('div',{class:'label'},label),el('div',{class:'value'},value),el('div',{class:'note'},note)))));
-      container.append(el('div',{class:'grid'},panel('Containers',instanceTable(instances),el('a',{href:'#instances'},'Ver todos ↗')),panel('Identidade do servidor',el('div',{class:'panel-body'},kv([['Servidor',server.environment?.server_name],['Project',project],['Conexão',session.demo?'Fixture explícita':transportLabel()],['Atualização','A cada 15 s, com aba visível']])))));
+      container.append(el('div',{class:'grid'},panel('Containers',instanceTable(instances),el('a',{href:'#instances'},'Ver todos ↗')),panel('Identidade do servidor',el('div',{class:'panel-body'},kv([['Servidor',server.environment?.server_name],['Project',project],['Conexão',session.demo?'Fixture explícita':transportLabel()],['Atualização',session.low_resource?'Manual pelo botão Atualizar':'A cada 15 s, com aba visível']])))));
       if(resources.error)container.append(errorNode(resources.error));
       container.append(await storageView(scope,true));
     } else if(r.page==='instances') container.append(filteredInstances(instances));
@@ -165,9 +165,9 @@ async function render() {
     if(id===generation){busy=false;$('#content').removeAttribute('aria-busy');scheduleRefresh();}
   }
 }
-function scheduleRefresh(){clearTimeout(timer);timer=setTimeout(()=>{if(!session)return;if(!consoleId&&!document.hidden&&!$('#confirm').open&&!['create','settings'].includes(route().page)&&!$('#content').contains(document.activeElement))render();else scheduleRefresh();},15000);}
+function scheduleRefresh(){clearTimeout(timer);if(session?.low_resource)return;timer=setTimeout(()=>{if(!session)return;if(!consoleId&&!document.hidden&&!$('#confirm').open&&!['create','settings'].includes(route().page)&&!$('#content').contains(document.activeElement))render();else scheduleRefresh();},15000);}
 async function pollEvents(){
-  if(!session)return;const scope=host+'/'+project;
+  if(!session||session.low_resource)return;const scope=host+'/'+project;
   try{const result=await api('/api/events?'+new URLSearchParams({host,project}));if(!session||scope!==host+'/'+project)return;if(!result.enabled)return;
     const changed=result.version!==eventVersion;eventVersion=result.version;
     if(!result.connected){$('#connection').textContent='Eventos desconectados · fallback REST ativo';}
@@ -244,7 +244,7 @@ async function createView(scope,server) {
   const button=el('button',{class:'primary',disabled:!result.images.length||session.read_only?'':null},'Criar container');
   const progress=el('div',{'aria-live':'polite',role:'status'});
   if(result.warning)form.append(notice(result.warning,true));
-  form.append(el('label',{},'Escolha a imagem',image),notice('O nome, o armazenamento e a rede são configurados automaticamente. O container será criado e iniciado.'),button,progress);
+  form.append(el('label',{},'Escolha a imagem',image),notice('O nome, o armazenamento e a rede são configurados automaticamente. O container será criado e iniciado. ' + (session.low_resource?'Modo leve: limite de 128 MiB por container.':'')),button,progress);
   if(!result.images.length)form.append(notice('Nenhuma imagem compatível disponível. Confira a conexão da TV box com a Internet e tente novamente.',true),el('button',{type:'button',onclick:()=>render()},'Tentar novamente'));
   form.onsubmit=async event=>{
     event.preventDefault();button.disabled=true;image.disabled=true;
@@ -269,7 +269,7 @@ async function createView(scope,server) {
             return;
           }
           progress.replaceChildren(notice(`${created.target}: ${state.status}. Isso pode levar alguns minutos.`),el('pre',{},JSON.stringify(state.metadata||{})));
-          setTimeout(poll,1500);
+          setTimeout(poll,session.low_resource?5000:1500);
         }catch(error){
           progress.replaceChildren(errorNode(error),notice(`Não foi possível confirmar o resultado de ${created.target}. Confira Containers ou Tarefas antes de repetir.`),el('button',{type:'button',onclick:()=>{progress.replaceChildren(notice('Consultando criação…'));poll();}},'Consultar novamente'));
         }
