@@ -28,7 +28,7 @@ def redact(value):
         return {k: ("[oculto]" if re.search(r"secret|password|token|certificate|private|cloud-init|user\.|environment\.", k, re.I) else redact(v)) for k, v in value.items()}
     if isinstance(value, list):
         return [redact(v) for v in value]
-    if isinstance(value, str) and ("-----BEGIN" in value or re.search(r"(?:token|password|secret)=", value, re.I)):
+    if isinstance(value, str) and ("-----BEGIN" in value or re.search(r"(?:token|password|secret)\s*[:=]", value, re.I)):
         return "[oculto]"
     return value
 

@@ -157,6 +157,8 @@ class Application:
             console = Console(client, project, target, session["expires"])
             console_id = secrets.token_urlsafe(24)
             self.consoles[console_id] = {"token": token, "console": console, "host": host, "project": project}
+            self.service.audit.append({"identity": user["username"], "host": host, "project": project, "target": target, "action": "console", "timestamp": time.time(), "operation": getattr(console, "operation", None), "result": "canais abertos"})
+            self.service.audit[:] = self.service.audit[-200:]
             return {"console": console_id}
 
     def console(self, token, console_id):

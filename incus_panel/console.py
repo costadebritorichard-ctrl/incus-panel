@@ -120,6 +120,7 @@ class Console:
         operation = response.get("operation", "")
         if not re.fullmatch(r"/1.0/operations/[a-f0-9-]{36}", operation):
             raise PanelError(502, "Exec sem operação válida.")
+        self.operation = operation.rsplit("/", 1)[-1]
         fds = response.get("metadata", {}).get("metadata", {}).get("fds", {})
         if not fds.get("0") or not fds.get("control"):
             raise PanelError(502, "Incus não retornou os canais interativos esperados.")
