@@ -12,7 +12,9 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from .core import PanelError, Service
+from .core import PanelError, Service, name
+from .console import Console
+from .events import Events
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -35,11 +37,34 @@ def demo_config():
 
 class Application:
     def __init__(self, config):
+        self.validate(config)
         self.config = config
         self.service = Service(config)
         self.sessions = {}
+        self.consoles = {}
+        self.events = {}
         self.failures = {}
         self.lock = threading.RLock()
+
+    @staticmethod
+    def validate(config):
+        hosts = [name(h["id"]) for h in config["hosts"]]
+        if not hosts or len(hosts) != len(set(hosts)):
+            raise ValueError("Configure hosts com IDs únicos.")
+        names = set()
+        for user in config["users"]:
+            if user["username"] in names or user["role"] not in ("observador", "operador", "administrador"):
+                raise ValueError("Identidade duplicada ou papel inválido.")
+            names.add(user["username"])
+            if not isinstance(user.get("scopes"), dict):
+                raise ValueError("Escopos devem mapear hosts a listas de Projects.")
+            for host, projects in user["scopes"].items():
+                if host not in hosts or not isinstance(projects, list) or not projects:
+                    raise ValueError("Escopo inválido.")
+                for project in projects:
+                    name(project)
+        if not 60 <= config.get("session_seconds", 1800) <= 86400:
+            raise ValueError("Sessão deve durar entre 60 e 86400 segundos.")
 
     def login(self, username, password, address):
         now = time.time()
@@ -67,12 +92,93 @@ class Application:
             session = self.sessions.get(token)
             if not session or session["expires"] <= time.time():
                 self.sessions.pop(token, None)
+                self.close_consoles(token)
                 raise PanelError(401, "Sessão expirada. Entre novamente.")
             return session
 
+    def close_consoles(self, token):
+        with self.lock:
+            for console_id, item in list(self.consoles.items()):
+                if item["token"] == token:
+                    item["console"].close()
+                    del self.consoles[console_id]
+            for event_id, item in list(self.events.items()):
+                if item["token"] == token:
+                    item["events"].close()
+                    del self.events[event_id]
+
+    def reap(self):
+        with self.lock:
+            now = time.time()
+            for console_id, item in list(self.consoles.items()):
+                console = item["console"]
+                if console.closed or now >= console.deadline or now - console.last_access > 30:
+                    console.close()
+                    del self.consoles[console_id]
+            for event_id, item in list(self.events.items()):
+                event = item["events"]
+                if event.closed or now >= event.deadline or now - event.last_access > 45:
+                    event.close()
+                    del self.events[event_id]
+
+    def event_status(self, token, session, host, project):
+        client = self.service.context(session["user"], host, project)
+        if not self.config.get("enable_events", False) or self.config.get("demo"):
+            return {"enabled": False, "connected": False, "version": 0}
+        key = (token, host, project)
+        with self.lock:
+            if key not in self.events:
+                if len(self.events) >= 100:
+                    raise PanelError(429, "Limite de assinaturas de eventos atingido.")
+                # One active scope per web session. No orphan listeners after scope changes.
+                for other, item in list(self.events.items()):
+                    if item["token"] == token:
+                        item["events"].close()
+                        del self.events[other]
+                self.events[key] = {"token": token, "events": Events(client, project, session["expires"])}
+            return {"enabled": True, **self.events[key]["events"].read()}
+
+    def open_console(self, token, session, body):
+        user = session["user"]
+        host, project, target = body.get("host"), body.get("project"), name(body.get("target"))
+        client = self.service.context(user, host, project)
+        if not self.config.get("enable_console", False) or self.config.get("read_only", True) or user["role"] not in ("operador", "administrador"):
+            raise PanelError(403, "Console não habilitado ou papel sem permissão.")
+        allowed = self.config.get("mutable_instances", {}).get(host, {}).get(project, [])
+        if target not in allowed or body.get("confirmation") != f"{host}/{project}/{target}":
+            raise PanelError(403, "Console exige confirmação e container de teste autorizado.")
+        instance = client.request("GET", f"/1.0/instances/{target}", project)["metadata"]
+        if instance.get("type") != "container" or instance.get("status") != "Running":
+            raise PanelError(409, "Console exige container em execução.")
+        with self.lock:
+            self.reap()
+            if len(self.consoles) >= 4 or any(item["token"] == token for item in self.consoles.values()):
+                raise PanelError(429, "Limite de um console por sessão e quatro por serviço.")
+            console = Console(client, project, target, session["expires"])
+            console_id = secrets.token_urlsafe(24)
+            self.consoles[console_id] = {"token": token, "console": console, "host": host, "project": project}
+            return {"console": console_id}
+
+    def console(self, token, console_id):
+        session = self.session(token)
+        with self.lock:
+            item = self.consoles.get(console_id)
+            if not item or item["token"] != token:
+                raise PanelError(404, "Console encerrado ou não autorizado.")
+            console = item["console"]
+            self.service.context(session["user"], item["host"], item["project"])
+        if time.time() - console.last_auth > 15:
+            try:
+                console.client.request("GET", f"/1.0/instances/{console.target}", console.project)
+                console.last_auth = time.time()
+            except PanelError:
+                console.close()
+                raise
+        return console
+
     def public_session(self, session):
         user = session["user"]
-        return {"username": user["username"], "role": user["role"], "scopes": user["scopes"], "host_metrics": user.get("host_metrics", False), "csrf": session["csrf"], "expires": session["expires"], "demo": self.config.get("demo", False), "read_only": self.config.get("read_only", True), "hosts": [{"id": h["id"], "alias": h["alias"]} for h in self.config["hosts"] if h["id"] in user["scopes"]], "mutable_instances": self.config.get("mutable_instances", {})}
+        return {"username": user["username"], "role": user["role"], "scopes": user["scopes"], "host_metrics": user.get("host_metrics", False), "csrf": session["csrf"], "expires": session["expires"], "demo": self.config.get("demo", False), "read_only": self.config.get("read_only", True), "enable_console": self.config.get("enable_console", False), "hosts": [{"id": h["id"], "alias": h["alias"]} for h in self.config["hosts"] if h["id"] in user["scopes"]], "mutable_instances": {h: {p: values for p, values in projects.items() if p in user["scopes"].get(h, [])} for h, projects in self.config.get("mutable_instances", {}).items() if h in user["scopes"]}}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -150,8 +256,25 @@ class Handler(BaseHTTPRequestHandler):
                         raise PanelError(403, "Proteção CSRF: atualize a sessão.")
                     if path == "/api/logout":
                         with self.app.lock:
+                            self.app.close_consoles(token)
                             self.app.sessions.pop(token, None)
                         self.send(200, {"ok": True}, cookie="panel_session=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/")
+                        return
+                    if path == "/api/console/start":
+                        self.send(201, self.app.open_console(token, session, body))
+                        return
+                    if path == "/api/console/input":
+                        self.app.console(token, body.get("console")).write(body.get("text"))
+                        self.send(200, {"ok": True})
+                        return
+                    if path == "/api/console/resize":
+                        self.app.console(token, body.get("console")).resize(body.get("width", 100), body.get("height", 30))
+                        self.send(200, {"ok": True})
+                        return
+                    if path == "/api/console/close":
+                        self.app.console(token, body.get("console")).close()
+                        self.app.reap()
+                        self.send(200, {"ok": True})
                         return
                     if path != "/api/action":
                         raise PanelError(404, "Rota não encontrada.")
@@ -159,6 +282,12 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(202, data)
                 elif path == "/api/session":
                     self.send(200, self.app.public_session(session))
+                elif path == "/api/console/read":
+                    query = parse_qs(parsed.query)
+                    self.send(200, self.app.console(token, query.get("console", [""])[0]).read())
+                elif path == "/api/events":
+                    query = parse_qs(parsed.query)
+                    self.send(200, self.app.event_status(token, session, query.get("host", [""])[0], query.get("project", [""])[0]))
                 elif path == "/api/read":
                     query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
                     data = self.app.service.read(session["user"], query.get("host"), query.get("project"), query.get("resource"), query.get("target"))
@@ -207,6 +336,11 @@ def main():
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = True
     server.app = Application(config)
+    def reap_sessions():
+        while True:
+            time.sleep(1)
+            server.app.reap()
+    threading.Thread(target=reap_sessions, daemon=True).start()
     print(f"Incus Panel disponível em http://127.0.0.1:{args.port}", flush=True)
     try:
         server.serve_forever()

@@ -125,7 +125,7 @@ class Demo:
             elif path == "/1.0/storage-pools":
                 result = [{"name": "lab", "driver": "btrfs", "status": "Created"}]
             elif len(parts) >= 3 and parts[1] == "storage-pools":
-                result = {"space": {"total": 3221225472, "used": 2995744768}} if parts[-1] == "resources" else []
+                result = {"space": {"total": 3221225472, "used": round(3221225472 * .93)}} if parts[-1] == "resources" else []
             elif path == "/1.0/operations":
                 result = {"success": list(self.operations.values())}
             elif len(parts) == 3 and parts[1] == "operations":

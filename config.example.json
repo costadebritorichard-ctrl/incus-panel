@@ -1,0 +1,29 @@
+{
+  "demo": false,
+  "read_only": true,
+  "enable_console": false,
+  "enable_events": false,
+  "origin": "https://panel.example.invalid",
+  "session_seconds": 1800,
+  "hosts": [
+    {
+      "id": "laboratorio",
+      "alias": "Laboratório didático",
+      "url": "https://incus.example.invalid:8443",
+      "ca": "/etc/incus-panel/server-ca.pem",
+      "certificate": "/etc/incus-panel/client.crt",
+      "key": "/etc/incus-panel/client.key",
+      "fingerprint": "SUBSTITUA_PELO_SHA256_CONFIRMADO_FORA_DE_BANDA"
+    }
+  ],
+  "users": [
+    {
+      "username": "observador",
+      "password_hash": "SUBSTITUA_PELA_SAIDA_DE_python_-m_incus_panel.server_--hash-password",
+      "role": "observador",
+      "host_metrics": false,
+      "scopes": {"laboratorio": ["tcc-teste"]}
+    }
+  ],
+  "mutable_instances": {"laboratorio": {"tcc-teste": ["lab-descartavel"]}}
+}

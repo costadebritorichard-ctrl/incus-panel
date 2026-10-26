@@ -9,7 +9,8 @@ const el = (tag, attrs = {}, ...children) => {
   for (const child of children.flat(Infinity)) if (child !== null && child !== undefined) node.append(child instanceof Node ? child : document.createTextNode(String(child)));
   return node;
 };
-let session, host, project, generation = 0, pendingAction, timer, busy = false;
+let session, host, project, generation = 0, pendingAction, timer, expiryTimer, busy = false, consoleId, consoleTimer;
+let eventTimer,eventVersion;
 const tasks = new Map();
 const pages = [ ['overview','◫','Visão geral'],['instances','▣','Containers'],['images','◇','Imagens'],['storage','▤','Armazenamento'],['networks','⌘','Redes'],['profiles','☷','Profiles'],['projects','▱','Projects'],['tasks','◷','Tarefas'],['alerts','△','Alertas'],['server','▧','Servidor'],['settings','⚙','Configurações'] ];
 const fmt = n => n === null || n === undefined ? 'n/d' : new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1}).format(n);
@@ -42,8 +43,8 @@ function canMutate(target) { return !session.read_only && session.role!=='observ
 function actionButton(label, action, target, extra={}) { return el('button',{disabled:canMutate(target)?null:'',onclick:()=>openAction(action,target,extra)},label); }
 function openAction(action,target,extra={}) {
   pendingAction={host,project,action,target,...extra};
-  $('#action-title').textContent=({start:'Iniciar container',stop:'Parar container',restart:'Reiniciar container',delete:'Excluir container permanentemente',create:'Criar container',snapshot:'Criar snapshot',backup:'Gerar backup'})[action];
-  $('#action-description').textContent= action==='delete'?'A exclusão remove permanentemente o container e seus snapshots.':action==='snapshot'||action==='backup'?'A operação consome armazenamento. Blocos compartilhados não representam espaço recuperável garantido.':'Revise o destino. O resultado será confirmado pela operação Incus.';
+  $('#action-title').textContent=({start:'Iniciar container',stop:'Parar container',restart:'Reiniciar container',delete:'Excluir container permanentemente',create:'Criar container',snapshot:'Criar snapshot',backup:'Gerar backup',console:'Abrir shell interativo'})[action];
+  $('#action-description').textContent= action==='console'?'Este acesso abre /bin/sh, normalmente como root dentro do container. Comandos podem alterar ou apagar dados.':action==='delete'?'A exclusão remove permanentemente o container e seus snapshots.':action==='snapshot'||action==='backup'?'A operação consome armazenamento. Blocos compartilhados não representam espaço recuperável garantido.':'Revise o destino. O resultado será confirmado pela operação Incus.';
   $('#action-review').textContent=JSON.stringify(pendingAction,null,2);
   $('#confirmation').value=''; $('#confirmation').placeholder=`${host}/${project}/${target}`;
   $('#name-label').hidden=!['snapshot','backup'].includes(action);
@@ -55,6 +56,10 @@ $('#cancel-action').onclick=()=>$('#confirm').close();
 $('#action-form').onsubmit=async event=>{
   event.preventDefault(); $('#submit-action').disabled=true;
   try {
+    if(pendingAction.action==='console'){
+      const result=await api('/api/console/start',{...pendingAction,confirmation:$('#confirmation').value});
+      consoleId=result.console;$('#confirm').close();pollConsole();return;
+    }
     const data=await api('/api/action',{...pendingAction,confirmation:$('#confirmation').value,name:$('#artifact-name').value});
     tasks.set(`${pendingAction.host}/${pendingAction.project}/${data.operation}`,{...pendingAction,id:data.operation,status:'Aguardando confirmação',status_code:100});
     $('#confirm').close(); await render();
@@ -62,7 +67,8 @@ $('#action-form').onsubmit=async event=>{
   finally { $('#submit-action').disabled=false; }
 };
 function logoutLocal() {
-  session=null; generation++; clearTimeout(timer); tasks.clear(); $('#shell').hidden=true; $('#login').hidden=false;
+  closeConsole();
+  session=null; generation++; clearTimeout(timer); clearTimeout(expiryTimer); clearTimeout(eventTimer); tasks.clear(); $('#content').replaceChildren(); $('#tree').replaceChildren(); $('#shell').hidden=true; $('#login').hidden=false;
   if($('#confirm').open) $('#confirm').close();
 }
 $('#logout').onclick=async()=>{try{await api('/api/logout',{});}finally{logoutLocal();}};
@@ -73,10 +79,11 @@ $('#login-form').onsubmit=async event=>{
   finally { button.disabled=false; }
 };
 function enter() {
+  clearTimeout(expiryTimer); expiryTimer=setTimeout(logoutLocal,Math.max(0,session.expires*1000-Date.now()));
   $('#login').hidden=true; $('#shell').hidden=false; $('#identity').textContent=`${session.username} · ${session.role}`;
   $('#mode').textContent=session.demo?'DEMONSTRAÇÃO':session.read_only?'SOMENTE LEITURA':'LABORATÓRIO';
   $('#host').replaceChildren(...session.hosts.map(h=>el('option',{value:h.id},h.alias)));
-  const remembered=JSON.parse(localStorage.getItem('incus-scope')||'null');
+  let remembered;try{remembered=JSON.parse(localStorage.getItem('incus-scope')||'null');}catch{remembered=null;}
   host=session.hosts.some(h=>h.id===remembered?.host)?remembered.host:session.hosts[0]?.id;
   if(!host){$('#content').replaceChildren(empty('Nenhum host autorizado.'));return;}
   $('#host').value=host; fillProjects(remembered?.project); render();
@@ -86,12 +93,13 @@ function fillProjects(preferred) {
   project=projects.includes(preferred)?preferred:projects[0];
   $('#project').replaceChildren(...projects.map(p=>el('option',{value:p},p))); $('#project').value=project;
   localStorage.setItem('incus-scope',JSON.stringify({host,project}));
+  eventVersion=undefined;clearTimeout(eventTimer);eventTimer=setTimeout(pollEvents,2000);
 }
-$('#host').onchange=()=>{host=$('#host').value;fillProjects();render();};
-$('#project').onchange=()=>{project=$('#project').value;localStorage.setItem('incus-scope',JSON.stringify({host,project}));render();};
-$('#refresh').onclick=()=>render(); $('#tree-view').onchange=()=>render();
-window.addEventListener('hashchange',()=>{if(session)render();});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&session)render();});
+$('#host').onchange=()=>{closeConsole();host=$('#host').value;fillProjects();render();};
+$('#project').onchange=()=>{closeConsole();project=$('#project').value;localStorage.setItem('incus-scope',JSON.stringify({host,project}));eventVersion=undefined;clearTimeout(eventTimer);eventTimer=setTimeout(pollEvents,2000);render();};
+$('#refresh').onclick=()=>{closeConsole();render();}; $('#tree-view').onchange=()=>render();
+window.addEventListener('hashchange',()=>{closeConsole();if(session)render();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&session&&!consoleId)render();});
 function instanceTable(items) {
   return table(['CONTAINER','ESTADO','ARQUITETURA','PROFILES','PROJECT'],items.map(i=>[el('a',{href:instanceLink(i.name)},'▣  '+i.name),status(i.status),i.architecture || 'n/d',(i.profiles||[]).join(', '),project]));
 }
@@ -141,16 +149,30 @@ async function render() {
       if(r.page==='projects')container.append(notice('A lista contém somente os escopos configurados no servidor do painel. A autorização final permanece no Incus.'));
     } else if(r.page==='tasks') container.append(await taskView(scope));
     else if(r.page==='create') container.append(await createView(scope,server));
-    else if(r.page==='settings') container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only?'Somente leitura':'Mutações limitadas à allowlist'],['Autorização','Proxy por usuário + Incus TLS restrito'],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice('Eventos WebSocket e console interativo estão pendentes nesta versão. O painel utiliza ressincronização REST a cada 15 segundos; sessões expiradas impedem novas chamadas.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',json((await read('audit',undefined,scope)).data)));
+    else if(r.page==='settings') container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only?'Somente leitura':'Mutações limitadas à allowlist'],['Autorização','Proxy por usuário + Incus TLS restrito'],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice('Eventos WebSocket de lifecycle estão pendentes. O inventário utiliza ressincronização REST a cada 15 segundos. O console usa canais WebSocket TLS entre proxy e Incus e ponte HTTP autenticada no navegador.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',json((await read('audit',undefined,scope)).data)));
     else container.append(empty('Página não encontrada.'));
     if(id!==generation||!session)return;
+    const tracked=[...tasks.values()].filter(t=>t.host===scope.host&&t.project===scope.project);
+    for(const task of tracked)if(task.status_code<200){try{Object.assign(task,(await read('operation',task.id,scope)).data);}catch{task.status='Resultado incerto';}}
+    if(id!==generation||!session)return;
+    $('#task-summary').textContent=tracked.length?tracked.map(t=>`${t.target}: ${t.status}`).join(' · '):'Operações rastreadas pelo Incus';
     $('#content').replaceChildren(container); $('#connection').textContent=(session.demo?'● Simulação conectada':'● Conectado via TLS')+' · '+host+' / '+project;
     $('#updated').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
   } catch(error) {
     if(id===generation&&session){$('#content').replaceChildren(errorNode(error),notice('Não foi possível atualizar este escopo. A falha de conexão não indica que os containers estejam parados.'));$('#connection').textContent=error.status===403?'Sem permissão':'Conexão degradada';}
   } finally {
-    if(id===generation){busy=false;$('#content').removeAttribute('aria-busy');timer=setTimeout(()=>{if(session&&!document.hidden&&!$('#confirm').open&&!['create','settings'].includes(route().page))render();},15000);}
+    if(id===generation){busy=false;$('#content').removeAttribute('aria-busy');scheduleRefresh();}
   }
+}
+function scheduleRefresh(){clearTimeout(timer);timer=setTimeout(()=>{if(!session)return;if(!consoleId&&!document.hidden&&!$('#confirm').open&&!['create','settings'].includes(route().page)&&!$('#content').contains(document.activeElement))render();else scheduleRefresh();},15000);}
+async function pollEvents(){
+  if(!session)return;const scope=host+'/'+project;
+  try{const result=await api('/api/events?'+new URLSearchParams({host,project}));if(!session||scope!==host+'/'+project)return;if(!result.enabled)return;
+    const changed=result.version!==eventVersion;eventVersion=result.version;
+    if(!result.connected){$('#connection').textContent='Eventos desconectados · fallback REST ativo';}
+    if(changed&&!busy&&!consoleId&&!document.hidden&&!$('#confirm').open&&!['create','settings'].includes(route().page)&&!$('#content').contains(document.activeElement))await render();
+  }catch{}
+  if(session)eventTimer=setTimeout(pollEvents,2000);
 }
 async function storageView(scope,alertsOnly=false) {
   try {
@@ -185,8 +207,22 @@ async function detail(r,scope) {
     const result=await read(r.tab,r.target,scope);
     wrapper.append(panel(r.tab==='snapshots'?'Snapshots':'Backups',table(['NOME','CRIADO EM','EXPIRA EM'],result.data.map(i=>[typeof i==='string'?i:i.name,date(i.created_at),date(i.expires_at)])),actionButton('＋ Criar',r.tab==='snapshots'?'snapshot':'backup',r.target)));
     wrapper.append(notice('Snapshots podem compartilhar blocos. Download e restauração de backups, restauração e exclusão de snapshots estão pendentes. Não há limpeza automática.'));
-  } else wrapper.append(notice('Console interativo ainda não implementado. Nenhuma sessão shell é aberta por esta versão.',true));
+  } else {
+    const open=actionButton('Abrir shell /bin/sh','console',r.target);if(!session.enable_console||state.status!=='Running')open.disabled=true;
+    const output=el('pre',{id:'console-output',class:'terminal',tabindex:'0','aria-label':'Saída do terminal'},'Console desconectado.\n');
+    const input=el('input',{'aria-label':'Comando para o shell',placeholder:'Digite um comando e pressione Enter',autocomplete:'off',spellcheck:'false'});
+    const form=el('form',{class:'toolbar'},input,el('button',{},'Enviar'),el('button',{type:'button',onclick:()=>api('/api/console/input',{console:consoleId,text:'\u0003'}).catch(error=>output.append(error.message))},'Ctrl+C'),el('button',{type:'button',onclick:closeConsole},'Encerrar'));
+    form.onsubmit=async event=>{event.preventDefault();if(!consoleId)return;try{await api('/api/console/input',{console:consoleId,text:input.value+'\n'});input.value='';}catch(error){output.append('\n'+error.message);}};
+    wrapper.append(notice('Shell privilegiado em container de teste. Terminal textual com entrada por linha; editores de tela inteira não são suportados. Ao sair desta tela o canal é encerrado.'),panel('Console interativo',el('div',{class:'panel-body'},output,form),open));
+    if(!session.enable_console)wrapper.append(notice('O administrador precisa habilitar enable_console na configuração. O modo demonstração não simula um shell.'));
+  }
   return wrapper;
+}
+async function closeConsole(){clearTimeout(consoleTimer);const id=consoleId;consoleId=null;if(id&&session)try{await api('/api/console/close',{console:id});}catch{} }
+async function pollConsole(){
+  const id=consoleId;if(!id)return;
+  try{const result=await api('/api/console/read?'+new URLSearchParams({console:id}));if(consoleId!==id)return;const output=$('#console-output');if(!output){closeConsole();return;}output.textContent=(output.textContent+result.output).slice(-65536);output.scrollTop=output.scrollHeight;if(result.closed){output.append('\n[Console encerrado]');consoleId=null;return;}consoleTimer=setTimeout(pollConsole,500);}
+  catch(error){const output=$('#console-output');if(output)output.append('\n'+error.message);closeConsole();}
 }
 async function taskView(scope) {
   const result=await read('operations',undefined,scope);
