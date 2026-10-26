@@ -1,0 +1,273 @@
+{
+  "casos_de_teste": [
+    {
+      "id": "CT-001",
+      "descricao": "Host ARMv7 standalone",
+      "cenario": "/1.0 apresenta armv7l e server_clustered=false",
+      "resultado_esperado": "Visao standalone sem botao VM habilitado",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-002",
+      "descricao": "Containers de Projects diferentes com mesmo nome",
+      "cenario": "Servidor retorna dois nomes iguais em projetos distintos",
+      "resultado_esperado": "Duas entradas distintas sem acao no alvo errado",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-003",
+      "descricao": "API nao autorizada",
+      "cenario": "Incus retorna 403",
+      "resultado_esperado": "Tela informa sem acesso; nao mostra lista vazia",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-004",
+      "descricao": "Host indisponivel",
+      "cenario": "Conexao falha",
+      "resultado_esperado": "Status host desconectado sem marcar containers como parados",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-005",
+      "descricao": "WebSocket desconecta",
+      "cenario": "Fluxo interrompido",
+      "resultado_esperado": "Ao reconectar estado sincronizado via REST",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-006",
+      "descricao": "Operacao assincrona falha",
+      "cenario": "UUID retorna erro",
+      "resultado_esperado": "Tasks mostra falha sem falso sucesso",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-007",
+      "descricao": "Criacao sem espaco",
+      "cenario": "Incus retorna erro de storage",
+      "resultado_esperado": "Mensagem com contexto e nenhuma criacao fantasma",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-008",
+      "descricao": "Btrfs 93% por fixture",
+      "cenario": "Pool com uso de 93%",
+      "resultado_esperado": "Alerta critico sem alterar armazenamento real",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-009",
+      "descricao": "Contagem du > pool",
+      "cenario": "Subvolumes/snapshots compartilhados",
+      "resultado_esperado": "Nao mostrar capacidade fisica a partir da soma logica",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-010",
+      "descricao": "Certificado revogado",
+      "cenario": "Autenticacao remota recusada",
+      "resultado_esperado": "Sessao perde acesso a dados/acoes",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-011",
+      "descricao": "Sessao expirada durante console",
+      "cenario": "Evento de expiracao",
+      "resultado_esperado": "WS e terminal desconectados",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-012",
+      "descricao": "Container stopped + console",
+      "cenario": "Estado stopped",
+      "resultado_esperado": "Interface nao abre exec interativo",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-013",
+      "descricao": "Deletar instancia protegida",
+      "cenario": "security.protection.delete=true",
+      "resultado_esperado": "Operacao bloqueada e erro explicito",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-014",
+      "descricao": "Extensao VM presente sem KVM",
+      "cenario": "H3 API anuncia virtual-machines",
+      "resultado_esperado": "Nao permitir criacao de VM sem capacidade real",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-015",
+      "descricao": "Imagem arquitetura diferente",
+      "cenario": "ARM64 em host ARMv7",
+      "resultado_esperado": "Criacao bloqueada com justificativa",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-016",
+      "descricao": "Mudanca concorrente de configuracao",
+      "cenario": "ETag alterado",
+      "resultado_esperado": "Solicitar recarga, nao sobrescrever silenciosamente",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-017",
+      "descricao": "Sem metrics",
+      "cenario": "Endpoint indisponivel/sem permissao",
+      "resultado_esperado": "Mostrar n/d e fonte ausente",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-018",
+      "descricao": "Project restrito",
+      "cenario": "Credencial com escopo especifico",
+      "resultado_esperado": "Nao listar nem operar Projects fora do escopo",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-019",
+      "descricao": "Acoes em container correto",
+      "cenario": "Dois hosts com instance mesmo nome",
+      "resultado_esperado": "Acao afeta somente host+Project selecionados",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-020",
+      "descricao": "Sem snapshot",
+      "cenario": "Instance sem snapshots",
+      "resultado_esperado": "Estado vazio, sem erro falso",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-021",
+      "descricao": "Responsive e teclado",
+      "cenario": "Navegador estreito/teclado",
+      "resultado_esperado": "Fluxos essenciais acessiveis",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-022",
+      "descricao": "Host multi cluster",
+      "cenario": "Member indisponivel",
+      "resultado_esperado": "Metricas nao sao artificialmente atribuídas a outro member",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-023",
+      "descricao": "Token/segredo em resposta",
+      "cenario": "Resposta com campos sensiveis",
+      "resultado_esperado": "Campos redigidos em logs/telemetria",
+      "tipo": "aceitacao"
+    },
+    {
+      "id": "CT-024",
+      "descricao": "Cancela operacao",
+      "cenario": "Operacao pode ou nao cancelamento",
+      "resultado_esperado": "Exibir Cancelar somente se may_cancel permitir",
+      "tipo": "aceitacao"
+    }
+  ],
+  "experimentos_tcc": [
+    {
+      "id": "EXP-01",
+      "titulo": "Baseline isolado",
+      "variaveis": [
+        "RAM total host",
+        "CPU ociosa",
+        "incusd RSS",
+        "uso pool",
+        "instancias"
+      ],
+      "procedimento": "Coletar antes do painel e registrar estado do host; evitar mudar o conjunto de containers entre amostras.",
+      "saida": "tabela baseline e versoes"
+    },
+    {
+      "id": "EXP-02",
+      "titulo": "Acesso direto vs proxy",
+      "variaveis": [
+        "RSS adicional",
+        "CPU adicional",
+        "latencia de GET",
+        "complexidade de enrollment",
+        "superficie de segredo"
+      ],
+      "procedimento": "Mesmo host, mesma rede e perfil de operacao com repeticoes; nao comprometer TLS no teste.",
+      "saida": "matriz de decisao R4"
+    },
+    {
+      "id": "EXP-03",
+      "titulo": "Eventos vs polling",
+      "variaveis": [
+        "requisicoes/min",
+        "trafego",
+        "tempo de atualizacao",
+        "CPU host"
+      ],
+      "procedimento": "Mesma sequencia de mudancas com diferentes estrategias; registrar tempo de recepcao e renderizacao.",
+      "saida": "graficos comparativos"
+    },
+    {
+      "id": "EXP-04",
+      "titulo": "Escala por numero de containers",
+      "variaveis": [
+        "N containers",
+        "latencia listagem",
+        "RAM",
+        "CPU"
+      ],
+      "procedimento": "1/3/5 e mais apenas se memoria/storage permitirem, usando containers efemeros de teste ou fixtures para a UI.",
+      "saida": "curvas e limites"
+    },
+    {
+      "id": "EXP-05",
+      "titulo": "Metricas e storage Btrfs",
+      "variaveis": [
+        "pool driver",
+        "total",
+        "used",
+        "free",
+        "alerta"
+      ],
+      "procedimento": "Reproduzir casos 77/93% por fixtures, sem encher o pool real.",
+      "saida": "evidencias de alertas e precisao"
+    },
+    {
+      "id": "EXP-06",
+      "titulo": "Permissoes e revogacao",
+      "variaveis": [
+        "role",
+        "Project",
+        "status 403",
+        "revogacao"
+      ],
+      "procedimento": "Tentar leitura de Project proibido e operacao nao autorizada em servidor de testes.",
+      "saida": "matriz de controle de acesso"
+    },
+    {
+      "id": "EXP-07",
+      "titulo": "Portabilidade",
+      "variaveis": [
+        "arquitetura",
+        "Incus version",
+        "api_extensions",
+        "funcoes mostradas"
+      ],
+      "procedimento": "Executar o mesmo produto em ARMv7/ARM64/x86-64 quando hosts disponiveis; indicar ambiente indisponivel.",
+      "saida": "matriz de compatibilidade"
+    },
+    {
+      "id": "EXP-08",
+      "titulo": "Usabilidade didatica",
+      "variaveis": [
+        "tempo para achar container",
+        "tempo para executar operacao",
+        "erros",
+        "percepcao"
+      ],
+      "procedimento": "Roteiro padronizado com usuarios autorizados; registrar amostra e limitacoes.",
+      "saida": "relatorio qualitativo/quantitativo"
+    }
+  ]
+}

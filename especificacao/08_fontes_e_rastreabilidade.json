@@ -1,0 +1,88 @@
+{
+  "fontes_externas": [
+    {
+      "id": "REF-01",
+      "titulo": "Incus REST API",
+      "url": "https://linuxcontainers.org/incus/docs/main/rest-api/",
+      "uso": "Versionamento, respostas, operacoes assincronas, ETag e descoberta por extensoes."
+    },
+    {
+      "id": "REF-02",
+      "titulo": "Incus - gerenciamento de instances",
+      "url": "https://linuxcontainers.org/incus/docs/main/howto/instances_manage/",
+      "uso": "Listar e controlar estado de containers."
+    },
+    {
+      "id": "REF-03",
+      "titulo": "Incus Events",
+      "url": "https://linuxcontainers.org/incus/docs/main/events/",
+      "uso": "Eventos de operacao, lifecycle e reconexao com ressincronizacao."
+    },
+    {
+      "id": "REF-04",
+      "titulo": "Incus Remote API authentication",
+      "url": "https://linuxcontainers.org/incus/docs/main/authentication/",
+      "uso": "Certificados TLS de cliente e OIDC."
+    },
+    {
+      "id": "REF-05",
+      "titulo": "Incus Authorization",
+      "url": "https://linuxcontainers.org/incus/docs/main/authorization/",
+      "uso": "Permissoes no servidor, certificados restritos e OpenFGA."
+    },
+    {
+      "id": "REF-06",
+      "titulo": "Incus Projects",
+      "url": "https://linuxcontainers.org/incus/docs/main/explanation/projects/",
+      "uso": "Isolamento de projetos em laboratorios multiusuario."
+    },
+    {
+      "id": "REF-07",
+      "titulo": "Incus Metrics",
+      "url": "https://linuxcontainers.org/incus/docs/main/metrics/",
+      "uso": "Metricas exportadas em formato Prometheus; custo de coleta e cluster."
+    },
+    {
+      "id": "REF-08",
+      "titulo": "ScottiBYTE Incus for Home Assistant",
+      "url": "https://github.com/ScottiBYTE/ha-scottibyte-incus",
+      "uso": "Referencia de multiplos servidores, autenticação por certificado e terminal remoto."
+    },
+    {
+      "id": "REF-09",
+      "titulo": "Proxmox VE manager",
+      "url": "https://github.com/proxmox/pve-manager",
+      "uso": "Referencia conceitual de navegacao em arvore, objetos e tarefas."
+    },
+    {
+      "id": "REF-10",
+      "titulo": "Anatel - Alem do Horizonte",
+      "url": "https://www.gov.br/anatel/pt-br/assuntos/noticias/anatel-e-alem-do-horizonte-transformam-receptores-de-tv-piratas-em-minicomputadores-para-escolas",
+      "uso": "Justificativa social e educacional do reaproveitamento de TV Boxes."
+    },
+    {
+      "id": "REF-11",
+      "titulo": "Anatel - entrega de seis mil minicomputadores",
+      "url": "https://www.gov.br/anatel/pt-br/assuntos/noticias/anatel-prestigia-entrega-de-seis-mil-minicomputadores-pela-receita-federal-em-sorocaba",
+      "uso": "Evidencia institucional de reaproveitamento em escala."
+    },
+    {
+      "id": "REF-12",
+      "titulo": "Receita Federal - Doacoes de mercadorias apreendidas",
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/leilao/pdm/doacoes",
+      "uso": "Ressalva patrimonial/legal para destinacao de equipamentos."
+    },
+    {
+      "id": "REF-13",
+      "titulo": "Incus API extensions",
+      "url": "https://linuxcontainers.org/incus/docs/main/api-extensions/",
+      "uso": "Compatibilidade via funcionalidades anunciadas."
+    }
+  ],
+  "observacoes_de_rastreabilidade": [
+    "Este documento e especificacao, nao codigo-fonte ou produto implementado.",
+    "Conferir endpoints no OpenAPI da versao Incus alvo antes de validar integracoes.",
+    "Metricas quantitativas RNF sao metas iniciais para teste, nao resultados aferidos.",
+    "R3 e uma fotografia do ambiente em outubro de 2026 e deve ser revalidada."
+  ]
+}

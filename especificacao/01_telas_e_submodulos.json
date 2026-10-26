@@ -1,0 +1,1641 @@
+{
+  "telas": [
+    {
+      "id": "TEL-01",
+      "nome": "Boas-vindas e conexao inicial",
+      "rota_conceitual": "/configuracao-inicial",
+      "fase": "F1",
+      "objetivo": "Identificar o Incus alvo e verificar o vinculo seguro.",
+      "perfis_com_acesso": [
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-01",
+        "API-02"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-01.01",
+          "nome": "Identificacao do servidor",
+          "comportamento_esperado": "Exibir alias do host, versao da API e arquitetura.",
+          "criterio_aceite": "Host confirmado corresponde ao destino esperado."
+        },
+        {
+          "id": "TEL-01.02",
+          "nome": "Teste de conectividade",
+          "comportamento_esperado": "Distinguir host inacessivel, TLS invalido e acesso negado.",
+          "criterio_aceite": "Os tres casos apresentam mensagens especificas."
+        },
+        {
+          "id": "TEL-01.03",
+          "nome": "Verificacao de confianca",
+          "comportamento_esperado": "Apresentar fingerprint do servidor antes de registrar confianca.",
+          "criterio_aceite": "A identidade do servidor exige confirmacao explicita."
+        },
+        {
+          "id": "TEL-01.04",
+          "nome": "Elegibilidade da conexao",
+          "comportamento_esperado": "Registrar resultado da comparacao entre caminho direto e proxy.",
+          "criterio_aceite": "Caminho selecionado tem justificativa R4 documentada."
+        },
+        {
+          "id": "TEL-01.05",
+          "nome": "Selecao de escopo inicial",
+          "comportamento_esperado": "Exibir Projects autorizados sem presumir acesso global.",
+          "criterio_aceite": "Projects nao autorizados nao aparecem."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Testar conexao",
+          "permissao": "administrador",
+          "risco": "baixo"
+        },
+        {
+          "nome": "Concluir vinculo",
+          "permissao": "administrador",
+          "risco": "moderado",
+          "confirmacao": true
+        }
+      ],
+      "estados_alternativos": [
+        "falha_TLS",
+        "certificado_nao_confiavel",
+        "sem_permissao",
+        "endpoint_inacessivel"
+      ],
+      "aceite_da_tela": "A tela Boas-vindas e conexao inicial funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.01",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-02",
+      "nome": "Autenticacao e sessao",
+      "rota_conceitual": "/entrar",
+      "fase": "F1",
+      "objetivo": "Permitir acesso autenticado sem expor credenciais de Incus.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-01",
+        "API-03"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-02.01",
+          "nome": "Inicio de sessao",
+          "comportamento_esperado": "Solicitar e validar a identidade conforme arquitetura aprovada.",
+          "criterio_aceite": "Nao ha acesso anonimo aos dados privados do host."
+        },
+        {
+          "id": "TEL-02.02",
+          "nome": "Indicacao de perfil",
+          "comportamento_esperado": "Mostrar papel efetivo da conta, sem inferir permissoes por botoes visuais.",
+          "criterio_aceite": "Operador e observador recebem acoes apropriadas."
+        },
+        {
+          "id": "TEL-02.03",
+          "nome": "Expiracao e saida",
+          "comportamento_esperado": "Encerrar sessao, inclusive conexoes e console abertos.",
+          "criterio_aceite": "Sessao encerrada nao consegue acionar APIs."
+        },
+        {
+          "id": "TEL-02.04",
+          "nome": "Tratamento de falhas",
+          "comportamento_esperado": "Diferenciar credenciais invalidas, sessao expirada e servidor sem resposta.",
+          "criterio_aceite": "Nao revelar detalhes tecnicos ou segredos nas mensagens."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Entrar",
+          "permissao": "autenticado",
+          "risco": "baixo"
+        },
+        {
+          "nome": "Sair",
+          "permissao": "autenticado",
+          "risco": "baixo"
+        }
+      ],
+      "estados_alternativos": [
+        "autenticacao_falhou",
+        "sessao_expirada",
+        "servidor_inacessivel"
+      ],
+      "aceite_da_tela": "A tela Autenticacao e sessao funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.02",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-03",
+      "nome": "Visao geral - Datacenter",
+      "rota_conceitual": "/",
+      "fase": "F1",
+      "objetivo": "Concentrar indicadores, hosts, containers e alertas.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-01",
+        "API-04",
+        "API-05",
+        "API-09",
+        "API-18"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-03.01",
+          "nome": "Resumo de ambiente",
+          "comportamento_esperado": "Contar instancias em execucao, paradas e total por escopo visivel.",
+          "criterio_aceite": "Contagens conferem com inventario autorizado."
+        },
+        {
+          "id": "TEL-03.02",
+          "nome": "Resumo de host",
+          "comportamento_esperado": "Exibir arquitetura, versao Incus e informacao de cluster real.",
+          "criterio_aceite": "ARMv7 e unclustered sao reconhecidos corretamente."
+        },
+        {
+          "id": "TEL-03.03",
+          "nome": "Cartoes de recursos",
+          "comportamento_esperado": "Exibir uso de CPU, RAM e armazenamento com origem das metricas.",
+          "criterio_aceite": "Metricas sem fonte confiavel mostram indisponivel, nunca zero falso."
+        },
+        {
+          "id": "TEL-03.04",
+          "nome": "Lista de atividade",
+          "comportamento_esperado": "Apresentar operacoes recentes e seus estados.",
+          "criterio_aceite": "Falhas aparecem com acao de inspecionar."
+        },
+        {
+          "id": "TEL-03.05",
+          "nome": "Alertas priorizados",
+          "comportamento_esperado": "Destacar capacidade critica do storage e falhas de conexao.",
+          "criterio_aceite": "Alerta e emitido com base em metricas validas."
+        },
+        {
+          "id": "TEL-03.06",
+          "nome": "Atalhos contextuais",
+          "comportamento_esperado": "Navegar para instancias e storage.",
+          "criterio_aceite": "Destino preserva servidor e project selecionados."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Abrir container",
+          "permissao": "observador",
+          "risco": "baixo"
+        },
+        {
+          "nome": "Ver armazenamento",
+          "permissao": "observador",
+          "risco": "baixo"
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Visao geral - Datacenter funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.03",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-04",
+      "nome": "Explorador de recursos",
+      "rota_conceitual": "/explorador",
+      "fase": "F1",
+      "objetivo": "Navegacao em arvore familiar ao Proxmox, com separacao entre hosts e Projects.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-01",
+        "API-04",
+        "API-12",
+        "API-13"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-04.01",
+          "nome": "Visao por host",
+          "comportamento_esperado": "Organizar instancias por host ou cluster member real.",
+          "criterio_aceite": "Uma box nao clusterizada aparece como host unico."
+        },
+        {
+          "id": "TEL-04.02",
+          "nome": "Visao por Project",
+          "comportamento_esperado": "Agrupar apenas instancias de Projects autorizados.",
+          "criterio_aceite": "Mesmo nome em Projects distintos nao gera colisao."
+        },
+        {
+          "id": "TEL-04.03",
+          "nome": "Busca e filtros",
+          "comportamento_esperado": "Pesquisar por nome, status, tipo e host.",
+          "criterio_aceite": "Filtro nao esconde falhas de consulta."
+        },
+        {
+          "id": "TEL-04.04",
+          "nome": "Estado de cada item",
+          "comportamento_esperado": "Exibir running/stopped/error e sincronizar eventos.",
+          "criterio_aceite": "Status atualiza apos evento sem recriar arvore inteira."
+        },
+        {
+          "id": "TEL-04.05",
+          "nome": "Selecao persistente",
+          "comportamento_esperado": "Preservar contexto de host, project e instance durante navegacao.",
+          "criterio_aceite": "Retorno a tela recupera selecao corretamente."
+        }
+      ],
+      "acoes": [],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Explorador de recursos funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.04",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-05",
+      "nome": "Catalogo de instancias",
+      "rota_conceitual": "/instancias",
+      "fase": "F1",
+      "objetivo": "Listar containers com informacoes operacionais e filtros.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-04",
+        "API-05",
+        "API-06",
+        "API-07"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-05.01",
+          "nome": "Tabela de instancias",
+          "comportamento_esperado": "Mostrar nome, tipo, estado, Project, host, IP e arquitetura se disponiveis.",
+          "criterio_aceite": "Tabela mostra dados reais e origem dos ausentes."
+        },
+        {
+          "id": "TEL-05.02",
+          "nome": "Filtros e ordenacao",
+          "comportamento_esperado": "Filtrar por status, Project, tipo e host.",
+          "criterio_aceite": "Combinar filtros apresenta resultados consistentes."
+        },
+        {
+          "id": "TEL-05.03",
+          "nome": "Selecao multipla",
+          "comportamento_esperado": "Preparar selecao sem executar acoes irreversiveis no F1.",
+          "criterio_aceite": "Nenhuma alteracao no modo somente leitura."
+        },
+        {
+          "id": "TEL-05.04",
+          "nome": "Acoes permitidas",
+          "comportamento_esperado": "Exibir Start/Stop/Restart de acordo com estado e privilegio.",
+          "criterio_aceite": "Acesso somente leitura nao dispara mutacoes."
+        },
+        {
+          "id": "TEL-05.05",
+          "nome": "Acesso ao detalhe",
+          "comportamento_esperado": "Abrir instancia pelo identificador composto.",
+          "criterio_aceite": "Instancias homonimas de Projects diferentes nao colidem."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Abrir detalhes",
+          "permissao": "observador",
+          "risco": "baixo"
+        },
+        {
+          "nome": "Iniciar",
+          "permissao": "operador",
+          "risco": "moderado",
+          "fase": "F2"
+        },
+        {
+          "nome": "Parar",
+          "permissao": "operador",
+          "risco": "moderado",
+          "fase": "F2"
+        },
+        {
+          "nome": "Reiniciar",
+          "permissao": "operador",
+          "risco": "moderado",
+          "fase": "F2"
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Catalogo de instancias funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.05",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-06",
+      "nome": "Resumo da instancia",
+      "rota_conceitual": "/instancias/{id}/resumo",
+      "fase": "F1",
+      "objetivo": "Mostrar estado, origem e configuracao basica do container.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-05",
+        "API-06",
+        "API-11",
+        "API-07"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-06.01",
+          "nome": "Identificacao",
+          "comportamento_esperado": "Nome, tipo, arquitetura, Project, host e profiles.",
+          "criterio_aceite": "Identificador completo e consistente."
+        },
+        {
+          "id": "TEL-06.02",
+          "nome": "Resumo de execucao",
+          "comportamento_esperado": "Status, enderecos, uptime quando disponivel e indicadores.",
+          "criterio_aceite": "Estado reflete API e nao valores simulados."
+        },
+        {
+          "id": "TEL-06.03",
+          "nome": "Indicadores de recursos",
+          "comportamento_esperado": "Memoria e CPU da instancia com carimbo de coleta.",
+          "criterio_aceite": "Ausencia de medicao nao exibe zero."
+        },
+        {
+          "id": "TEL-06.04",
+          "nome": "Barra de acoes",
+          "comportamento_esperado": "Start/Stop/Restart visiveis conforme status/role/fase.",
+          "criterio_aceite": "Somente operacoes validas sao habilitadas."
+        },
+        {
+          "id": "TEL-06.05",
+          "nome": "Erros e logs resumidos",
+          "comportamento_esperado": "Exibir falhas conhecidas e acesso ao historico.",
+          "criterio_aceite": "Erro tecnico tem mensagem amigavel e codigo de suporte."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Start",
+          "permissao": "operador",
+          "fase": "F2",
+          "risco": "moderado"
+        },
+        {
+          "nome": "Stop",
+          "permissao": "operador",
+          "fase": "F2",
+          "risco": "moderado"
+        },
+        {
+          "nome": "Restart",
+          "permissao": "operador",
+          "fase": "F2",
+          "risco": "moderado"
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Resumo da instancia funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.06",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-07",
+      "nome": "Recursos da instancia",
+      "rota_conceitual": "/instancias/{id}/recursos",
+      "fase": "F1",
+      "objetivo": "Visualizar recursos consumidos e limites aplicados.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-06",
+        "API-18"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-07.01",
+          "nome": "CPU",
+          "comportamento_esperado": "Mostrar consumo do periodo e limites efetivos quando disponiveis.",
+          "criterio_aceite": "Diferenciar percentual de CPU e tempo acumulado."
+        },
+        {
+          "id": "TEL-07.02",
+          "nome": "RAM",
+          "comportamento_esperado": "Exibir uso e limite com unidades corretas.",
+          "criterio_aceite": "Nenhum limite indefinido vira 0 MiB."
+        },
+        {
+          "id": "TEL-07.03",
+          "nome": "Disco",
+          "comportamento_esperado": "Mostrar dispositivos e uso real disponivel.",
+          "criterio_aceite": "Reflinks/snapshots nao sao somados ingenuamente."
+        },
+        {
+          "id": "TEL-07.04",
+          "nome": "Rede da instancia",
+          "comportamento_esperado": "Exibir interfaces e contadores quando fornecidos.",
+          "criterio_aceite": "Nao misturar contadores cumulativos com taxas."
+        },
+        {
+          "id": "TEL-07.05",
+          "nome": "Periodo e atualizacao",
+          "comportamento_esperado": "Exibir ultima coleta e opcao de atualizar sob demanda.",
+          "criterio_aceite": "Coleta excessiva nao prejudica o H3."
+        }
+      ],
+      "acoes": [],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Recursos da instancia funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.07",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-08",
+      "nome": "Rede e dispositivos da instancia",
+      "rota_conceitual": "/instancias/{id}/dispositivos",
+      "fase": "F3",
+      "objetivo": "Inspecionar NICs, disco root, proxies e outros dispositivos.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-05",
+        "API-14"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-08.01",
+          "nome": "NICs",
+          "comportamento_esperado": "Exibir interfaces, bridges, IPs e MACs disponiveis.",
+          "criterio_aceite": "Dispositivo herdado de profile e local sao distinguidos."
+        },
+        {
+          "id": "TEL-08.02",
+          "nome": "Volumes/discos",
+          "comportamento_esperado": "Exibir root e volumes extras com origem.",
+          "criterio_aceite": "Pool de cada disco e identificado."
+        },
+        {
+          "id": "TEL-08.03",
+          "nome": "Proxy devices",
+          "comportamento_esperado": "Detalhar listen/connect sem confundir host e guest.",
+          "criterio_aceite": "Portas e enderecos sao identificados corretamente."
+        },
+        {
+          "id": "TEL-08.04",
+          "nome": "Configuracao efetiva",
+          "comportamento_esperado": "Distinguir devices locais de expandidos.",
+          "criterio_aceite": "Nao editar valor herdado como se fosse local."
+        },
+        {
+          "id": "TEL-08.05",
+          "nome": "Validacao de alteracoes",
+          "comportamento_esperado": "Bloquear operacoes incompatíveis ou nao autorizadas.",
+          "criterio_aceite": "Erros da API sao exibidos sem perda de configuracao."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Editar dispositivo",
+          "permissao": "administrador",
+          "risco": "alto",
+          "fase": "F5"
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Rede e dispositivos da instancia funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.08",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-09",
+      "nome": "Opcoes e configuracao",
+      "rota_conceitual": "/instancias/{id}/opcoes",
+      "fase": "F3",
+      "objetivo": "Consultar e eventualmente editar propriedades e configuracoes suportadas.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-05",
+        "API-13"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-09.01",
+          "nome": "Configuracao local",
+          "comportamento_esperado": "Exibir chaves locais sem expor valores sensiveis.",
+          "criterio_aceite": "Segredos nao aparecem em logs."
+        },
+        {
+          "id": "TEL-09.02",
+          "nome": "Configuracao expandida",
+          "comportamento_esperado": "Indicar o que provem de profiles.",
+          "criterio_aceite": "Valor efetivo e origem ficam claros."
+        },
+        {
+          "id": "TEL-09.03",
+          "nome": "Protecao contra exclusao",
+          "comportamento_esperado": "Destacar security.protection.delete, se presente.",
+          "criterio_aceite": "Exclusao respeita protecao do host."
+        },
+        {
+          "id": "TEL-09.04",
+          "nome": "Comparacao de alteracoes",
+          "comportamento_esperado": "Mostrar antes e depois de qualquer alteracao.",
+          "criterio_aceite": "Usuario confirma diferencas."
+        },
+        {
+          "id": "TEL-09.05",
+          "nome": "Controle de concorrencia",
+          "comportamento_esperado": "Informar se objeto mudou desde carregamento.",
+          "criterio_aceite": "Mudancas simultaneas nao sobrescrevem silenciosamente."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Editar configuracao",
+          "permissao": "administrador",
+          "risco": "alto",
+          "fase": "F5"
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Opcoes e configuracao funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.09",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-10",
+      "nome": "Console interativo",
+      "rota_conceitual": "/instancias/{id}/console",
+      "fase": "F2",
+      "objetivo": "Disponibilizar console de container com isolamento e privilegios claros.",
+      "perfis_com_acesso": [
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-15",
+        "API-11"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-10.01",
+          "nome": "Abertura autorizada",
+          "comportamento_esperado": "Validar direitos de exec e status da instance.",
+          "criterio_aceite": "Observador nao obtem sessao privilegiada."
+        },
+        {
+          "id": "TEL-10.02",
+          "nome": "Sessao interativa",
+          "comportamento_esperado": "Mostrar entrada/saida e eventos de desconexao.",
+          "criterio_aceite": "Console abre em container de teste sem SSH no guest."
+        },
+        {
+          "id": "TEL-10.03",
+          "nome": "Redimensionamento",
+          "comportamento_esperado": "Ajustar terminal e registrar suporte/limitacoes.",
+          "criterio_aceite": "Terminal permanece utilizavel ao redimensionar."
+        },
+        {
+          "id": "TEL-10.04",
+          "nome": "Encerramento",
+          "comportamento_esperado": "Liberar sessao quando painel fecha ou perde autorizacao.",
+          "criterio_aceite": "Nenhum console permanece associado a sessao terminada."
+        },
+        {
+          "id": "TEL-10.05",
+          "nome": "Sinalizacao de risco",
+          "comportamento_esperado": "Avisar que exec interativo pode equivaler a shell root no container.",
+          "criterio_aceite": "Usuario ve impacto antes do primeiro acesso."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Abrir console",
+          "permissao": "operador",
+          "risco": "alto",
+          "confirmacao": true
+        }
+      ],
+      "estados_alternativos": [
+        "instance_parada",
+        "exec_sem_permissao",
+        "socket_encerrou",
+        "operacao_expirada"
+      ],
+      "aceite_da_tela": "A tela Console interativo funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.10",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-11",
+      "nome": "Snapshots",
+      "rota_conceitual": "/instancias/{id}/snapshots",
+      "fase": "F3",
+      "objetivo": "Listar e gerenciar checkpoints de containers.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-16",
+        "API-11"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-11.01",
+          "nome": "Lista",
+          "comportamento_esperado": "Mostrar nome, data, expiração e uso se disponivel.",
+          "criterio_aceite": "Nao declarar tamanho unico se o FS compartilha blocos."
+        },
+        {
+          "id": "TEL-11.02",
+          "nome": "Criar snapshot",
+          "comportamento_esperado": "Requerer nome valido, permissao e capacidade do pool.",
+          "criterio_aceite": "Operacao retorna rastreio e resultado."
+        },
+        {
+          "id": "TEL-11.03",
+          "nome": "Restaurar snapshot",
+          "comportamento_esperado": "Mostrar impacto na instancia antes da confirmacao.",
+          "criterio_aceite": "Restauracao demanda confirmacao reforcada."
+        },
+        {
+          "id": "TEL-11.04",
+          "nome": "Excluir snapshot",
+          "comportamento_esperado": "Indicar perda permanente do checkpoint.",
+          "criterio_aceite": "Snapshot protegido nao e apagado sem autorizacao."
+        },
+        {
+          "id": "TEL-11.05",
+          "nome": "Alertas de armazenamento",
+          "comportamento_esperado": "Avisar que snapshots podem ocupar espaco compartilhado.",
+          "criterio_aceite": "Estimativa nao e tratada como certeza."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Criar",
+          "permissao": "operador",
+          "risco": "moderado"
+        },
+        {
+          "nome": "Restaurar",
+          "permissao": "administrador",
+          "risco": "alto",
+          "confirmacao": true
+        },
+        {
+          "nome": "Excluir",
+          "permissao": "administrador",
+          "risco": "alto",
+          "confirmacao": true
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Snapshots funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.11",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-12",
+      "nome": "Backups",
+      "rota_conceitual": "/instancias/{id}/backups",
+      "fase": "F3",
+      "objetivo": "Consultar backups e permitir backup/restauracao quando suportado.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-17",
+        "API-11"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-12.01",
+          "nome": "Inventario de backups",
+          "comportamento_esperado": "Exibir data, nome, expiracao e status.",
+          "criterio_aceite": "Lista coerente com Incus e Project."
+        },
+        {
+          "id": "TEL-12.02",
+          "nome": "Criar backup",
+          "comportamento_esperado": "Identificar operacao e avisar sobre espaco consumido.",
+          "criterio_aceite": "Falhas por falta de espaco sao reportadas."
+        },
+        {
+          "id": "TEL-12.03",
+          "nome": "Baixar backup",
+          "comportamento_esperado": "Oferecer transferencia apenas a identidades autorizadas.",
+          "criterio_aceite": "Nenhum backup e publico sem permissao."
+        },
+        {
+          "id": "TEL-12.04",
+          "nome": "Restauracao",
+          "comportamento_esperado": "Exigir contexto de destino e confirmacao.",
+          "criterio_aceite": "Nao sobrescrever instancia em uso acidentalmente."
+        },
+        {
+          "id": "TEL-12.05",
+          "nome": "Politica de retencao",
+          "comportamento_esperado": "Exibir limites e limpeza planejada.",
+          "criterio_aceite": "Sem exclusoes automaticas silenciosas no MVP."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Gerar backup",
+          "permissao": "operador",
+          "risco": "moderado"
+        },
+        {
+          "nome": "Restaurar",
+          "permissao": "administrador",
+          "risco": "alto",
+          "confirmacao": true
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Backups funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.12",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-13",
+      "nome": "Assistente de criacao de container",
+      "rota_conceitual": "/instancias/novo",
+      "fase": "F3",
+      "objetivo": "Criar containers com parametros compreensiveis para laboratorio.",
+      "perfis_com_acesso": [
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-04",
+        "API-19",
+        "API-20",
+        "API-21",
+        "API-22"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-13.01",
+          "nome": "Escolher Project e host",
+          "comportamento_esperado": "Selecionar apenas destinos autorizados.",
+          "criterio_aceite": "Servidor stand-alone nao mostra cluster target ficticio."
+        },
+        {
+          "id": "TEL-13.02",
+          "nome": "Escolher imagem",
+          "comportamento_esperado": "Filtrar imagens por arquitetura e disponibilidade.",
+          "criterio_aceite": "Imagem incompatível com ARMv7 e bloqueada com explicacao."
+        },
+        {
+          "id": "TEL-13.03",
+          "nome": "Identificacao e perfis",
+          "comportamento_esperado": "Validar nome unico no Project, profiles e tipo container.",
+          "criterio_aceite": "Nao criar duas instances homonimas no mesmo Project."
+        },
+        {
+          "id": "TEL-13.04",
+          "nome": "Recursos e rede",
+          "comportamento_esperado": "Permitir limites opcionais conforme suporte real.",
+          "criterio_aceite": "Sem valor artificial default que exceda H3."
+        },
+        {
+          "id": "TEL-13.05",
+          "nome": "Revisao final",
+          "comportamento_esperado": "Mostrar host, Project, storage, imagem, impacto e acao.",
+          "criterio_aceite": "Criacao exige confirmacao consciente."
+        },
+        {
+          "id": "TEL-13.06",
+          "nome": "Progresso da criacao",
+          "comportamento_esperado": "Acompanhar operacao assincrona e mostrar resultado.",
+          "criterio_aceite": "Erro nao gera falso sucesso."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Criar container",
+          "permissao": "operador",
+          "risco": "moderado",
+          "confirmacao": true
+        }
+      ],
+      "estados_alternativos": [
+        "imagem_indisponivel",
+        "armazenamento_insuficiente",
+        "project_sem_permissao",
+        "capacidade_incompativel"
+      ],
+      "aceite_da_tela": "A tela Assistente de criacao de container funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.13",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-14",
+      "nome": "Imagens",
+      "rota_conceitual": "/imagens",
+      "fase": "F3",
+      "objetivo": "Consultar e administrar inventario local de imagens.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-19"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-14.01",
+          "nome": "Inventario",
+          "comportamento_esperado": "Exibir alias, fingerprint, arquitetura, distribuicao e tamanho informado.",
+          "criterio_aceite": "Valores sao os retornados pelo Incus."
+        },
+        {
+          "id": "TEL-14.02",
+          "nome": "Compatibilidade",
+          "comportamento_esperado": "Identificar imagens apropriadas para ARMv7, ARM64 e x86.",
+          "criterio_aceite": "A interface nao oferece imagem incompatível como padrao."
+        },
+        {
+          "id": "TEL-14.03",
+          "nome": "Uso e referencias",
+          "comportamento_esperado": "Indicar origem/uso quando documentado; nao supor referencia por alias.",
+          "criterio_aceite": "Indicador desconhecido permanece indeterminado."
+        },
+        {
+          "id": "TEL-14.04",
+          "nome": "Remocao segura",
+          "comportamento_esperado": "Exigir verificacao de impacto e confirmacao.",
+          "criterio_aceite": "Nao remover imagem usada/essencial sem analise."
+        },
+        {
+          "id": "TEL-14.05",
+          "nome": "Atualizacao/importacao",
+          "comportamento_esperado": "Acompanhar operations e mostrar necessidade de espaco.",
+          "criterio_aceite": "Falha de descompactacao e exibida claramente."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Excluir imagem",
+          "permissao": "administrador",
+          "risco": "alto",
+          "confirmacao": true
+        },
+        {
+          "nome": "Importar imagem",
+          "permissao": "operador",
+          "risco": "moderado"
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Imagens funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.14",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-15",
+      "nome": "Storage pools e volumes",
+      "rota_conceitual": "/storage",
+      "fase": "F3",
+      "objetivo": "Monitorar armazenamento e gerenciar pools sem confundir tamanho logico/fisico.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-09",
+        "API-10"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-15.01",
+          "nome": "Pools",
+          "comportamento_esperado": "Listar nome, driver, capacidade e estado.",
+          "criterio_aceite": "Btrfs e identificado corretamente."
+        },
+        {
+          "id": "TEL-15.02",
+          "nome": "Detalhe do pool",
+          "comportamento_esperado": "Mostrar capacidade, livre estimado, fonte e data de coleta.",
+          "criterio_aceite": "Valor indisponivel nao vira 0."
+        },
+        {
+          "id": "TEL-15.03",
+          "nome": "Volumes",
+          "comportamento_esperado": "Listar volumes com tipo e origem.",
+          "criterio_aceite": "Volumes de instancias sao diferenciados dos custom."
+        },
+        {
+          "id": "TEL-15.04",
+          "nome": "Avisos de capacidade",
+          "comportamento_esperado": "Alertar limiares configuraveis inicialmente 80/90%.",
+          "criterio_aceite": "Alerta 93% e reproduzivel por fixture, sem encher disco real."
+        },
+        {
+          "id": "TEL-15.05",
+          "nome": "Propriedades e limites",
+          "comportamento_esperado": "Exibir natureza loop/driver e eventuais restricoes.",
+          "criterio_aceite": "Nao sugerir comando destrutivo automatico."
+        },
+        {
+          "id": "TEL-15.06",
+          "nome": "Acao administrativa",
+          "comportamento_esperado": "Mudancas de pool apenas apos fase de seguranca e teste.",
+          "criterio_aceite": "Em F3, operacoes de pool podem permanecer somente leitura."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Inspecionar pool",
+          "permissao": "observador",
+          "risco": "baixo"
+        },
+        {
+          "nome": "Alterar pool",
+          "permissao": "administrador",
+          "risco": "alto",
+          "fase": "F5"
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "Mostra pool Btrfs do H3 com capacidade fisica coerente, sem repetir a contagem de du como espaco alocado.",
+      "wbs_pacote": "WBS-04.15",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-16",
+      "nome": "Redes",
+      "rota_conceitual": "/redes",
+      "fase": "F3",
+      "objetivo": "Exibir bridges, NICs gerenciadas e estado de redes.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-14"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-16.01",
+          "nome": "Lista de redes",
+          "comportamento_esperado": "Mostrar nome, tipo, gerenciada e status.",
+          "criterio_aceite": "end0/lo e incusbr0 sao classificados corretamente."
+        },
+        {
+          "id": "TEL-16.02",
+          "nome": "Detalhe da bridge",
+          "comportamento_esperado": "IP, sub-rede, NAT, DHCP e estado conforme API.",
+          "criterio_aceite": "Nao deduzir NAT nao retornado."
+        },
+        {
+          "id": "TEL-16.03",
+          "nome": "Leases e enderecos",
+          "comportamento_esperado": "Listar leases quando suportadas/autorizadas.",
+          "criterio_aceite": "IP nao informado aparece desconhecido."
+        },
+        {
+          "id": "TEL-16.04",
+          "nome": "Associacoes",
+          "comportamento_esperado": "Mostrar instancias conectadas quando puder ser determinado.",
+          "criterio_aceite": "Project e host preservados."
+        },
+        {
+          "id": "TEL-16.05",
+          "nome": "Alteracoes",
+          "comportamento_esperado": "Limitar mutacoes de rede a administradores em fase posterior.",
+          "criterio_aceite": "Sem alterar interface fisica do host em MVP."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Editar rede",
+          "permissao": "administrador",
+          "risco": "alto",
+          "fase": "F5"
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Redes funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.16",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-17",
+      "nome": "Profiles",
+      "rota_conceitual": "/profiles",
+      "fase": "F3",
+      "objetivo": "Consultar configuracoes reutilizaveis do Incus.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-20"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-17.01",
+          "nome": "Lista",
+          "comportamento_esperado": "Exibir Profiles visiveis no Project.",
+          "criterio_aceite": "Project correto e mostrado."
+        },
+        {
+          "id": "TEL-17.02",
+          "nome": "Devices e configuracoes",
+          "comportamento_esperado": "Apresentar rede/disco/opcoes herdadas.",
+          "criterio_aceite": "Origem dos devices e identificada."
+        },
+        {
+          "id": "TEL-17.03",
+          "nome": "Relacoes com instancias",
+          "comportamento_esperado": "Listar instancias que adotam o profile quando permitido.",
+          "criterio_aceite": "Nao exibir instances fora do escopo autorizado."
+        },
+        {
+          "id": "TEL-17.04",
+          "nome": "Criacao/edicao",
+          "comportamento_esperado": "Exigir checagem de impacto e concorrencia.",
+          "criterio_aceite": "Edicao nao substitui configuracoes silenciosamente."
+        },
+        {
+          "id": "TEL-17.05",
+          "nome": "Protecao de default",
+          "comportamento_esperado": "Impedir mudancas acidentais no profile base.",
+          "criterio_aceite": "Acao de impacto elevado exige confirmacao."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Editar profile",
+          "permissao": "administrador",
+          "risco": "alto",
+          "fase": "F5"
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Profiles funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.17",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-18",
+      "nome": "Projects",
+      "rota_conceitual": "/projects",
+      "fase": "F3",
+      "objetivo": "Organizar recursos por Project e apoiar isolamentos de laboratorio.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-21"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-18.01",
+          "nome": "Inventario",
+          "comportamento_esperado": "Listar Projects autorizados e seus limites.",
+          "criterio_aceite": "Nao vazar Projects sem permissao."
+        },
+        {
+          "id": "TEL-18.02",
+          "nome": "Selecao de Project",
+          "comportamento_esperado": "Aplicar Project ao inventario e operacoes.",
+          "criterio_aceite": "Nenhuma acao mira Project anterior por engano."
+        },
+        {
+          "id": "TEL-18.03",
+          "nome": "Resumo do Project",
+          "comportamento_esperado": "Mostrar numero de instancias, perfis e regras conhecidas.",
+          "criterio_aceite": "Itens isolados/compartilhados sao diferenciados."
+        },
+        {
+          "id": "TEL-18.04",
+          "nome": "Criacao e limites",
+          "comportamento_esperado": "Administradores podem configurar Projects em fase posterior.",
+          "criterio_aceite": "Sem escapada de confinamento por frontend."
+        },
+        {
+          "id": "TEL-18.05",
+          "nome": "Modelo didatico",
+          "comportamento_esperado": "Representar turmas/disciplina como convencao de Projects.",
+          "criterio_aceite": "Convencao nao se confunde com funcionalidade nativa extra."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Selecionar Project",
+          "permissao": "observador",
+          "risco": "baixo"
+        },
+        {
+          "nome": "Criar Project",
+          "permissao": "administrador",
+          "risco": "alto",
+          "fase": "F5"
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Projects funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.18",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-19",
+      "nome": "Tasks e operacoes",
+      "rota_conceitual": "/tarefas",
+      "fase": "F2",
+      "objetivo": "Acompanhar operacoes Incus assincronas.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-11",
+        "API-08"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-19.01",
+          "nome": "Fila recente",
+          "comportamento_esperado": "Listar UUID, classe, alvo, inicio, estado e erro.",
+          "criterio_aceite": "UUID mantido ate resultado terminal."
+        },
+        {
+          "id": "TEL-19.02",
+          "nome": "Status de operacao",
+          "comportamento_esperado": "Exibir running/success/failure/canceled conforme retorno.",
+          "criterio_aceite": "Nao anunciar sucesso antes do Incus."
+        },
+        {
+          "id": "TEL-19.03",
+          "nome": "Progresso",
+          "comportamento_esperado": "Mostrar metadata de progresso quando fornecida.",
+          "criterio_aceite": "Nao inventar percentual quando ausente."
+        },
+        {
+          "id": "TEL-19.04",
+          "nome": "Filtro por instancia",
+          "comportamento_esperado": "Aplicar Project, host e ID alvo.",
+          "criterio_aceite": "Nao cruzar dados de tenants distintos."
+        },
+        {
+          "id": "TEL-19.05",
+          "nome": "Reconexao",
+          "comportamento_esperado": "Reconstruir fila consultando operations apos perda do WebSocket.",
+          "criterio_aceite": "Eventos perdidos nao causam inconsistencias permanentes."
+        },
+        {
+          "id": "TEL-19.06",
+          "nome": "Detalhe tecnico seguro",
+          "comportamento_esperado": "Mostrar erro util com remocao de segredos.",
+          "criterio_aceite": "Nenhum certificado ou token nos logs."
+        }
+      ],
+      "acoes": [],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Tasks e operacoes funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.19",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-20",
+      "nome": "Alertas e avisos",
+      "rota_conceitual": "/alertas",
+      "fase": "F3",
+      "objetivo": "Consolidar problemas de storage, host, conexao e operacoes.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-09",
+        "API-11",
+        "API-04"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-20.01",
+          "nome": "Alerta de storage",
+          "comportamento_esperado": "Limiar por pool e prioridade visual consistente.",
+          "criterio_aceite": "Fixture de 93% gera nivel critico."
+        },
+        {
+          "id": "TEL-20.02",
+          "nome": "Alerta de host",
+          "comportamento_esperado": "Sinalizar desconexao, sem confundir com servidor desligado.",
+          "criterio_aceite": "Falha de rede nao vira stopped em todas as instancias."
+        },
+        {
+          "id": "TEL-20.03",
+          "nome": "Falha de operacao",
+          "comportamento_esperado": "Destacar criacao/start falhos com contexto.",
+          "criterio_aceite": "Erro gera registro navegavel."
+        },
+        {
+          "id": "TEL-20.04",
+          "nome": "Reconhecimento",
+          "comportamento_esperado": "Permitir marcar como lido sem alterar server warning.",
+          "criterio_aceite": "A UI nao apaga warning do Incus inadvertidamente."
+        },
+        {
+          "id": "TEL-20.05",
+          "nome": "Historico leve",
+          "comportamento_esperado": "Exibir ultimos alertas locais se armazenamento auxiliar existir.",
+          "criterio_aceite": "Nao prometer historico persistente sem backend."
+        }
+      ],
+      "acoes": [],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Alertas e avisos funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.20",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-21",
+      "nome": "Servidores e detalhes do host",
+      "rota_conceitual": "/servidores/{id}",
+      "fase": "F1",
+      "objetivo": "Visualizar caracteristicas e conectividade de um host Incus.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-01",
+        "API-02",
+        "API-04"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-21.01",
+          "nome": "Identidade",
+          "comportamento_esperado": "Nome, alias, URL logica, Incus version, kernel e arquitetura.",
+          "criterio_aceite": "Host exibido corresponde ao certificado validado."
+        },
+        {
+          "id": "TEL-21.02",
+          "nome": "Capacidades",
+          "comportamento_esperado": "Exibir suporte efetivo a container/VM, API extensions e restricoes.",
+          "criterio_aceite": "extensao virtual-machines nao presume VM funcional no H3."
+        },
+        {
+          "id": "TEL-21.03",
+          "nome": "Conectividade",
+          "comportamento_esperado": "Exibir ultimo sucesso e ultima falha.",
+          "criterio_aceite": "Off-line nao confunde ausencia de instancias."
+        },
+        {
+          "id": "TEL-21.04",
+          "nome": "Recursos fisicos",
+          "comportamento_esperado": "CPU/memoria/rede e origem das metricas.",
+          "criterio_aceite": "Fonte de dados identificada."
+        },
+        {
+          "id": "TEL-21.05",
+          "nome": "Cluster",
+          "comportamento_esperado": "Distinguir servidor standalone e cluster member real.",
+          "criterio_aceite": "Host standalone nao aparece membro ficticio."
+        }
+      ],
+      "acoes": [],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Servidores e detalhes do host funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.21",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-22",
+      "nome": "Configuracoes, preferencias e seguranca",
+      "rota_conceitual": "/configuracoes",
+      "fase": "F2",
+      "objetivo": "Gerir preferencias da interface e visualizar seguranca da conexao.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-01",
+        "API-03"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-22.01",
+          "nome": "Preferencias",
+          "comportamento_esperado": "Idioma pt-BR e formatos de data/unidade.",
+          "criterio_aceite": "Valores consistentes em telas."
+        },
+        {
+          "id": "TEL-22.02",
+          "nome": "Conexao segura",
+          "comportamento_esperado": "Mostrar status TLS e fingerprint sem mostrar chave privada.",
+          "criterio_aceite": "Segredos jamais exibidos."
+        },
+        {
+          "id": "TEL-22.03",
+          "nome": "Sessoes",
+          "comportamento_esperado": "Encerrar sessao e invalidar acesso.",
+          "criterio_aceite": "Logout fecha consoles e eventos."
+        },
+        {
+          "id": "TEL-22.04",
+          "nome": "Limiares de alerta",
+          "comportamento_esperado": "Configurar aviso 80% e critico 90% como valores iniciais.",
+          "criterio_aceite": "Configuracao nao e aplicada retroativamente a metricas invalidas."
+        },
+        {
+          "id": "TEL-22.05",
+          "nome": "Auditoria de interface",
+          "comportamento_esperado": "Mostrar eventos administrativos com alvo e data.",
+          "criterio_aceite": "Registro nao substitui auditoria do Incus."
+        },
+        {
+          "id": "TEL-22.06",
+          "nome": "Credenciais e revogacao",
+          "comportamento_esperado": "Descrever revogacao e detectar falha de confiança.",
+          "criterio_aceite": "Revogacao invalida novas chamadas."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Alterar preferencias",
+          "permissao": "observador",
+          "risco": "baixo"
+        },
+        {
+          "nome": "Remover conexao",
+          "permissao": "administrador",
+          "risco": "moderado",
+          "confirmacao": true
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Configuracoes, preferencias e seguranca funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.22",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-23",
+      "nome": "Cluster e multiplos hosts",
+      "rota_conceitual": "/infraestrutura",
+      "fase": "F5",
+      "objetivo": "Administrar inventario de hosts standalone e clusters sem os confundir.",
+      "perfis_com_acesso": [
+        "observador",
+        "operador",
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-01",
+        "API-22"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-23.01",
+          "nome": "Inventario multi-host",
+          "comportamento_esperado": "Agregar hosts independentes sem afirmar cluster Incus.",
+          "criterio_aceite": "Hosts standalone mantem identidade isolada."
+        },
+        {
+          "id": "TEL-23.02",
+          "nome": "Membros de cluster",
+          "comportamento_esperado": "Listar membros somente onde server_clustered for verdadeiro.",
+          "criterio_aceite": "Standalone apresenta Nao configurado."
+        },
+        {
+          "id": "TEL-23.03",
+          "nome": "Visao de recursos",
+          "comportamento_esperado": "Mostrar capacidade por host com metricas localizadas.",
+          "criterio_aceite": "Metricas de cada membro nao sao generalizadas."
+        },
+        {
+          "id": "TEL-23.04",
+          "nome": "Disponibilidade",
+          "comportamento_esperado": "Distinguir offline, degradado e sem acesso.",
+          "criterio_aceite": "Falhas de credencial nao sao apresentadas como host off-line."
+        },
+        {
+          "id": "TEL-23.05",
+          "nome": "Operacoes de cluster",
+          "comportamento_esperado": "Criação/join/migration ficam fora do MVP e pedem revisao de seguranca.",
+          "criterio_aceite": "Nenhuma mudanca automatica de cluster no TCC inicial."
+        }
+      ],
+      "acoes": [
+        {
+          "nome": "Adicionar host",
+          "permissao": "administrador",
+          "risco": "moderado",
+          "fase": "F5"
+        }
+      ],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Cluster e multiplos hosts funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.23",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    },
+    {
+      "id": "TEL-24",
+      "nome": "Usuarios e permissoes",
+      "rota_conceitual": "/usuarios",
+      "fase": "F5",
+      "objetivo": "Exibir e administrar papeis efetivos e escopos.",
+      "perfis_com_acesso": [
+        "administrador"
+      ],
+      "dependencias_api": [
+        "API-03",
+        "API-21"
+      ],
+      "submodulos": [
+        {
+          "id": "TEL-24.01",
+          "nome": "Identidades",
+          "comportamento_esperado": "Mostrar identidades reconhecidas pela camada de autenticacao.",
+          "criterio_aceite": "Sem permitir criar usuarios locais com direitos nao sustentados."
+        },
+        {
+          "id": "TEL-24.02",
+          "nome": "Papeis",
+          "comportamento_esperado": "Distinguir observador, operador e administrador como perfis de UX.",
+          "criterio_aceite": "Autorizacao efetiva permanece no backend/Incus."
+        },
+        {
+          "id": "TEL-24.03",
+          "nome": "Escopos Project",
+          "comportamento_esperado": "Mostrar permissoes reais de Projects.",
+          "criterio_aceite": "Conta restrita nao consegue operar fora do Project."
+        },
+        {
+          "id": "TEL-24.04",
+          "nome": "Revogacao",
+          "comportamento_esperado": "Descrever mecanismo de desabilitar identidade/credencial.",
+          "criterio_aceite": "Acesso revogado e testado contra API real."
+        }
+      ],
+      "acoes": [],
+      "estados_alternativos": [
+        "carregando",
+        "vazio",
+        "sem_permissao",
+        "indisponivel",
+        "erro_de_rede"
+      ],
+      "aceite_da_tela": "A tela Usuarios e permissoes funciona com dados reais sem exibicao de valores ficticios.",
+      "wbs_pacote": "WBS-04.24",
+      "observacao_auditoria": "A permissão final deve ser conferida no backend/Incus."
+    }
+  ]
+}

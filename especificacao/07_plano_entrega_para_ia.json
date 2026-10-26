@@ -1,0 +1,103 @@
+{
+  "plano_de_delegacao_para_ia": {
+    "orientacao": "Desenvolvimento incremental por lote; entregar cada pacote com testes e relatorio de riscos, sem alterar o ambiente real por conta propria.",
+    "lotes": [
+      {
+        "lote": "LOTE-00",
+        "fase": "F0",
+        "wbs": [
+          "WBS-01",
+          "WBS-02"
+        ],
+        "objetivo": "Fechar inventario, contratos, desenho de risco e arquitetura R4.",
+        "limite": "Nao criar/alterar containers existentes.",
+        "resultado": "registro de decisoes e ambientes de teste."
+      },
+      {
+        "lote": "LOTE-01",
+        "fase": "F1",
+        "wbs": [
+          "WBS-03",
+          "WBS-04.01",
+          "WBS-04.02",
+          "WBS-04.03",
+          "WBS-04.04",
+          "WBS-04.05",
+          "WBS-04.06",
+          "WBS-04.07",
+          "WBS-04.21"
+        ],
+        "objetivo": "Navegacao e consulta read-only de dados reais.",
+        "limite": "Sem botoes mutantes executaveis.",
+        "resultado": "dashboard navegavel na box H3."
+      },
+      {
+        "lote": "LOTE-02",
+        "fase": "F2",
+        "wbs": [
+          "WBS-04.05",
+          "WBS-04.06",
+          "WBS-04.10",
+          "WBS-04.19",
+          "WBS-04.22"
+        ],
+        "objetivo": "Operacoes de state, Tasks, eventos e console de teste.",
+        "limite": "Nao operar node1/node2/php-site sem autorizacao expressa.",
+        "resultado": "start/stop/restart e console em instance descartavel."
+      },
+      {
+        "lote": "LOTE-03",
+        "fase": "F3",
+        "wbs": [
+          "WBS-04.08",
+          "WBS-04.09",
+          "WBS-04.11",
+          "WBS-04.12",
+          "WBS-04.13",
+          "WBS-04.14",
+          "WBS-04.15",
+          "WBS-04.16",
+          "WBS-04.17",
+          "WBS-04.18",
+          "WBS-04.20"
+        ],
+        "objetivo": "Laboratorio operacional com criacao, recursos, Projects e backups.",
+        "limite": "Nao apagar arquivos de pool, imagens ou snapshots de producao.",
+        "resultado": "MVP de laboratorio."
+      },
+      {
+        "lote": "LOTE-04",
+        "fase": "F4",
+        "wbs": [
+          "WBS-05",
+          "WBS-06",
+          "WBS-07"
+        ],
+        "objetivo": "Validacao academica reproduzivel.",
+        "limite": "Documentar lacunas, nao inventar resultados.",
+        "resultado": "relatorio de avaliacao e artefato reprodutivel."
+      },
+      {
+        "lote": "LOTE-05",
+        "fase": "F5",
+        "wbs": [
+          "WBS-04.23",
+          "WBS-04.24"
+        ],
+        "objetivo": "Funcionalidades avancadas se houver tempo.",
+        "limite": "Fora do escopo minimo do TCC.",
+        "resultado": "prototipos opcionais."
+      }
+    ],
+    "formato_de_retorno_exigido_para_cada_lote": [
+      "funcionalidade entregue",
+      "requisitos e WBS cobertos",
+      "telas envolvidas",
+      "testes executados e evidencias",
+      "pontos pendentes",
+      "impacto em memoria e CPU quando aplicavel",
+      "revisao de seguranca",
+      "limites conhecidos"
+    ]
+  }
+}

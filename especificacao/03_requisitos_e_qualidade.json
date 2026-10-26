@@ -1,0 +1,260 @@
+{
+  "requisitos_funcionais": [
+    {
+      "id": "RF-001",
+      "area": "conexao",
+      "descricao": "Consultar identidade e versao do host sem modificar seus dados",
+      "fase": "F1",
+      "criterio_verificacao": "API responde em host H3 real"
+    },
+    {
+      "id": "RF-002",
+      "area": "capacidade",
+      "descricao": "Detectar capacidades por extensoes e contexto do host",
+      "fase": "F1",
+      "criterio_verificacao": "Create VM nao aparece no H3 sem suporte real"
+    },
+    {
+      "id": "RF-003",
+      "area": "instancias",
+      "descricao": "Listar instancias por servidor e Project",
+      "fase": "F1",
+      "criterio_verificacao": "Tres containers apos limpeza aparecem corretamente"
+    },
+    {
+      "id": "RF-004",
+      "area": "arvore",
+      "descricao": "Oferecer navegacao por host e por Project",
+      "fase": "F1",
+      "criterio_verificacao": "Sem colisao entre nomes iguais"
+    },
+    {
+      "id": "RF-005",
+      "area": "estado",
+      "descricao": "Exibir estado detalhado de instancia",
+      "fase": "F1",
+      "criterio_verificacao": "Status da UI confere com Incus"
+    },
+    {
+      "id": "RF-006",
+      "area": "monitoramento",
+      "descricao": "Exibir metricas validas com timestamp",
+      "fase": "F1",
+      "criterio_verificacao": "Ausencia nao se torna zero"
+    },
+    {
+      "id": "RF-007",
+      "area": "auth",
+      "descricao": "Exigir conexao/autenticacao validas em todos os dados privados",
+      "fase": "F1",
+      "criterio_verificacao": "Acesso nao autorizado negado no backend"
+    },
+    {
+      "id": "RF-008",
+      "area": "operacao",
+      "descricao": "Acompanhar UUID e estado de operacoes assincronas",
+      "fase": "F2",
+      "criterio_verificacao": "Sem falso sucesso"
+    },
+    {
+      "id": "RF-009",
+      "area": "lifecycle",
+      "descricao": "Acionar Start/Stop/Restart conforme estado e permissao",
+      "fase": "F2",
+      "criterio_verificacao": "Somente container de teste e alterado"
+    },
+    {
+      "id": "RF-010",
+      "area": "eventos",
+      "descricao": "Atualizar a interface com lifecycle e operation events",
+      "fase": "F2",
+      "criterio_verificacao": "Reconexao REST recupera estado"
+    },
+    {
+      "id": "RF-011",
+      "area": "console",
+      "descricao": "Disponibilizar shell interativo autorizado em container teste",
+      "fase": "F2",
+      "criterio_verificacao": "Sessao fecha apos logout"
+    },
+    {
+      "id": "RF-012",
+      "area": "imagens",
+      "descricao": "Filtrar imagens compativeis com destino",
+      "fase": "F3",
+      "criterio_verificacao": "Imagem ARM64 nao oferecida como padrao ao ARMv7"
+    },
+    {
+      "id": "RF-013",
+      "area": "criacao",
+      "descricao": "Criar container com Project e profile selecionados",
+      "fase": "F3",
+      "criterio_verificacao": "Nova instancia verificavel pelo CLI"
+    },
+    {
+      "id": "RF-014",
+      "area": "snapshots",
+      "descricao": "Listar e criar snapshots controlados",
+      "fase": "F3",
+      "criterio_verificacao": "Resultado confirmado pela API"
+    },
+    {
+      "id": "RF-015",
+      "area": "backup",
+      "descricao": "Exibir e gerar backup autorizado",
+      "fase": "F3",
+      "criterio_verificacao": "Backup rastreado via operation"
+    },
+    {
+      "id": "RF-016",
+      "area": "storage",
+      "descricao": "Exibir uso real de pools e alertas",
+      "fase": "F3",
+      "criterio_verificacao": "Fixture Btrfs 93% gera critico"
+    },
+    {
+      "id": "RF-017",
+      "area": "redes",
+      "descricao": "Inspecionar bridges e dispositivos",
+      "fase": "F3",
+      "criterio_verificacao": "proxy-http e incusbr0 representados corretamente"
+    },
+    {
+      "id": "RF-018",
+      "area": "projects",
+      "descricao": "Aplicar escopos de Project a leituras e mutacoes",
+      "fase": "F3",
+      "criterio_verificacao": "Usuario restrito nao enxerga Project externo"
+    },
+    {
+      "id": "RF-019",
+      "area": "profiles",
+      "descricao": "Exibir configuracao de Profiles e origem dos devices",
+      "fase": "F3",
+      "criterio_verificacao": "Local vs herdado identificados"
+    },
+    {
+      "id": "RF-020",
+      "area": "portabilidade",
+      "descricao": "Executar mesma versao do painel para ARMv7, ARM64 e x86-64",
+      "fase": "F4",
+      "criterio_verificacao": "Relatorio de resultados de multiplos hosts"
+    },
+    {
+      "id": "RF-021",
+      "area": "multihost",
+      "descricao": "Distinguir multiplos hosts standalone de clusters reais",
+      "fase": "F5",
+      "criterio_verificacao": "Standalone nao tem cluster inventado"
+    }
+  ],
+  "requisitos_nao_funcionais": [
+    {
+      "id": "RNF-01",
+      "tema": "leveza",
+      "requisito": "Mensurar RSS do backend auxiliar e consumo de CPU; frontend pode rodar no navegador de outro equipamento.",
+      "meta_inicial_nao_validada": "overhead do serviço auxiliar <=64 MiB RSS no H3, caso exista",
+      "metodologia": "medicoes repetidas em estado ocioso e com uso"
+    },
+    {
+      "id": "RNF-02",
+      "tema": "cpu",
+      "requisito": "Evitar consultas excessivas.",
+      "meta_inicial_nao_validada": "incremento de CPU no host em repouso <=5 pontos percentuais, a revisar",
+      "metodologia": "comparacao A/B no mesmo hardware"
+    },
+    {
+      "id": "RNF-03",
+      "tema": "responsividade",
+      "requisito": "Exibir estado e progresso em tempo util.",
+      "meta_inicial_nao_validada": "atualizacao de lifecycle em ate 3 s no ambiente LAN, se conectado",
+      "metodologia": "registrar instante de evento e renderizacao"
+    },
+    {
+      "id": "RNF-04",
+      "tema": "seguranca",
+      "requisito": "Credenciais de gestao nao devem ser expostas como strings permanentes em ativos estaticos ou logs.",
+      "meta_inicial_nao_validada": "zero segredos expostos em inspeção de recursos do navegador e logs",
+      "metodologia": "revisao de ativos e testes com credencial revogada"
+    },
+    {
+      "id": "RNF-05",
+      "tema": "portabilidade",
+      "requisito": "Funcionalidades nao dependerao de nome de CPU/SoC.",
+      "meta_inicial_nao_validada": "mesmo pacote do frontend utilizado em ARMv7, ARM64 e x86-64",
+      "metodologia": "relatorio por arquitetura"
+    },
+    {
+      "id": "RNF-06",
+      "tema": "resiliencia",
+      "requisito": "Falhas de WebSocket devem disparar reconexao e ressincronizacao completa do escopo.",
+      "meta_inicial_nao_validada": "zero inconsistencias persistentes apos reconexao bem-sucedida",
+      "metodologia": "simulacao de interrupcao de rede"
+    },
+    {
+      "id": "RNF-07",
+      "tema": "acessibilidade",
+      "requisito": "Navegacao por teclado, foco visivel, contraste e sem dependencia exclusiva de cores.",
+      "meta_inicial_nao_validada": "todos os fluxos essenciais navegaveis por teclado",
+      "metodologia": "roteiro manual WCAG adaptado"
+    },
+    {
+      "id": "RNF-08",
+      "tema": "idioma",
+      "requisito": "Interface e mensagens inicialmente em pt-BR.",
+      "meta_inicial_nao_validada": "todas as telas essenciais em pt-BR",
+      "metodologia": "revisao textual"
+    },
+    {
+      "id": "RNF-09",
+      "tema": "erro",
+      "requisito": "Erro nunca pode ser confundido com resposta vazia ou 0 de uso.",
+      "meta_inicial_nao_validada": "distincao em 100% dos cenarios simulados",
+      "metodologia": "falhas em API, metrics e storage"
+    },
+    {
+      "id": "RNF-10",
+      "tema": "compatibilidade",
+      "requisito": "Capacidades opcionais devem ser escondidas ou desabilitadas se nao suportadas.",
+      "meta_inicial_nao_validada": "nenhuma feature indisponivel executavel em host nao compativel",
+      "metodologia": "matriz de versoes/arquiteturas"
+    },
+    {
+      "id": "RNF-11",
+      "tema": "observabilidade",
+      "requisito": "Eventos de auditoria registram identidade, host, Project, objeto e resultado sem segredos.",
+      "meta_inicial_nao_validada": "100% das mutacoes do MVP rastreaveis",
+      "metodologia": "amostragem de operations"
+    },
+    {
+      "id": "RNF-12",
+      "tema": "confiabilidade_dados",
+      "requisito": "Nao estimar espaco fisico Btrfs com du sem qualificar a limitacao.",
+      "meta_inicial_nao_validada": "valor em tela confere com metrica valida de pool",
+      "metodologia": "fixtures e comparacao com filesystem real"
+    }
+  ],
+  "criterio_de_pronto": {
+    "por_submodulo": [
+      "comportamento descrito verificavel",
+      "fluxos de erro cobertos",
+      "respeita autorizacao efetiva",
+      "nao exibe dados ficticios",
+      "documenta dependencias e limitacoes"
+    ],
+    "por_tela": [
+      "criterios dos submodulos aprovados",
+      "navegavel em pt-BR",
+      "estados loading/vazio/403/offline",
+      "sem vazamento de credenciais",
+      "teste com host real ou fixture explicita"
+    ],
+    "por_versao": [
+      "passou testes de contrato",
+      "consumo de recursos medido",
+      "revisao de seguranca",
+      "rollback documentado",
+      "changelog e limites publicados"
+    ]
+  }
+}

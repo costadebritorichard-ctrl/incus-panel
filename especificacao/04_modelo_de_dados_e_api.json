@@ -1,0 +1,577 @@
+{
+  "modelo_de_dados_conceitual": [
+    {
+      "entidade": "ServidorIncus",
+      "id_logico": "server_id",
+      "campos": [
+        "alias",
+        "url_identidade",
+        "fingerprint_tls",
+        "versao_incus",
+        "arquitetura_host",
+        "server_clustered",
+        "ultima_conexao",
+        "estado_conexao"
+      ],
+      "regra": "Nao confundir servidor Incus com cada membro de cluster."
+    },
+    {
+      "entidade": "MembroCluster",
+      "id_logico": "server_id + member_name",
+      "campos": [
+        "nome",
+        "status",
+        "arquitetura",
+        "grupos"
+      ],
+      "regra": "So existe se Incus informa cluster configurado."
+    },
+    {
+      "entidade": "Project",
+      "id_logico": "server_id + nome",
+      "campos": [
+        "nome",
+        "descricao",
+        "limites",
+        "permissoes"
+      ],
+      "regra": "Listagens e operacoes respeitam isolamento e autorizacao."
+    },
+    {
+      "entidade": "Instance",
+      "id_logico": "server_id + project + name",
+      "campos": [
+        "nome",
+        "tipo",
+        "status",
+        "arquitetura",
+        "location",
+        "profiles",
+        "devices",
+        "created_at"
+      ],
+      "regra": "Nao usar apenas nome como ID global."
+    },
+    {
+      "entidade": "Operacao",
+      "id_logico": "server_id + operation_uuid",
+      "campos": [
+        "status_code",
+        "status",
+        "classe",
+        "resources",
+        "metadata_de_progresso",
+        "error"
+      ],
+      "regra": "Nunca marcar concluida antes de status terminal confirmado."
+    },
+    {
+      "entidade": "StoragePool",
+      "id_logico": "server_id + nome",
+      "campos": [
+        "driver",
+        "capacity",
+        "used",
+        "free",
+        "fonte_medicao",
+        "timestamp"
+      ],
+      "regra": "Metricas indisponiveis sao desconhecidas, nao zero; Btrfs requer cuidado."
+    },
+    {
+      "entidade": "Imagem",
+      "id_logico": "server_id + project + fingerprint",
+      "campos": [
+        "aliases",
+        "architecture",
+        "properties",
+        "size",
+        "created_at"
+      ],
+      "regra": "Arquitetura deve ser compativel com destino."
+    },
+    {
+      "entidade": "Rede",
+      "id_logico": "server_id + project + nome",
+      "campos": [
+        "type",
+        "managed",
+        "config",
+        "state"
+      ],
+      "regra": "Exibir diferenca entre rede fisica, loopback e managed bridge."
+    },
+    {
+      "entidade": "Profile",
+      "id_logico": "server_id + project + nome",
+      "campos": [
+        "config",
+        "devices",
+        "used_by"
+      ],
+      "regra": "Distinguir config local e herdada."
+    },
+    {
+      "entidade": "Snapshot",
+      "id_logico": "server_id + project + instance + snapshot",
+      "campos": [
+        "created_at",
+        "expires_at",
+        "stateful"
+      ],
+      "regra": "Estimativa de tamanho nao corresponde necessariamente ao espaco fisico recuperavel."
+    },
+    {
+      "entidade": "SessaoWeb",
+      "id_logico": "session_id",
+      "campos": [
+        "identity",
+        "role_visual",
+        "issued_at",
+        "expires_at",
+        "authorized_scopes"
+      ],
+      "regra": "Nao armazenar segredo de Incus no frontend."
+    },
+    {
+      "entidade": "Alerta",
+      "id_logico": "server_id + target + tipo + instante",
+      "campos": [
+        "gravidade",
+        "origem",
+        "medicao",
+        "mensagem",
+        "estado"
+      ],
+      "regra": "Persistencia do historico so existe se houver armazenamento confiavel."
+    }
+  ],
+  "catalogo_api_incus": [
+    {
+      "id": "API-01",
+      "metodo": "GET",
+      "caminho": "/1.0",
+      "uso": "server_info",
+      "fase": "F1",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-02",
+      "metodo": "GET",
+      "caminho": "/",
+      "uso": "versoes_de_api",
+      "fase": "F1",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-03",
+      "metodo": "AUTH",
+      "caminho": "TLS client certificate / OIDC / proxy session",
+      "uso": "autenticacao",
+      "fase": "F0",
+      "verificacao": "arquitetura_a_decidir_R4",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-04",
+      "metodo": "GET",
+      "caminho": "/1.0/instances?recursion=1",
+      "uso": "lista_instancias",
+      "fase": "F1",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-05",
+      "metodo": "GET",
+      "caminho": "/1.0/instances/{name}",
+      "uso": "detalhes_instancia",
+      "fase": "F1",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-06",
+      "metodo": "GET",
+      "caminho": "/1.0/instances/{name}/state",
+      "uso": "estado_instancia",
+      "fase": "F1",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-07",
+      "metodo": "PUT",
+      "caminho": "/1.0/instances/{name}/state",
+      "uso": "start_stop_restart",
+      "fase": "F2",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-08",
+      "metodo": "WebSocket",
+      "caminho": "/1.0/events",
+      "uso": "lifecycle_e_operations",
+      "fase": "F2",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-09",
+      "metodo": "GET",
+      "caminho": "/1.0/storage-pools",
+      "uso": "lista_pools",
+      "fase": "F1",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-10",
+      "metodo": "GET",
+      "caminho": "/1.0/storage-pools/{name}/resources",
+      "uso": "uso_pool",
+      "fase": "F3",
+      "verificacao": "validar_no_inc_us_6_0_4",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-11",
+      "metodo": "GET",
+      "caminho": "/1.0/operations e /1.0/operations/{uuid}",
+      "uso": "tarefas_assincronas",
+      "fase": "F1",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-12",
+      "metodo": "GET",
+      "caminho": "/1.0/projects",
+      "uso": "lista_projects",
+      "fase": "F1",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-13",
+      "metodo": "GET",
+      "caminho": "/1.0/profiles",
+      "uso": "lista_profiles",
+      "fase": "F3",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-14",
+      "metodo": "GET",
+      "caminho": "/1.0/networks",
+      "uso": "lista_redes",
+      "fase": "F3",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-15",
+      "metodo": "POST + WebSocket",
+      "caminho": "/1.0/instances/{name}/exec + operation websocket",
+      "uso": "terminal_container",
+      "fase": "F2",
+      "verificacao": "validar_fluxo_exato_na_versao_alvo",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-16",
+      "metodo": "GET/POST/DELETE",
+      "caminho": "/1.0/instances/{name}/snapshots",
+      "uso": "snapshots",
+      "fase": "F3",
+      "verificacao": "validar_metodos_por_operacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-17",
+      "metodo": "GET/POST",
+      "caminho": "/1.0/instances/{name}/backups",
+      "uso": "backups",
+      "fase": "F3",
+      "verificacao": "validar_metodos_por_operacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-18",
+      "metodo": "GET",
+      "caminho": "/1.0/metrics e /1.0/resources",
+      "uso": "metricas_de_instancia_e_host",
+      "fase": "F1",
+      "verificacao": "validar_custo_autorizacao_e_formato",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-19",
+      "metodo": "GET",
+      "caminho": "/1.0/images",
+      "uso": "imagens",
+      "fase": "F3",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-20",
+      "metodo": "GET",
+      "caminho": "/1.0/profiles",
+      "uso": "profiles",
+      "fase": "F3",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-21",
+      "metodo": "GET",
+      "caminho": "/1.0/projects",
+      "uso": "projects",
+      "fase": "F3",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-22",
+      "metodo": "GET",
+      "caminho": "/1.0/cluster/members",
+      "uso": "membros_cluster",
+      "fase": "F5",
+      "verificacao": "apenas_se_clustered",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-23",
+      "metodo": "POST",
+      "caminho": "/1.0/instances",
+      "uso": "criacao_de_container",
+      "fase": "F3",
+      "verificacao": "validar_contrato_de_payload_sem_code",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    },
+    {
+      "id": "API-24",
+      "metodo": "DELETE",
+      "caminho": "/1.0/instances/{name}",
+      "uso": "exclusao_irreversivel",
+      "fase": "F3",
+      "verificacao": "confirmado_documentacao",
+      "observacoes": [
+        "Project e host devem acompanhar o contexto da requisicao.",
+        "API real e autorizacao determinam o que e permitido."
+      ]
+    }
+  ],
+  "fluxos_funcionais": [
+    {
+      "id": "FL-01",
+      "nome": "Inicio seguro",
+      "passos": [
+        "Identificar host",
+        "Verificar fingerprint TLS",
+        "Autenticar por fluxo aprovado",
+        "Consultar /1.0",
+        "Resolver Projects autorizados",
+        "Abrir dashboard"
+      ],
+      "falhas": [
+        "certificado invalido",
+        "401/403",
+        "host indisponivel"
+      ]
+    },
+    {
+      "id": "FL-02",
+      "nome": "Listar containers",
+      "passos": [
+        "Selecionar servidor e Project",
+        "Consultar lista em modo recursivo",
+        "Correlacionar estado/localizacao",
+        "Renderizar arvore/tabela",
+        "Atualizar ao receber lifecycle"
+      ],
+      "falhas": [
+        "nenhuma instance",
+        "Project nao autorizado",
+        "dados parciais"
+      ]
+    },
+    {
+      "id": "FL-03",
+      "nome": "Controle de energia",
+      "passos": [
+        "Verificar papel/estado/capacidade",
+        "Confirmar acao quando houver risco",
+        "Solicitar mudanca de state",
+        "Capturar UUID",
+        "Atualizar Tasks",
+        "Aguardar estado terminal",
+        "Ressincronizar instancia"
+      ],
+      "falhas": [
+        "operacao falha",
+        "estado mudou",
+        "servidor perdeu conexao"
+      ]
+    },
+    {
+      "id": "FL-04",
+      "nome": "Console",
+      "passos": [
+        "Autorizacao para exec",
+        "Verificar instancia running",
+        "Abrir operacao exec interativa",
+        "Estabelecer canais de terminal",
+        "Encerrar ao sair/logout"
+      ],
+      "falhas": [
+        "permissao negada",
+        "websocket perdido",
+        "instancia parada"
+      ]
+    },
+    {
+      "id": "FL-05",
+      "nome": "Snapshot",
+      "passos": [
+        "Escolher instance e Project",
+        "Verificar espaco/capacidade",
+        "Confirmar nome e impacto",
+        "Iniciar operacao",
+        "Acompanhar resultado"
+      ],
+      "falhas": [
+        "pool cheio",
+        "protecoes",
+        "snapshot duplicado"
+      ]
+    },
+    {
+      "id": "FL-06",
+      "nome": "Criar instancia",
+      "passos": [
+        "Escolher Project/host",
+        "Selecionar imagem compativel",
+        "Configurar nome/profile/rede/storage",
+        "Revisar impactos",
+        "Solicitar criacao",
+        "Rastrear operacao",
+        "Atualizar inventario"
+      ],
+      "falhas": [
+        "imagem incompatível",
+        "espaco insuficiente",
+        "permissao negada",
+        "nome duplicado"
+      ]
+    },
+    {
+      "id": "FL-07",
+      "nome": "Reconectar eventos",
+      "passos": [
+        "Detectar desconexao de WS",
+        "Informar estado degradado",
+        "Reconectar com backoff",
+        "Refazer leituras REST do escopo",
+        "Ressubscrever eventos",
+        "Recuperar Tasks relevantes"
+      ],
+      "falhas": [
+        "credencial revogada",
+        "host offline prolongado"
+      ]
+    },
+    {
+      "id": "FL-08",
+      "nome": "Excluir instancia",
+      "passos": [
+        "Restringir a administrador e ambiente de teste",
+        "Verificar protecao de exclusao e estado",
+        "Mostrar snapshots afetados",
+        "Solicitar confirmacao textual do alvo",
+        "Registrar solicitacao",
+        "Aguardar confirmacao pelo Incus"
+      ],
+      "falhas": [
+        "instancia running",
+        "security.protection.delete",
+        "erro 403",
+        "operacao falha"
+      ]
+    }
+  ]
+}

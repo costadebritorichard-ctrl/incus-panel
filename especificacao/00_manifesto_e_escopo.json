@@ -1,0 +1,224 @@
+{
+  "documento": {
+    "titulo": "Especificacao funcional e WBS - Incus Panel",
+    "tipo": "documentacao para desenvolvimento assistido por IA, sem codigo-fonte",
+    "versao": "1.0.0",
+    "idioma": "pt-BR",
+    "gerado_em": "2026-10-26",
+    "estado": "proposta, nao implementado",
+    "descricao": "Painel Web inspirado na experiencia de uso do Proxmox para administrar Incus em TV Box Allwinner H3 e outras plataformas.",
+    "base": "TCC experimental sobre laboratorios computacionais de baixo custo."
+  },
+  "norte_do_produto": {
+    "problema": "Tornar administracao de containers Incus acessivel em equipamentos ARMv7 restritos sem criar nova camada de virtualizacao.",
+    "objetivo": "Gerenciar containers, recursos, Projects e operacoes via interface web leve e portavel.",
+    "usuarios": [
+      "aluno",
+      "docente",
+      "administrador de laboratorio"
+    ],
+    "valor_educacional": "Viabilizar labs de redes/SO/DevOps com hardware reaproveitado e recursos mensuraveis.",
+    "motivacao_institucional": "Destinacao social e reaproveitamento de TV Boxes, observadas exigencias legais e tecnicas.",
+    "referencia_ux": "Proxmox/Pimox como referencia de navegacao, sem copiar codigo ou identidade.",
+    "backend_obrigatorio": "Incus, sistema existente; nao portar nem reimplementar Incus.",
+    "nao_objetivos": [
+      "Desenvolver um hipervisor proprio",
+      "Portar Proxmox VE/Pimox para ARM32",
+      "Garantir VM no H3",
+      "Implantar cluster obrigatoriamente",
+      "Hospedar plataforma publica multi-tenant antes de auditoria de seguranca"
+    ]
+  },
+  "evidencia_r3": {
+    "origem": "Baseline coletado na box, discutido na conversa do projeto; pode estar desatualizado.",
+    "estado": "comprovado_ou_observado_no_R3",
+    "host": "TV Box Allwinner H3",
+    "arquitetura": "ARMv7/armhf",
+    "sistema": "Debian 13 / Armbian",
+    "memoria_aproximada_mib": 991,
+    "incus_versao": "6.0.4",
+    "incus_pacote": "Debian armhf",
+    "driver": "LXC",
+    "kernel_no_levantamento": "6.18.40-current-sunxi",
+    "armazenamento": {
+      "driver": "Btrfs",
+      "pool": "default",
+      "capacidade_aproximada_gib": 3,
+      "historico": "93% ocupado e falha de imagem; apos remocao do etib cerca de 77% e 677 MiB livres"
+    },
+    "rede": {
+      "bridge": "incusbr0",
+      "api_https_porta": 8443
+    },
+    "instancias_observadas_apos_limpeza": [
+      "node1",
+      "node2",
+      "php-site"
+    ],
+    "cluster_ativo": false,
+    "nota": "Nomes/IPs/versoes de host sao apenas fixture do ambiente observado, nao dados hardcoded nem constantes do produto."
+  },
+  "decisoes_e_pendencias": {
+    "definidas": [
+      "Backend de infraestrutura sera Incus",
+      "H3 ARMv7 e baseline minimo",
+      "Frontend independente de SoC",
+      "Container-first",
+      "F1 somente leitura",
+      "Projects sao recursos Incus nativos",
+      "A interface nao assume VM por simples presenca de api_extension"
+    ],
+    "a_validar": [
+      {
+        "id": "DEC-01",
+        "tema": "Acesso direto do browser versus proxy minimo",
+        "gate": "R4",
+        "criterio": "seguranca, autorizacao, overhead, latencia, facilidade de implantacao"
+      },
+      {
+        "id": "DEC-02",
+        "tema": "Fonte de metricas host/instance/pool",
+        "gate": "R4-F1",
+        "criterio": "suporte da versao 6.0.4, custo e consistencia Btrfs"
+      },
+      {
+        "id": "DEC-03",
+        "tema": "Modelo efetivo de identidade e permissoes",
+        "gate": "R4",
+        "criterio": "Incus TLS/OIDC ou proxy sem elevacao indevida"
+      },
+      {
+        "id": "DEC-04",
+        "tema": "Licenca e politica de distribuicao",
+        "gate": "F0",
+        "criterio": "compatibilidade com bibliotecas e atribuicoes"
+      },
+      {
+        "id": "DEC-05",
+        "tema": "Stack concreta de frontend e proxy eventual",
+        "gate": "R4",
+        "criterio": "selecionar apos comparar footprint, portabilidade, manutencao e seguranca"
+      }
+    ]
+  },
+  "fases": [
+    {
+      "id": "F0",
+      "nome": "Inventario, riscos e contrato tecnico",
+      "escopo": "Documentacao e ambiente seguro de testes, sem alterar o host."
+    },
+    {
+      "id": "F1",
+      "nome": "MVP somente leitura",
+      "escopo": "Autenticacao avaliada, descoberta, dashboard, arvore e listagem/detalhes de instances."
+    },
+    {
+      "id": "F2",
+      "nome": "MVP gerenciavel",
+      "escopo": "Start/Stop/Restart, operations, eventos e console em container de teste."
+    },
+    {
+      "id": "F3",
+      "nome": "Laboratorio funcional",
+      "escopo": "Criacao, images, storage, networks, profiles, projects, snapshots e backups."
+    },
+    {
+      "id": "F4",
+      "nome": "Validacao academica e portabilidade",
+      "escopo": "Experimentos, avaliacao multi-arquitetura, usabilidade e documentacao final."
+    },
+    {
+      "id": "F5",
+      "nome": "Evolucoes opcionais",
+      "escopo": "Multi-servidor, clusters, RBAC granular, alertas historicos e recursos avancados."
+    }
+  ],
+  "publico_papeis": [
+    {
+      "papel": "observador",
+      "pode": "visualizar somente recursos autorizados",
+      "nao_pode": "alterar instancias, entrar em shell, mudar configuracoes"
+    },
+    {
+      "papel": "operador",
+      "pode": "visualizar, Start/Stop/Restart de escopo autorizado e console quando aprovado",
+      "nao_pode": "alterar configuracoes globais/credenciais"
+    },
+    {
+      "papel": "administrador",
+      "pode": "administrar hosts e configuracoes permitidas pela identidade efetiva",
+      "nao_pode": "superar politicas de autorizacao do Incus"
+    }
+  ],
+  "layout_e_navegacao": {
+    "padrao": "topbar + arvore lateral de recursos + area de trabalho com abas + rodape tarefas",
+    "views": [
+      "por_servidor",
+      "por_project"
+    ],
+    "navegacao": [
+      {
+        "grupo": "Ambiente",
+        "telas": [
+          "TEL-03",
+          "TEL-04",
+          "TEL-21",
+          "TEL-23"
+        ]
+      },
+      {
+        "grupo": "Containers",
+        "telas": [
+          "TEL-05",
+          "TEL-06",
+          "TEL-07",
+          "TEL-08",
+          "TEL-09",
+          "TEL-10",
+          "TEL-11",
+          "TEL-12",
+          "TEL-13"
+        ]
+      },
+      {
+        "grupo": "Recursos",
+        "telas": [
+          "TEL-14",
+          "TEL-15",
+          "TEL-16",
+          "TEL-17",
+          "TEL-18"
+        ]
+      },
+      {
+        "grupo": "Sistema",
+        "telas": [
+          "TEL-19",
+          "TEL-20",
+          "TEL-22",
+          "TEL-24"
+        ]
+      }
+    ],
+    "componentes_globais": [
+      "busca",
+      "seletor_de_project",
+      "seletor_de_host",
+      "notificacoes",
+      "estado_da_conexao",
+      "tarefas",
+      "confirmacao_de_acao",
+      "erro_com_contexto"
+    ],
+    "estados_padronizados": [
+      "carregando",
+      "vazio",
+      "sem_permissao",
+      "desconectado",
+      "erro",
+      "funcionalidade_nao_suportada",
+      "dados_desatualizados"
+    ],
+    "acessibilidade": "teclado, foco, contraste, textos alternativos a cores e estados"
+  }
+}

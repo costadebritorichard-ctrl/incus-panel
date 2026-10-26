@@ -1,0 +1,124 @@
+{
+  "seguranca": {
+    "principios": [
+      {
+        "id": "SEG-01",
+        "regra": "Nenhuma chave privada, trust token, senha SSH ou credencial de Incus em assets estaticos ou logs."
+      },
+      {
+        "id": "SEG-02",
+        "regra": "Autorizacao no servidor/proxy/Incus, nao apenas por ocultacao de botoes."
+      },
+      {
+        "id": "SEG-03",
+        "regra": "Fingerprint TLS verificado antes de estabelecer confianca; nao desligar verificacao TLS para simplificar."
+      },
+      {
+        "id": "SEG-04",
+        "regra": "Preferir identidade restrita a Projects para usuarios de laboratorio, quando suportado."
+      },
+      {
+        "id": "SEG-05",
+        "regra": "Interactive exec e equivalente a uma operacao privilegiada no container; exigir papel autorizado."
+      },
+      {
+        "id": "SEG-06",
+        "regra": "Confirmar alvo completo (host, Project, instance) em acoes de exclusao/restauracao."
+      },
+      {
+        "id": "SEG-07",
+        "regra": "Evitar exposicao da porta de administracao Incus a Internet; considerar rede privada/VPN."
+      },
+      {
+        "id": "SEG-08",
+        "regra": "Sessao expirada deve encerrar WebSockets e impedir novas operacoes."
+      },
+      {
+        "id": "SEG-09",
+        "regra": "Leituras e metricas nao podem atravessar Projects nao autorizados."
+      },
+      {
+        "id": "SEG-10",
+        "regra": "Se usar backend, protegê-lo contra CSRF, abuso de sessao e acesso a URLs arbitrarias de servidores."
+      },
+      {
+        "id": "SEG-11",
+        "regra": "Tratamento de respostas Incus nao pode confiar em HTML/textos de instancias como markup seguro."
+      },
+      {
+        "id": "SEG-12",
+        "regra": "Nenhuma limpeza automatica de imagens, snapshots e Btrfs nos gates de leitura."
+      }
+    ],
+    "observacao": "Papeis apresentados no frontend so sao validos se houver correspondencia efetiva de autorizacao no backend/Incus.",
+    "regras_para_ia": [
+      "Nao gerar credenciais de exemplo reais no artefato",
+      "Nao alterar hosts ou containers de producao sem autorizacao explicita",
+      "Nao desabilitar TLS por conveniencia",
+      "Nao conceder acesso administrativo irrestrito para demonstrar interface",
+      "Nao publicar IPs/fingerprints/chaves de ambiente real"
+    ]
+  },
+  "riscos": [
+    {
+      "id": "RIS-01",
+      "risco": "H3 com somente ~1 GiB de RAM",
+      "impacto": "alto",
+      "resposta": "avaliacao de RSS/CPU, poucos servicos auxiliares e UI leve"
+    },
+    {
+      "id": "RIS-02",
+      "risco": "Pool Btrfs de 3 GiB pode ficar cheio",
+      "impacto": "alto",
+      "resposta": "testes de espaco via fixture e pool isolado; sem lotar pool real"
+    },
+    {
+      "id": "RIS-03",
+      "risco": "Certificado administrativo com acesso amplo",
+      "impacto": "critico",
+      "resposta": "avaliar proxy/segregacao; certificado restrito; revogacao"
+    },
+    {
+      "id": "RIS-04",
+      "risco": "Assumir suporte a VM por api_extensions",
+      "impacto": "medio",
+      "resposta": "checar host/capacidades reais; VM fora do MVP H3"
+    },
+    {
+      "id": "RIS-05",
+      "risco": "Nao recuperar eventos perdidos por WebSocket",
+      "impacto": "medio",
+      "resposta": "re-sync REST apos reconexao"
+    },
+    {
+      "id": "RIS-06",
+      "risco": "Project e instance homonimas confundidos",
+      "impacto": "alto",
+      "resposta": "usar identidade composta servidor+Project+nome"
+    },
+    {
+      "id": "RIS-07",
+      "risco": "Custo alto de GET /1.0/metrics",
+      "impacto": "medio",
+      "resposta": "medir custo e limitar coleta, respeitando cache do Incus"
+    },
+    {
+      "id": "RIS-08",
+      "risco": "Multi-host confundido com cluster Incus",
+      "impacto": "medio",
+      "resposta": "separar grupos de conexoes e membros reais"
+    },
+    {
+      "id": "RIS-09",
+      "risco": "Escopo excede tempo de TCC",
+      "impacto": "alto",
+      "resposta": "MVP F1+F2 como nucleo, F3 parcial e F5 opcionais"
+    },
+    {
+      "id": "RIS-10",
+      "risco": "Solucoes existentes reduzem novidade percebida",
+      "impacto": "medio",
+      "resposta": "avaliar leveza/seguranca/portabilidade com protocolo reproduzivel"
+    }
+  ]
+}

@@ -1,0 +1,2289 @@
+{
+  "wbs": {
+    "padrao_ids": "WBS-XX.yy.zz",
+    "definicao": "Estrutura analitica hierarquica do trabalho: grupos, telas e submodulos, cada qual com criterio de aceite.",
+    "grupos": [
+      {
+        "id": "WBS-01",
+        "nome": "Governanca, pesquisa e especificacao",
+        "fase": "F0",
+        "tipo": "grupo",
+        "criterio_aceite": "Evidencias revisadas e registradas.",
+        "filhos": [
+          {
+            "id": "WBS-01.01",
+            "nome": "objetivo e limites",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Declarar escopo e nao-objetivos; criterios de sucesso documentados",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-01.02",
+            "nome": "inventario de evidencias",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Separar baseline comprovado de pressupostos e futuros testes",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-01.03",
+            "nome": "fluxos e personas",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Identificar usuario observador, operador, administrador e aluno",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-01.04",
+            "nome": "revisao de referencias",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Conferir endpoints e funcionalidades com documentacao oficial",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-01.05",
+            "nome": "planejamento academico",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Vincular perguntas de pesquisa e metricas a entregas",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          }
+        ]
+      },
+      {
+        "id": "WBS-02",
+        "nome": "Infraestrutura e seguranca",
+        "fase": "F0",
+        "tipo": "grupo",
+        "criterio_aceite": "Evidencias revisadas e registradas.",
+        "filhos": [
+          {
+            "id": "WBS-02.01",
+            "nome": "baseline e ambiente de teste",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Registrar arquitetura, versao Incus, memoria, pool e containers sem alteracoes",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-02.02",
+            "nome": "modelo de ameaças",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Analisar segredos, shell root, exposicao TCP, CORS e sessao",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-02.03",
+            "nome": "experimento direto",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Validar o caminho navegador/Incus de forma segura",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-02.04",
+            "nome": "experimento proxy",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Validar caminho navegador/proxy/Incus mantendo certificado fora do navegador",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-02.05",
+            "nome": "decisao arquitetural",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Documentar escolha a partir de CPU RAM latencia e riscos",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-02.06",
+            "nome": "teste de credenciais e revogacao",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Demonstrar permissao real e remocao de confianca",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-02.07",
+            "nome": "isolamento de laboratorio",
+            "fase": "F0",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Nao operar em production containers nos experimentos mutaveis",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          }
+        ]
+      },
+      {
+        "id": "WBS-03",
+        "nome": "Camada comum e experiencia de uso",
+        "fase": "F1",
+        "tipo": "grupo",
+        "criterio_aceite": "Evidencias revisadas e registradas.",
+        "filhos": [
+          {
+            "id": "WBS-03.01",
+            "nome": "navegacao de aplicacao",
+            "fase": "F1",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Arvore de hosts, Projects e instances preservando contexto",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-03.02",
+            "nome": "componentes visuais de estado",
+            "fase": "F1",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Loading/empty/forbidden/offline/error consistentes",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-03.03",
+            "nome": "formato e idioma",
+            "fase": "F1",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "pt-BR, unidades IEC/SI e datas locais",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-03.04",
+            "nome": "trato de erros",
+            "fase": "F1",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Mensagens contextualizadas, sem segredos",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-03.05",
+            "nome": "capability discovery",
+            "fase": "F1",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Habilitar funcionalidades conforme o host e versao real",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-03.06",
+            "nome": "eventos e operações",
+            "fase": "F1",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Modelo de UUID, eventos e ressincronizacao",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-03.07",
+            "nome": "trilhas de auditoria",
+            "fase": "F1",
+            "tipo": "pacote",
+            "tela_id": null,
+            "criterio_aceite": "Registro de mutacoes do MVP com usuario, alvo e resultado",
+            "entrega": "evidencia + documentacao",
+            "dependencias": []
+          }
+        ]
+      },
+      {
+        "id": "WBS-04",
+        "nome": "Modulos de interface - telas e submodulos",
+        "fase": "F1-F5",
+        "tipo": "grupo",
+        "criterio_aceite": "Telas atendem requisitos e criterios de aceite sem dados ficticios.",
+        "filhos": [
+          {
+            "id": "WBS-04.01",
+            "nome": "Boas-vindas e conexao inicial",
+            "tela_id": "TEL-01",
+            "fase": "F1",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Boas-vindas e conexao inicial funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.01.01",
+                "nome": "Identificacao do servidor",
+                "tela_id": "TEL-01",
+                "submodulo_id": "TEL-01.01",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Host confirmado corresponde ao destino esperado.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.01.02",
+                "nome": "Teste de conectividade",
+                "tela_id": "TEL-01",
+                "submodulo_id": "TEL-01.02",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Os tres casos apresentam mensagens especificas.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.01.03",
+                "nome": "Verificacao de confianca",
+                "tela_id": "TEL-01",
+                "submodulo_id": "TEL-01.03",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "A identidade do servidor exige confirmacao explicita.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.01.04",
+                "nome": "Elegibilidade da conexao",
+                "tela_id": "TEL-01",
+                "submodulo_id": "TEL-01.04",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Caminho selecionado tem justificativa R4 documentada.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.01.05",
+                "nome": "Selecao de escopo inicial",
+                "tela_id": "TEL-01",
+                "submodulo_id": "TEL-01.05",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Projects nao autorizados nao aparecem.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.02",
+            "nome": "Autenticacao e sessao",
+            "tela_id": "TEL-02",
+            "fase": "F1",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Autenticacao e sessao funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.02.01",
+                "nome": "Inicio de sessao",
+                "tela_id": "TEL-02",
+                "submodulo_id": "TEL-02.01",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao ha acesso anonimo aos dados privados do host.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.02.02",
+                "nome": "Indicacao de perfil",
+                "tela_id": "TEL-02",
+                "submodulo_id": "TEL-02.02",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Operador e observador recebem acoes apropriadas.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.02.03",
+                "nome": "Expiracao e saida",
+                "tela_id": "TEL-02",
+                "submodulo_id": "TEL-02.03",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Sessao encerrada nao consegue acionar APIs.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.02.04",
+                "nome": "Tratamento de falhas",
+                "tela_id": "TEL-02",
+                "submodulo_id": "TEL-02.04",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao revelar detalhes tecnicos ou segredos nas mensagens.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.03",
+            "nome": "Visao geral - Datacenter",
+            "tela_id": "TEL-03",
+            "fase": "F1",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Visao geral - Datacenter funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.03.01",
+                "nome": "Resumo de ambiente",
+                "tela_id": "TEL-03",
+                "submodulo_id": "TEL-03.01",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Contagens conferem com inventario autorizado.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.03.02",
+                "nome": "Resumo de host",
+                "tela_id": "TEL-03",
+                "submodulo_id": "TEL-03.02",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "ARMv7 e unclustered sao reconhecidos corretamente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.03.03",
+                "nome": "Cartoes de recursos",
+                "tela_id": "TEL-03",
+                "submodulo_id": "TEL-03.03",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Metricas sem fonte confiavel mostram indisponivel, nunca zero falso.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.03.04",
+                "nome": "Lista de atividade",
+                "tela_id": "TEL-03",
+                "submodulo_id": "TEL-03.04",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Falhas aparecem com acao de inspecionar.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.03.05",
+                "nome": "Alertas priorizados",
+                "tela_id": "TEL-03",
+                "submodulo_id": "TEL-03.05",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Alerta e emitido com base em metricas validas.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.03.06",
+                "nome": "Atalhos contextuais",
+                "tela_id": "TEL-03",
+                "submodulo_id": "TEL-03.06",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Destino preserva servidor e project selecionados.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.04",
+            "nome": "Explorador de recursos",
+            "tela_id": "TEL-04",
+            "fase": "F1",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Explorador de recursos funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.04.01",
+                "nome": "Visao por host",
+                "tela_id": "TEL-04",
+                "submodulo_id": "TEL-04.01",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Uma box nao clusterizada aparece como host unico.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.04.02",
+                "nome": "Visao por Project",
+                "tela_id": "TEL-04",
+                "submodulo_id": "TEL-04.02",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Mesmo nome em Projects distintos nao gera colisao.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.04.03",
+                "nome": "Busca e filtros",
+                "tela_id": "TEL-04",
+                "submodulo_id": "TEL-04.03",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Filtro nao esconde falhas de consulta.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.04.04",
+                "nome": "Estado de cada item",
+                "tela_id": "TEL-04",
+                "submodulo_id": "TEL-04.04",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Status atualiza apos evento sem recriar arvore inteira.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.04.05",
+                "nome": "Selecao persistente",
+                "tela_id": "TEL-04",
+                "submodulo_id": "TEL-04.05",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Retorno a tela recupera selecao corretamente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.05",
+            "nome": "Catalogo de instancias",
+            "tela_id": "TEL-05",
+            "fase": "F1",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Catalogo de instancias funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.05.01",
+                "nome": "Tabela de instancias",
+                "tela_id": "TEL-05",
+                "submodulo_id": "TEL-05.01",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Tabela mostra dados reais e origem dos ausentes.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.05.02",
+                "nome": "Filtros e ordenacao",
+                "tela_id": "TEL-05",
+                "submodulo_id": "TEL-05.02",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Combinar filtros apresenta resultados consistentes.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.05.03",
+                "nome": "Selecao multipla",
+                "tela_id": "TEL-05",
+                "submodulo_id": "TEL-05.03",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nenhuma alteracao no modo somente leitura.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.05.04",
+                "nome": "Acoes permitidas",
+                "tela_id": "TEL-05",
+                "submodulo_id": "TEL-05.04",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Acesso somente leitura nao dispara mutacoes.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.05.05",
+                "nome": "Acesso ao detalhe",
+                "tela_id": "TEL-05",
+                "submodulo_id": "TEL-05.05",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Instancias homonimas de Projects diferentes nao colidem.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.06",
+            "nome": "Resumo da instancia",
+            "tela_id": "TEL-06",
+            "fase": "F1",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Resumo da instancia funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.06.01",
+                "nome": "Identificacao",
+                "tela_id": "TEL-06",
+                "submodulo_id": "TEL-06.01",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Identificador completo e consistente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.06.02",
+                "nome": "Resumo de execucao",
+                "tela_id": "TEL-06",
+                "submodulo_id": "TEL-06.02",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Estado reflete API e nao valores simulados.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.06.03",
+                "nome": "Indicadores de recursos",
+                "tela_id": "TEL-06",
+                "submodulo_id": "TEL-06.03",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Ausencia de medicao nao exibe zero.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.06.04",
+                "nome": "Barra de acoes",
+                "tela_id": "TEL-06",
+                "submodulo_id": "TEL-06.04",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Somente operacoes validas sao habilitadas.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.06.05",
+                "nome": "Erros e logs resumidos",
+                "tela_id": "TEL-06",
+                "submodulo_id": "TEL-06.05",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Erro tecnico tem mensagem amigavel e codigo de suporte.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.07",
+            "nome": "Recursos da instancia",
+            "tela_id": "TEL-07",
+            "fase": "F1",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Recursos da instancia funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.07.01",
+                "nome": "CPU",
+                "tela_id": "TEL-07",
+                "submodulo_id": "TEL-07.01",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Diferenciar percentual de CPU e tempo acumulado.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.07.02",
+                "nome": "RAM",
+                "tela_id": "TEL-07",
+                "submodulo_id": "TEL-07.02",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nenhum limite indefinido vira 0 MiB.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.07.03",
+                "nome": "Disco",
+                "tela_id": "TEL-07",
+                "submodulo_id": "TEL-07.03",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Reflinks/snapshots nao sao somados ingenuamente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.07.04",
+                "nome": "Rede da instancia",
+                "tela_id": "TEL-07",
+                "submodulo_id": "TEL-07.04",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao misturar contadores cumulativos com taxas.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.07.05",
+                "nome": "Periodo e atualizacao",
+                "tela_id": "TEL-07",
+                "submodulo_id": "TEL-07.05",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Coleta excessiva nao prejudica o H3.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.08",
+            "nome": "Rede e dispositivos da instancia",
+            "tela_id": "TEL-08",
+            "fase": "F3",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Rede e dispositivos da instancia funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.08.01",
+                "nome": "NICs",
+                "tela_id": "TEL-08",
+                "submodulo_id": "TEL-08.01",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Dispositivo herdado de profile e local sao distinguidos.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.08.02",
+                "nome": "Volumes/discos",
+                "tela_id": "TEL-08",
+                "submodulo_id": "TEL-08.02",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Pool de cada disco e identificado.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.08.03",
+                "nome": "Proxy devices",
+                "tela_id": "TEL-08",
+                "submodulo_id": "TEL-08.03",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Portas e enderecos sao identificados corretamente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.08.04",
+                "nome": "Configuracao efetiva",
+                "tela_id": "TEL-08",
+                "submodulo_id": "TEL-08.04",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao editar valor herdado como se fosse local.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.08.05",
+                "nome": "Validacao de alteracoes",
+                "tela_id": "TEL-08",
+                "submodulo_id": "TEL-08.05",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Erros da API sao exibidos sem perda de configuracao.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.09",
+            "nome": "Opcoes e configuracao",
+            "tela_id": "TEL-09",
+            "fase": "F3",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Opcoes e configuracao funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.09.01",
+                "nome": "Configuracao local",
+                "tela_id": "TEL-09",
+                "submodulo_id": "TEL-09.01",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Segredos nao aparecem em logs.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.09.02",
+                "nome": "Configuracao expandida",
+                "tela_id": "TEL-09",
+                "submodulo_id": "TEL-09.02",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Valor efetivo e origem ficam claros.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.09.03",
+                "nome": "Protecao contra exclusao",
+                "tela_id": "TEL-09",
+                "submodulo_id": "TEL-09.03",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Exclusao respeita protecao do host.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.09.04",
+                "nome": "Comparacao de alteracoes",
+                "tela_id": "TEL-09",
+                "submodulo_id": "TEL-09.04",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Usuario confirma diferencas.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.09.05",
+                "nome": "Controle de concorrencia",
+                "tela_id": "TEL-09",
+                "submodulo_id": "TEL-09.05",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Mudancas simultaneas nao sobrescrevem silenciosamente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.10",
+            "nome": "Console interativo",
+            "tela_id": "TEL-10",
+            "fase": "F2",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Console interativo funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.10.01",
+                "nome": "Abertura autorizada",
+                "tela_id": "TEL-10",
+                "submodulo_id": "TEL-10.01",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Observador nao obtem sessao privilegiada.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.10.02",
+                "nome": "Sessao interativa",
+                "tela_id": "TEL-10",
+                "submodulo_id": "TEL-10.02",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Console abre em container de teste sem SSH no guest.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.10.03",
+                "nome": "Redimensionamento",
+                "tela_id": "TEL-10",
+                "submodulo_id": "TEL-10.03",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Terminal permanece utilizavel ao redimensionar.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.10.04",
+                "nome": "Encerramento",
+                "tela_id": "TEL-10",
+                "submodulo_id": "TEL-10.04",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nenhum console permanece associado a sessao terminada.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.10.05",
+                "nome": "Sinalizacao de risco",
+                "tela_id": "TEL-10",
+                "submodulo_id": "TEL-10.05",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Usuario ve impacto antes do primeiro acesso.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.11",
+            "nome": "Snapshots",
+            "tela_id": "TEL-11",
+            "fase": "F3",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Snapshots funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.11.01",
+                "nome": "Lista",
+                "tela_id": "TEL-11",
+                "submodulo_id": "TEL-11.01",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao declarar tamanho unico se o FS compartilha blocos.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.11.02",
+                "nome": "Criar snapshot",
+                "tela_id": "TEL-11",
+                "submodulo_id": "TEL-11.02",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Operacao retorna rastreio e resultado.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.11.03",
+                "nome": "Restaurar snapshot",
+                "tela_id": "TEL-11",
+                "submodulo_id": "TEL-11.03",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Restauracao demanda confirmacao reforcada.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.11.04",
+                "nome": "Excluir snapshot",
+                "tela_id": "TEL-11",
+                "submodulo_id": "TEL-11.04",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Snapshot protegido nao e apagado sem autorizacao.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.11.05",
+                "nome": "Alertas de armazenamento",
+                "tela_id": "TEL-11",
+                "submodulo_id": "TEL-11.05",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Estimativa nao e tratada como certeza.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.12",
+            "nome": "Backups",
+            "tela_id": "TEL-12",
+            "fase": "F3",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Backups funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.12.01",
+                "nome": "Inventario de backups",
+                "tela_id": "TEL-12",
+                "submodulo_id": "TEL-12.01",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Lista coerente com Incus e Project.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.12.02",
+                "nome": "Criar backup",
+                "tela_id": "TEL-12",
+                "submodulo_id": "TEL-12.02",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Falhas por falta de espaco sao reportadas.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.12.03",
+                "nome": "Baixar backup",
+                "tela_id": "TEL-12",
+                "submodulo_id": "TEL-12.03",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nenhum backup e publico sem permissao.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.12.04",
+                "nome": "Restauracao",
+                "tela_id": "TEL-12",
+                "submodulo_id": "TEL-12.04",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao sobrescrever instancia em uso acidentalmente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.12.05",
+                "nome": "Politica de retencao",
+                "tela_id": "TEL-12",
+                "submodulo_id": "TEL-12.05",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Sem exclusoes automaticas silenciosas no MVP.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.13",
+            "nome": "Assistente de criacao de container",
+            "tela_id": "TEL-13",
+            "fase": "F3",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Assistente de criacao de container funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.13.01",
+                "nome": "Escolher Project e host",
+                "tela_id": "TEL-13",
+                "submodulo_id": "TEL-13.01",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Servidor stand-alone nao mostra cluster target ficticio.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.13.02",
+                "nome": "Escolher imagem",
+                "tela_id": "TEL-13",
+                "submodulo_id": "TEL-13.02",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Imagem incompatível com ARMv7 e bloqueada com explicacao.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.13.03",
+                "nome": "Identificacao e perfis",
+                "tela_id": "TEL-13",
+                "submodulo_id": "TEL-13.03",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao criar duas instances homonimas no mesmo Project.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.13.04",
+                "nome": "Recursos e rede",
+                "tela_id": "TEL-13",
+                "submodulo_id": "TEL-13.04",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Sem valor artificial default que exceda H3.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.13.05",
+                "nome": "Revisao final",
+                "tela_id": "TEL-13",
+                "submodulo_id": "TEL-13.05",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Criacao exige confirmacao consciente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.13.06",
+                "nome": "Progresso da criacao",
+                "tela_id": "TEL-13",
+                "submodulo_id": "TEL-13.06",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Erro nao gera falso sucesso.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.14",
+            "nome": "Imagens",
+            "tela_id": "TEL-14",
+            "fase": "F3",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Imagens funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.14.01",
+                "nome": "Inventario",
+                "tela_id": "TEL-14",
+                "submodulo_id": "TEL-14.01",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Valores sao os retornados pelo Incus.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.14.02",
+                "nome": "Compatibilidade",
+                "tela_id": "TEL-14",
+                "submodulo_id": "TEL-14.02",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "A interface nao oferece imagem incompatível como padrao.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.14.03",
+                "nome": "Uso e referencias",
+                "tela_id": "TEL-14",
+                "submodulo_id": "TEL-14.03",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Indicador desconhecido permanece indeterminado.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.14.04",
+                "nome": "Remocao segura",
+                "tela_id": "TEL-14",
+                "submodulo_id": "TEL-14.04",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao remover imagem usada/essencial sem analise.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.14.05",
+                "nome": "Atualizacao/importacao",
+                "tela_id": "TEL-14",
+                "submodulo_id": "TEL-14.05",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Falha de descompactacao e exibida claramente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.15",
+            "nome": "Storage pools e volumes",
+            "tela_id": "TEL-15",
+            "fase": "F3",
+            "tipo": "tela",
+            "criterio_aceite": "Mostra pool Btrfs do H3 com capacidade fisica coerente, sem repetir a contagem de du como espaco alocado.",
+            "filhos": [
+              {
+                "id": "WBS-04.15.01",
+                "nome": "Pools",
+                "tela_id": "TEL-15",
+                "submodulo_id": "TEL-15.01",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Btrfs e identificado corretamente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.15.02",
+                "nome": "Detalhe do pool",
+                "tela_id": "TEL-15",
+                "submodulo_id": "TEL-15.02",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Valor indisponivel nao vira 0.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.15.03",
+                "nome": "Volumes",
+                "tela_id": "TEL-15",
+                "submodulo_id": "TEL-15.03",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Volumes de instancias sao diferenciados dos custom.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.15.04",
+                "nome": "Avisos de capacidade",
+                "tela_id": "TEL-15",
+                "submodulo_id": "TEL-15.04",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Alerta 93% e reproduzivel por fixture, sem encher disco real.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.15.05",
+                "nome": "Propriedades e limites",
+                "tela_id": "TEL-15",
+                "submodulo_id": "TEL-15.05",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao sugerir comando destrutivo automatico.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.15.06",
+                "nome": "Acao administrativa",
+                "tela_id": "TEL-15",
+                "submodulo_id": "TEL-15.06",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Em F3, operacoes de pool podem permanecer somente leitura.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.16",
+            "nome": "Redes",
+            "tela_id": "TEL-16",
+            "fase": "F3",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Redes funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.16.01",
+                "nome": "Lista de redes",
+                "tela_id": "TEL-16",
+                "submodulo_id": "TEL-16.01",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "end0/lo e incusbr0 sao classificados corretamente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.16.02",
+                "nome": "Detalhe da bridge",
+                "tela_id": "TEL-16",
+                "submodulo_id": "TEL-16.02",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao deduzir NAT nao retornado.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.16.03",
+                "nome": "Leases e enderecos",
+                "tela_id": "TEL-16",
+                "submodulo_id": "TEL-16.03",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "IP nao informado aparece desconhecido.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.16.04",
+                "nome": "Associacoes",
+                "tela_id": "TEL-16",
+                "submodulo_id": "TEL-16.04",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Project e host preservados.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.16.05",
+                "nome": "Alteracoes",
+                "tela_id": "TEL-16",
+                "submodulo_id": "TEL-16.05",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Sem alterar interface fisica do host em MVP.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.17",
+            "nome": "Profiles",
+            "tela_id": "TEL-17",
+            "fase": "F3",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Profiles funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.17.01",
+                "nome": "Lista",
+                "tela_id": "TEL-17",
+                "submodulo_id": "TEL-17.01",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Project correto e mostrado.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.17.02",
+                "nome": "Devices e configuracoes",
+                "tela_id": "TEL-17",
+                "submodulo_id": "TEL-17.02",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Origem dos devices e identificada.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.17.03",
+                "nome": "Relacoes com instancias",
+                "tela_id": "TEL-17",
+                "submodulo_id": "TEL-17.03",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao exibir instances fora do escopo autorizado.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.17.04",
+                "nome": "Criacao/edicao",
+                "tela_id": "TEL-17",
+                "submodulo_id": "TEL-17.04",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Edicao nao substitui configuracoes silenciosamente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.17.05",
+                "nome": "Protecao de default",
+                "tela_id": "TEL-17",
+                "submodulo_id": "TEL-17.05",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Acao de impacto elevado exige confirmacao.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.18",
+            "nome": "Projects",
+            "tela_id": "TEL-18",
+            "fase": "F3",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Projects funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.18.01",
+                "nome": "Inventario",
+                "tela_id": "TEL-18",
+                "submodulo_id": "TEL-18.01",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao vazar Projects sem permissao.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.18.02",
+                "nome": "Selecao de Project",
+                "tela_id": "TEL-18",
+                "submodulo_id": "TEL-18.02",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nenhuma acao mira Project anterior por engano.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.18.03",
+                "nome": "Resumo do Project",
+                "tela_id": "TEL-18",
+                "submodulo_id": "TEL-18.03",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Itens isolados/compartilhados sao diferenciados.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.18.04",
+                "nome": "Criacao e limites",
+                "tela_id": "TEL-18",
+                "submodulo_id": "TEL-18.04",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Sem escapada de confinamento por frontend.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.18.05",
+                "nome": "Modelo didatico",
+                "tela_id": "TEL-18",
+                "submodulo_id": "TEL-18.05",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Convencao nao se confunde com funcionalidade nativa extra.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.19",
+            "nome": "Tasks e operacoes",
+            "tela_id": "TEL-19",
+            "fase": "F2",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Tasks e operacoes funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.19.01",
+                "nome": "Fila recente",
+                "tela_id": "TEL-19",
+                "submodulo_id": "TEL-19.01",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "UUID mantido ate resultado terminal.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.19.02",
+                "nome": "Status de operacao",
+                "tela_id": "TEL-19",
+                "submodulo_id": "TEL-19.02",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao anunciar sucesso antes do Incus.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.19.03",
+                "nome": "Progresso",
+                "tela_id": "TEL-19",
+                "submodulo_id": "TEL-19.03",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao inventar percentual quando ausente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.19.04",
+                "nome": "Filtro por instancia",
+                "tela_id": "TEL-19",
+                "submodulo_id": "TEL-19.04",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao cruzar dados de tenants distintos.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.19.05",
+                "nome": "Reconexao",
+                "tela_id": "TEL-19",
+                "submodulo_id": "TEL-19.05",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Eventos perdidos nao causam inconsistencias permanentes.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.19.06",
+                "nome": "Detalhe tecnico seguro",
+                "tela_id": "TEL-19",
+                "submodulo_id": "TEL-19.06",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nenhum certificado ou token nos logs.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.20",
+            "nome": "Alertas e avisos",
+            "tela_id": "TEL-20",
+            "fase": "F3",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Alertas e avisos funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.20.01",
+                "nome": "Alerta de storage",
+                "tela_id": "TEL-20",
+                "submodulo_id": "TEL-20.01",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Fixture de 93% gera nivel critico.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.20.02",
+                "nome": "Alerta de host",
+                "tela_id": "TEL-20",
+                "submodulo_id": "TEL-20.02",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Falha de rede nao vira stopped em todas as instancias.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.20.03",
+                "nome": "Falha de operacao",
+                "tela_id": "TEL-20",
+                "submodulo_id": "TEL-20.03",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Erro gera registro navegavel.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.20.04",
+                "nome": "Reconhecimento",
+                "tela_id": "TEL-20",
+                "submodulo_id": "TEL-20.04",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "A UI nao apaga warning do Incus inadvertidamente.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.20.05",
+                "nome": "Historico leve",
+                "tela_id": "TEL-20",
+                "submodulo_id": "TEL-20.05",
+                "fase": "F3",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nao prometer historico persistente sem backend.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.21",
+            "nome": "Servidores e detalhes do host",
+            "tela_id": "TEL-21",
+            "fase": "F1",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Servidores e detalhes do host funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.21.01",
+                "nome": "Identidade",
+                "tela_id": "TEL-21",
+                "submodulo_id": "TEL-21.01",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Host exibido corresponde ao certificado validado.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.21.02",
+                "nome": "Capacidades",
+                "tela_id": "TEL-21",
+                "submodulo_id": "TEL-21.02",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "extensao virtual-machines nao presume VM funcional no H3.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.21.03",
+                "nome": "Conectividade",
+                "tela_id": "TEL-21",
+                "submodulo_id": "TEL-21.03",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Off-line nao confunde ausencia de instancias.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.21.04",
+                "nome": "Recursos fisicos",
+                "tela_id": "TEL-21",
+                "submodulo_id": "TEL-21.04",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Fonte de dados identificada.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.21.05",
+                "nome": "Cluster",
+                "tela_id": "TEL-21",
+                "submodulo_id": "TEL-21.05",
+                "fase": "F1",
+                "tipo": "submodulo",
+                "criterio_aceite": "Host standalone nao aparece membro ficticio.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.22",
+            "nome": "Configuracoes, preferencias e seguranca",
+            "tela_id": "TEL-22",
+            "fase": "F2",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Configuracoes, preferencias e seguranca funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.22.01",
+                "nome": "Preferencias",
+                "tela_id": "TEL-22",
+                "submodulo_id": "TEL-22.01",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Valores consistentes em telas.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.22.02",
+                "nome": "Conexao segura",
+                "tela_id": "TEL-22",
+                "submodulo_id": "TEL-22.02",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Segredos jamais exibidos.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.22.03",
+                "nome": "Sessoes",
+                "tela_id": "TEL-22",
+                "submodulo_id": "TEL-22.03",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Logout fecha consoles e eventos.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.22.04",
+                "nome": "Limiares de alerta",
+                "tela_id": "TEL-22",
+                "submodulo_id": "TEL-22.04",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Configuracao nao e aplicada retroativamente a metricas invalidas.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.22.05",
+                "nome": "Auditoria de interface",
+                "tela_id": "TEL-22",
+                "submodulo_id": "TEL-22.05",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Registro nao substitui auditoria do Incus.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.22.06",
+                "nome": "Credenciais e revogacao",
+                "tela_id": "TEL-22",
+                "submodulo_id": "TEL-22.06",
+                "fase": "F2",
+                "tipo": "submodulo",
+                "criterio_aceite": "Revogacao invalida novas chamadas.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.23",
+            "nome": "Cluster e multiplos hosts",
+            "tela_id": "TEL-23",
+            "fase": "F5",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Cluster e multiplos hosts funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.23.01",
+                "nome": "Inventario multi-host",
+                "tela_id": "TEL-23",
+                "submodulo_id": "TEL-23.01",
+                "fase": "F5",
+                "tipo": "submodulo",
+                "criterio_aceite": "Hosts standalone mantem identidade isolada.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.23.02",
+                "nome": "Membros de cluster",
+                "tela_id": "TEL-23",
+                "submodulo_id": "TEL-23.02",
+                "fase": "F5",
+                "tipo": "submodulo",
+                "criterio_aceite": "Standalone apresenta Nao configurado.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.23.03",
+                "nome": "Visao de recursos",
+                "tela_id": "TEL-23",
+                "submodulo_id": "TEL-23.03",
+                "fase": "F5",
+                "tipo": "submodulo",
+                "criterio_aceite": "Metricas de cada membro nao sao generalizadas.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.23.04",
+                "nome": "Disponibilidade",
+                "tela_id": "TEL-23",
+                "submodulo_id": "TEL-23.04",
+                "fase": "F5",
+                "tipo": "submodulo",
+                "criterio_aceite": "Falhas de credencial nao sao apresentadas como host off-line.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.23.05",
+                "nome": "Operacoes de cluster",
+                "tela_id": "TEL-23",
+                "submodulo_id": "TEL-23.05",
+                "fase": "F5",
+                "tipo": "submodulo",
+                "criterio_aceite": "Nenhuma mudanca automatica de cluster no TCC inicial.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "WBS-04.24",
+            "nome": "Usuarios e permissoes",
+            "tela_id": "TEL-24",
+            "fase": "F5",
+            "tipo": "tela",
+            "criterio_aceite": "A tela Usuarios e permissoes funciona com dados reais sem exibicao de valores ficticios.",
+            "filhos": [
+              {
+                "id": "WBS-04.24.01",
+                "nome": "Identidades",
+                "tela_id": "TEL-24",
+                "submodulo_id": "TEL-24.01",
+                "fase": "F5",
+                "tipo": "submodulo",
+                "criterio_aceite": "Sem permitir criar usuarios locais com direitos nao sustentados.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.24.02",
+                "nome": "Papeis",
+                "tela_id": "TEL-24",
+                "submodulo_id": "TEL-24.02",
+                "fase": "F5",
+                "tipo": "submodulo",
+                "criterio_aceite": "Autorizacao efetiva permanece no backend/Incus.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.24.03",
+                "nome": "Escopos Project",
+                "tela_id": "TEL-24",
+                "submodulo_id": "TEL-24.03",
+                "fase": "F5",
+                "tipo": "submodulo",
+                "criterio_aceite": "Conta restrita nao consegue operar fora do Project.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              },
+              {
+                "id": "WBS-04.24.04",
+                "nome": "Revogacao",
+                "tela_id": "TEL-24",
+                "submodulo_id": "TEL-24.04",
+                "fase": "F5",
+                "tipo": "submodulo",
+                "criterio_aceite": "Acesso revogado e testado contra API real.",
+                "dependencias": [
+                  "WBS-02.05",
+                  "WBS-03.05"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "WBS-05",
+        "nome": "Qualidade, validacao e testes",
+        "fase": "F4",
+        "tipo": "grupo",
+        "criterio_aceite": "Entregas verificadas e registradas.",
+        "filhos": [
+          {
+            "id": "WBS-05.01",
+            "nome": "testes de contrato Incus",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Resposta e status de todos endpoints utilizados sao validados",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-05.02",
+            "nome": "testes de permissao",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Papel visual nao eleva privilégio real",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-05.03",
+            "nome": "testes de falha de rede",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Reconexao sincroniza e sinaliza estado degradado",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-05.04",
+            "nome": "testes de Btrfs",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Nao atribuir valores de du a espaco fisico",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-05.05",
+            "nome": "testes de compatibilidade",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "ARMv7, ARM64, x86-64 documentados quando disponiveis",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-05.06",
+            "nome": "testes de uso",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Roteiros de usuario documentados e problemas registrados",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-05.07",
+            "nome": "testes de operacao destrutiva",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Confirmacao e identidade correta previnem apagar alvo errado",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          }
+        ]
+      },
+      {
+        "id": "WBS-06",
+        "nome": "Pacote, operacao e manutencao",
+        "fase": "F4",
+        "tipo": "grupo",
+        "criterio_aceite": "Entregas verificadas e registradas.",
+        "filhos": [
+          {
+            "id": "WBS-06.01",
+            "nome": "instalacao e desinstalacao",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Distribuicao documentada sem intervir em containers de producao",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-06.02",
+            "nome": "configuracao e backup de preferencias",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Processo de recuperar configuracao documentado",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-06.03",
+            "nome": "monitoramento de recursos",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Uso em host H3 medido apos inicializar",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-06.04",
+            "nome": "licencas e atribuicoes",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Referencias a projetos externos e licencas registradas",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-06.05",
+            "nome": "manual do operador",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Guia de telas, erros e recuperacao",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-06.06",
+            "nome": "manual do administrador",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Confianca TLS, Projects e revogacao documentados",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          }
+        ]
+      },
+      {
+        "id": "WBS-07",
+        "nome": "Experimentos e producao academica",
+        "fase": "F4",
+        "tipo": "grupo",
+        "criterio_aceite": "Entregas verificadas e registradas.",
+        "filhos": [
+          {
+            "id": "WBS-07.01",
+            "nome": "protocolo experimental",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Definir amostra, repeticoes, carga e medidas",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-07.02",
+            "nome": "baseline sem painel",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Registrar CPU/RAM/metricas com host estavel",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-07.03",
+            "nome": "comparacao arquiteturas A/B",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Comparar latencia, RAM, CPU, credenciais e operacao",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-07.04",
+            "nome": "comparacao eventos vs polling",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Medir trafego e responsividade com mesma carga",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-07.05",
+            "nome": "avaliacao de escala",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Medir com N instancias sem forcar capacidade do H3",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-07.06",
+            "nome": "avaliacao de usabilidade",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Aplicar roteiro de tarefas em alunos/avaliadores",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-07.07",
+            "nome": "redacao de resultados",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Diferenciar dado coletado, hipotese e interpretacao",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          },
+          {
+            "id": "WBS-07.08",
+            "nome": "artefatos reprodutiveis",
+            "fase": "F4",
+            "tipo": "pacote",
+            "criterio_aceite": "Exportar dados anonimizados e protocolo",
+            "entrega": "registro verificavel",
+            "dependencias": []
+          }
+        ]
+      }
+    ]
+  }
+}
