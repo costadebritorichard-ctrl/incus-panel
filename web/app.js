@@ -237,6 +237,49 @@ async function taskView(scope) {
   return panel('Operações assíncronas',table(['UUID','DESCRIÇÃO','ESTADO','PROGRESSO / ERRO'],[...all.values()].map(i=>[i.id,i.description||i.action,status(i.status),i.err||JSON.stringify(i.metadata||{})])));
 }
 async function createView(scope,server) {
+  if(!session.manage_all_instances)return advancedCreateView(scope,server);
+  const result=(await read('creation-images',undefined,scope)).data;
+  const form=el('form',{class:'panel-body'});
+  const image=el('select',{required:'','aria-label':'Imagem do container'},...result.images.map(i=>el('option',{value:i.id},i.label)));
+  const button=el('button',{class:'primary',disabled:!result.images.length||session.read_only?'':null},'Criar container');
+  const progress=el('div',{'aria-live':'polite',role:'status'});
+  if(result.warning)form.append(notice(result.warning,true));
+  form.append(el('label',{},'Escolha a imagem',image),notice('O nome, o armazenamento e a rede são configurados automaticamente. O container será criado e iniciado.'),button,progress);
+  if(!result.images.length)form.append(notice('Nenhuma imagem compatível disponível. Confira a conexão da TV box com a Internet e tente novamente.',true),el('button',{type:'button',onclick:()=>render()},'Tentar novamente'));
+  form.onsubmit=async event=>{
+    event.preventDefault();button.disabled=true;image.disabled=true;
+    progress.replaceChildren(notice('Enviando solicitação ao Incus…'));
+    const selected=result.images.find(i=>i.id===image.value);
+    try{
+      const created=await api('/api/create',{...scope,...(selected.remote_image?{remote_image:selected.remote_image}:{image:selected.image})});
+      const key=`${scope.host}/${scope.project}/${created.operation}`;
+      const task={...scope,id:created.operation,target:created.target,action:'create',status_code:100};
+      tasks.set(key,task);
+      const owner=session;
+      const poll=async()=>{
+        if(session!==owner)return;
+        try{
+          const state=(await read('operation',created.operation,scope)).data;
+          tasks.set(key,{...task,...state});
+          if(state.status_code>=200){
+            button.disabled=false;image.disabled=false;
+            if(state.status_code===200){
+              progress.replaceChildren(notice(`Container ${created.target} criado e em execução.`),el('a',{href:instanceLink(created.target)},'Abrir container →'));
+            }else progress.replaceChildren(notice(`Falha ao criar/iniciar ${created.target}: ${state.err||state.status}`,true));
+            return;
+          }
+          progress.replaceChildren(notice(`${created.target}: ${state.status}. Isso pode levar alguns minutos.`),el('pre',{},JSON.stringify(state.metadata||{})));
+          setTimeout(poll,1500);
+        }catch(error){
+          progress.replaceChildren(errorNode(error),notice(`Não foi possível confirmar o resultado de ${created.target}. Confira Containers ou Tarefas antes de repetir.`),el('button',{type:'button',onclick:()=>{progress.replaceChildren(notice('Consultando criação…'));poll();}},'Consultar novamente'));
+        }
+      };
+      poll();
+    }catch(error){progress.replaceChildren(errorNode(error));button.disabled=false;image.disabled=false;}
+  };
+  return panel('Criar container',form);
+}
+async function advancedCreateView(scope,server) {
   const [images,profiles]=await Promise.all([read('images',undefined,scope),read('profiles',undefined,scope)]);
   const normalize=a=>({'armv7l':'armv7','armhf':'armv7','aarch64':'arm64','x86_64':'amd64','x86-64':'amd64'})[a]||a;
   const compatible=images.data.filter(i=>(i.type||'container')==='container'&&normalize(i.architecture)===normalize(server.environment?.kernel_architecture));

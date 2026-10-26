@@ -46,12 +46,14 @@ class UnixIncus:
                 headers['If-Match'] = etag
             connection.request(method, path + '?' + urlencode({'project': project, 'recursion': 1}), json.dumps(body) if body is not None else None, headers)
             response = connection.getresponse()
-            if response.status >= 400:
-                raise PanelError(response.status, 'Consulta recusada pelo Incus local.')
             raw = response.read(8 * 1024 * 1024 + 1)
             if len(raw) > 8 * 1024 * 1024:
                 raise PanelError(502, 'Resposta Incus excedeu o limite.')
             data = json.loads(raw)
+            if response.status >= 400 or (isinstance(data, dict) and data.get('type') == 'error'):
+                from .core import redact
+                detail = data.get('error') if isinstance(data, dict) else None
+                raise PanelError(response.status if response.status >= 400 else 502, 'Incus: ' + redact(str(detail or 'Operação recusada.'))[:2000])
             if not isinstance(data, dict) or data.get('type') not in ('sync', 'async') or 'metadata' not in data:
                 raise PanelError(502, 'Resposta inesperada do Incus local.')
             return data

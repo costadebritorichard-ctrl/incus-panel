@@ -24,6 +24,19 @@ def run(command, **kwargs):
     return subprocess.run(command, check=True, **kwargs)
 
 
+def ensure_default_network(query):
+    profile = query('/1.0/profiles/default')
+    if any(device.get('type') == 'nic' for device in profile.get('devices', {}).values()):
+        return
+    networks = query('/1.0/networks?recursion=1')
+    bridge = next((n['name'] for n in networks if n.get('managed') and n.get('type') == 'bridge' and n.get('status') == 'Created'), None)
+    if not bridge:
+        existing_names = {n['name'] for n in networks}
+        bridge = next('panelbr' + str(i) for i in range(1000) if 'panelbr' + str(i) not in existing_names)
+        run(['incus', 'network', 'create', bridge, 'ipv4.address=auto', 'ipv4.nat=true', 'ipv6.address=none'])
+    run(['incus', 'profile', 'device', 'add', 'default', 'eth0', 'nic', 'network=' + bridge, 'name=eth0'])
+
+
 def validate_address(address):
     parsed = ipaddress.ip_address(address)
     if parsed.version != 4 or not parsed.is_private or parsed.is_loopback or parsed.is_unspecified or parsed.is_multicast or parsed.is_link_local:
@@ -95,10 +108,7 @@ def main():
         if query('/1.0/instances') or query('/1.0/profiles/default').get('devices'):
             parser.error('Incus parcialmente configurado: configure um pool e o profile default antes de instalar.')
         run(['incus', 'admin', 'init', '--minimal'])
-        profile = query('/1.0/profiles/default')
-        if not any(device.get('type') == 'nic' for device in profile.get('devices', {}).values()):
-            run(['incus', 'network', 'create', 'incusbr0', 'ipv4.address=auto', 'ipv4.nat=true', 'ipv6.address=none'])
-            run(['incus', 'profile', 'device', 'add', 'default', 'eth0', 'nic', 'network=incusbr0', 'name=eth0'])
+    ensure_default_network(query)
     identity = pwd.getpwnam(args.user)
     if identity.pw_uid == 0:
         parser.error('Use uma identidade existente diferente de root.')

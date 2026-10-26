@@ -269,6 +269,9 @@ class Handler(BaseHTTPRequestHandler):
                     if path == "/api/console/start":
                         self.send(201, self.app.open_console(token, session, body))
                         return
+                    if path == '/api/create':
+                        self.send(202, self.app.service.launch(session['user'], body.get('host'), body.get('project'), body))
+                        return
                     if path == "/api/console/input":
                         self.app.console(token, body.get("console")).write(body.get("text"))
                         self.send(200, {"ok": True})

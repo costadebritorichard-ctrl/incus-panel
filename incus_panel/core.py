@@ -186,6 +186,7 @@ class Service:
             return Incus(host)
         self.hosts = {h["id"]: connect(h) for h in config["hosts"]}
         self.audit = []
+        self.launches = {}
         self.lock = threading.RLock()
 
     def context(self, user, host, project):
@@ -199,6 +200,24 @@ class Service:
 
     def read(self, user, host, project, resource, target=None, extra=None):
         client = self.context(user, host, project)
+        if resource == 'creation-images':
+            arch = client.request('GET', '/1.0', project)['metadata'].get('environment', {}).get('kernel_architecture')
+            local = client.request('GET', '/1.0/images', project)['metadata']
+            images = [{'id': 'local:' + i['fingerprint'], 'image': i['fingerprint'], 'label': (i.get('properties', {}).get('description') or i['fingerprint'][:12]) + ' (baixada)'}
+                      for i in local if i.get('type', 'container') == 'container' and architecture(i.get('architecture')) == architecture(arch)]
+            warning = None
+            if self.config.get('allow_remote_images') and not self.config.get('demo'):
+                from .catalog import remote_images
+                try:
+                    images += remote_images(arch)
+                except PanelError as exc:
+                    warning = str(exc)
+            return {'images': images, 'warning': warning}
+        if resource == 'operation':
+            with self.lock:
+                job = self.launches.get(target)
+                if job and job['host'] == host and job['project'] == project and job['identity'] == user['username']:
+                    return redact(copy.deepcopy(job))
         allowed = {"server": "/1.0", "resources": "/1.0/resources", "instances": "/1.0/instances", "images": "/1.0/images", "profiles": "/1.0/profiles", "networks": "/1.0/networks", "pools": "/1.0/storage-pools", "operations": "/1.0/operations"}
         if resource == "projects":
             # Never request a global project inventory with a broad proxy identity.
@@ -221,12 +240,90 @@ class Service:
         if resource in ("resources", "pools", "pool-resources", "volumes") and not user.get("host_metrics", False):
             raise PanelError(403, "Métricas globais não autorizadas para esta identidade.")
         data = client.request("GET", path, project)["metadata"]
+        if resource == 'operations' and isinstance(data, dict):
+            data = copy.deepcopy(data)
+            with self.lock:
+                data['panel'] = [redact(copy.deepcopy(job)) for job in self.launches.values()
+                                 if job['host'] == host and job['project'] == project and job['identity'] == user['username']]
         if resource == "server":
             data = {k: data[k] for k in ("auth", "api_extensions", "environment", "api_version") if k in data}
             data.get("environment", {}).pop("certificate", None)
         return redact(data)
 
-    def mutate(self, user, host, project, action, target, body):
+    def launch(self, user, host, project, body):
+        client = self.context(user, host, project)
+        if self.config.get('read_only', True) or user['role'] != 'administrador' or not self.config.get('manage_all_instances'):
+            raise PanelError(403, 'Criação automática exige administrador local.')
+        target = 'container-' + uuid.uuid4().hex[:10]
+        with self.lock:
+            if len(self.launches) >= 100:
+                completed = [key for key, value in self.launches.items() if value['status_code'] >= 200]
+                if not completed:
+                    raise PanelError(429, 'Aguarde as criações em andamento.')
+                del self.launches[completed[0]]
+        profiles = client.request('GET', '/1.0/profiles', project)['metadata']
+        profile = next((p for p in profiles if p['name'] == 'default'), None)
+        devices = copy.deepcopy(profile.get('devices', {})) if profile else {}
+        overrides = {}
+        if not any(d.get('type') == 'disk' and d.get('path') == '/' for d in devices.values()):
+            pools = client.request('GET', '/1.0/storage-pools', project)['metadata']
+            pool = next((p for p in pools if p.get('status') == 'Created'), None)
+            if not pool:
+                raise PanelError(409, 'O Incus não tem armazenamento disponível. Execute novamente o instalador na TV box.')
+            overrides['root'] = {'type': 'disk', 'path': '/', 'pool': pool['name']}
+        if not any(d.get('type') == 'nic' for d in devices.values()):
+            networks = client.request('GET', '/1.0/networks', project)['metadata']
+            network = next((n for n in networks if n.get('managed') and n.get('type') == 'bridge' and n.get('status') == 'Created'), None)
+            if not network:
+                raise PanelError(409, 'O Incus não tem rede de containers disponível. Execute novamente o instalador na TV box.')
+            overrides['eth0'] = {'type': 'nic', 'name': 'eth0', 'network': network['name']}
+        request = {k: body[k] for k in ('image', 'remote_image') if k in body}
+        request.update(confirmation=f'{host}/{project}/{target}', profiles=['default'] if profile else [])
+        # Internal defaults only; arbitrary devices are never accepted from HTTP.
+        result = self.mutate(user, host, project, 'create', target, request, launch_devices=overrides)
+        job_id = str(uuid.uuid4())
+        job = {'id': job_id, 'host': host, 'project': project, 'identity': user['username'], 'target': target,
+               'description': 'Criar e iniciar ' + target, 'status': 'Baixando imagem e criando container', 'status_code': 100,
+               'metadata': {}, 'err': '', 'incus_operation': result['operation']}
+        with self.lock:
+            self.launches[job_id] = job
+        threading.Thread(target=self._finish_launch, args=(client, project, target, job), daemon=True).start()
+        return {'operation': job_id, 'target': target}
+
+    def _finish_launch(self, client, project, target, job):
+        try:
+            for phase in ('create', 'start'):
+                deadline = time.monotonic() + 1800
+                while time.monotonic() < deadline:
+                    state = client.request('GET', '/1.0/operations/' + job['incus_operation'], project)['metadata']
+                    with self.lock:
+                        job['metadata'] = redact(state.get('metadata', {}))
+                    code = state.get('status_code', 100)
+                    if code >= 200:
+                        if code != 200 or state.get('err'):
+                            raise PanelError(409, state.get('err') or 'O Incus não concluiu a operação.')
+                        break
+                    time.sleep(1)
+                else:
+                    raise PanelError(504, 'Tempo de espera excedido. Confira o estado no Incus antes de repetir.')
+                if phase == 'create':
+                    with self.lock:
+                        job['status'] = 'Iniciando container'
+                    result = client.request('PUT', f'/1.0/instances/{target}/state', project, {'action': 'start', 'timeout': 30, 'force': False})
+                    operation = result.get('operation', '')
+                    if not re.fullmatch(r'/1.0/operations/[a-f0-9-]{36}', operation):
+                        raise PanelError(502, 'Não foi possível acompanhar o início do container.')
+                    job['incus_operation'] = operation.rsplit('/', 1)[-1]
+            instance = client.request('GET', f'/1.0/instances/{target}', project)['metadata']
+            if instance.get('status') != 'Running':
+                raise PanelError(409, 'Container criado, mas não está em execução. Confira o estado no Incus.')
+            with self.lock:
+                job.update(status='Success', status_code=200)
+        except Exception as exc:
+            with self.lock:
+                job.update(status='Failure', status_code=400, err=redact(str(exc))[:2000] if isinstance(exc, PanelError) else 'Falha ao acompanhar a criação. Confira o estado no Incus.')
+
+    def mutate(self, user, host, project, action, target, body, launch_devices=None):
         client = self.context(user, host, project)
         if self.config.get("read_only", True) or user["role"] == "observador":
             raise PanelError(403, "Modo somente leitura ou papel sem permissão.")
@@ -245,17 +342,19 @@ class Service:
             image = next((i for i in images if i["fingerprint"] == body.get("image")), None)
             host_arch = server.get("environment", {}).get("kernel_architecture")
             remote = body.get('remote_image')
-            if remote is not None and (not self.config.get('allow_remote_images', False) or not isinstance(remote, str) or not re.fullmatch(r'[a-z0-9][a-z0-9/_.-]{0,100}', remote) or '..' in remote):
+            if remote is not None and (not self.config.get('allow_remote_images', False) or not isinstance(remote, str) or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9/_.-]{0,100}', remote) or '..' in remote):
                 raise PanelError(400, 'Alias de imagem remota inválido ou não autorizado.')
             if remote is None and (not image or image.get("type", "container") != "container" or architecture(image.get("architecture")) != architecture(host_arch)):
                 raise PanelError(400, "Imagem ausente ou incompatível com a arquitetura do host.")
             profiles = body.get("profiles", ["default"])
             known = {p["name"] for p in client.request("GET", "/1.0/profiles", project)["metadata"]}
-            if not isinstance(profiles, list) or not profiles or any(p not in known for p in profiles):
+            if not isinstance(profiles, list) or (not profiles and launch_devices is None) or any(p not in known for p in profiles):
                 raise PanelError(400, "Selecione profiles existentes.")
             payload = {"name": target, "type": "container", "source": {"type": "image", "fingerprint": image["fingerprint"] if image else ""}, "profiles": profiles}
             if remote is not None:
                 payload['source'] = {'type': 'image', 'mode': 'pull', 'server': 'https://images.linuxcontainers.org', 'protocol': 'simplestreams', 'alias': remote}
+            if launch_devices is not None:
+                payload['devices'] = launch_devices
             path = "/1.0/instances"
         else:
             instance = client.request("GET", path, project)["metadata"]

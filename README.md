@@ -14,7 +14,7 @@ cd incus-panel
 sudo python3 deploy/install.py
 ```
 
-O repositório é privado: o clone exige autenticação no GitHub. Depois do clone,
+O repositório é público e não exige autenticação para clonar. Depois do clone,
 o único comando de instalação é `sudo python3 deploy/install.py`. Ele detecta o
 IPv4 da rota principal, cria o serviço `incus-panel`, habilita a inicialização
 automática e mostra a URL HTTPS, o login `admin` e a senha inicial. Abra a URL em
@@ -22,16 +22,19 @@ outro computador da mesma rede. O certificado é local; confira o fingerprint
 exibido pelo instalador antes de aceitá-lo no navegador.
 
 O painel permite criar containers, iniciar, parar, reiniciar, excluir containers
-parados, criar snapshots/backups e abrir um shell `/bin/sh`. Na criação, informe
-um alias remoto, como `debian/12`, ou apague o campo remoto para usar uma imagem
-local. O Incus baixa a imagem compatível com o processador; a disponibilidade
-depende do catálogo remoto, especialmente em ARMv7. A criação termina com o
-container parado: clique em **Iniciar** para executá-lo.
+parados, criar snapshots/backups e abrir um shell `/bin/sh`. Para criar, escolha
+uma imagem e clique em **Criar container**. A lista reúne imagens locais e imagens
+do catálogo oficial compatíveis com o processador. Nome, disco e rede são
+automáticos. O painel acompanha o download, a criação e o início do container,
+mostrando sucesso apenas depois de confirmar que está em execução. Falhas aparecem
+na própria tela, com a mensagem do Incus. A criação continua se você mudar de tela.
 
 O instalador concede ao usuário do serviço acesso administrativo ao socket
 local do Incus. Não expõe a API Incus na rede. Se o Incus estiver vazio e sem pool,
 inicializa uma configuração mínima com armazenamento e rede NAT. Configurações
-existentes são preservadas; o profile escolhido deve fornecer disco e rede.
+existentes são usadas; se o profile default não tiver rede, o instalador associa
+uma bridge gerenciada existente ou cria uma rede NAT. Na criação, disco e rede
+ausentes no profile são escolhidos automaticamente entre os recursos disponíveis.
 Internet na TV Box é necessária para baixar imagens remotas.
 
 Para escolher o endereço: `sudo python3 deploy/install.py --address 192.168.1.50`.
