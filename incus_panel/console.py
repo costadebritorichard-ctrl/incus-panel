@@ -17,17 +17,21 @@ from .core import PanelError
 class WebSocket:
     def __init__(self, client, path, project, secret=None):
         import http.client
-        connection = http.client.HTTPSConnection(client.url.hostname, client.url.port or 8443, context=client.context, timeout=15)
+        if hasattr(client, 'path'):
+            from .unix_transport import UnixHTTPConnection
+            connection = UnixHTTPConnection(client.path)
+        else:
+            connection = http.client.HTTPSConnection(client.url.hostname, client.url.port or 8443, context=client.context, timeout=15)
         self.connection = connection
         self.send_lock = threading.Lock()
         try:
             connection.connect()
             self.sock = connection.sock
-            if hashlib.sha256(self.sock.getpeercert(binary_form=True)).hexdigest() != client.fingerprint:
+            if not hasattr(client, 'path') and hashlib.sha256(self.sock.getpeercert(binary_form=True)).hexdigest() != client.fingerprint:
                 raise PanelError(502, "Fingerprint TLS divergente no console.")
             key = base64.b64encode(os.urandom(16)).decode()
             query = urlencode({"project": project, **({"secret": secret} if secret is not None else {"type": "lifecycle,operation"})})
-            hostname = client.url.netloc
+            hostname = 'localhost' if hasattr(client, 'path') else client.url.netloc
             request = f"GET {path}?{query} HTTP/1.1\r\nHost: {hostname}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
             self.sock.sendall(request.encode())
             headers = bytearray()
@@ -114,7 +118,7 @@ class Console:
         self.closed = False
         self.lock = threading.RLock()
         self.channels = []
-        if not hasattr(client, "context"):
+        if not hasattr(client, "context") and not hasattr(client, "path"):
             raise PanelError(501, "A demonstração não emula shell. Use um container Incus de teste.")
         response = client.request("POST", f"/1.0/instances/{target}/exec", project, {"command": ["/bin/sh"], "interactive": True, "wait-for-websocket": True, "environment": {"TERM": "dumb", "LANG": "C.UTF-8"}, "width": 100, "height": 30})
         operation = response.get("operation", "")

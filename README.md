@@ -4,6 +4,42 @@ Painel web em português para laboratórios Incus, com foco em containers e equi
 
 **Estado: versão experimental 0.1.0.** Há implementação e testes locais para F1, núcleo de F2 e parte de F3. Os gates de aceite em host real, os experimentos de F4 e funcionalidades restantes estão abertos. Consulte a [matriz de rastreabilidade](docs/rastreabilidade.md) e o [relatório de entrega](docs/entrega.md). Não foi alterado nenhum host Incus real.
 
+## Instalar na TV Box
+
+Na TV Box com Linux, systemd, Incus instalado, Python 3.11+, OpenSSL e iproute2:
+
+```bash
+git clone https://github.com/costadebritorichard-ctrl/incus-panel.git
+cd incus-panel
+sudo python3 deploy/install.py
+```
+
+O repositório é privado: o clone exige autenticação no GitHub. Depois do clone,
+o único comando de instalação é `sudo python3 deploy/install.py`. Ele detecta o
+IPv4 da rota principal, cria o serviço `incus-panel`, habilita a inicialização
+automática e mostra a URL HTTPS, o login `admin` e a senha inicial. Abra a URL em
+outro computador da mesma rede. O certificado é local; confira o fingerprint
+exibido pelo instalador antes de aceitá-lo no navegador.
+
+O painel permite criar containers, iniciar, parar, reiniciar, excluir containers
+parados, criar snapshots/backups e abrir um shell `/bin/sh`. Na criação, informe
+um alias remoto, como `debian/12`, ou apague o campo remoto para usar uma imagem
+local. O Incus baixa a imagem compatível com o processador; a disponibilidade
+depende do catálogo remoto, especialmente em ARMv7. A criação termina com o
+container parado: clique em **Iniciar** para executá-lo.
+
+O instalador concede ao usuário do serviço acesso administrativo ao socket
+local do Incus. Não expõe a API Incus na rede. Se o Incus estiver vazio e sem pool,
+inicializa uma configuração mínima com armazenamento e rede NAT. Configurações
+existentes são preservadas; o profile escolhido deve fornecer disco e rede.
+Internet na TV Box é necessária para baixar imagens remotas.
+
+Para escolher o endereço: `sudo python3 deploy/install.py --address 192.168.1.50`.
+Para atualizar, execute `git pull` e o mesmo comando de instalação; senha e
+configuração existentes são preservadas. Uma instalação anterior em modo de
+leitura exige revisão manual da configuração em `/etc/incus-panel/config.local.json`.
+Consulte [o guia local](docs/instalacao-local.md) para requisitos e diagnóstico.
+
 ## Executar a demonstração
 
 Requer Python 3.11 ou superior. Execute na raiz:

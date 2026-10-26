@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import ssl
 import threading
 import time
 from http.cookies import SimpleCookie
@@ -67,7 +68,7 @@ class Application:
             raise ValueError("Sessão deve durar entre 60 e 86400 segundos.")
         if any(h.get("transport") == "ssh" for h in config["hosts"]):
             if not config.get("read_only", True) or config.get("enable_console") or config.get("enable_events"):
-                raise ValueError("A ponte SSH exige somente leitura, sem console e sem eventos.")
+                raise ValueError("Transportes SSH/socket exigem somente leitura, sem console e sem eventos.")
 
     def login(self, username, password, address):
         now = time.time()
@@ -148,7 +149,7 @@ class Application:
         if not self.config.get("enable_console", False) or self.config.get("read_only", True) or user["role"] not in ("operador", "administrador"):
             raise PanelError(403, "Console não habilitado ou papel sem permissão.")
         allowed = self.config.get("mutable_instances", {}).get(host, {}).get(project, [])
-        if target not in allowed or body.get("confirmation") != f"{host}/{project}/{target}":
+        if not self.service.can_manage(user, host, project, target) or body.get("confirmation") != f"{host}/{project}/{target}":
             raise PanelError(403, "Console exige confirmação e container de teste autorizado.")
         instance = client.request("GET", f"/1.0/instances/{target}", project)["metadata"]
         if instance.get("type") != "container" or instance.get("status") != "Running":
@@ -183,7 +184,7 @@ class Application:
 
     def public_session(self, session):
         user = session["user"]
-        return {"username": user["username"], "role": user["role"], "scopes": user["scopes"], "host_metrics": user.get("host_metrics", False), "csrf": session["csrf"], "expires": session["expires"], "demo": self.config.get("demo", False), "read_only": self.config.get("read_only", True), "enable_console": self.config.get("enable_console", False), "hosts": [{"id": h["id"], "alias": h["alias"], "transport": h.get("transport", "tls")} for h in self.config["hosts"] if h["id"] in user["scopes"]], "mutable_instances": {h: {p: values for p, values in projects.items() if p in user["scopes"].get(h, [])} for h, projects in self.config.get("mutable_instances", {}).items() if h in user["scopes"]}}
+        return {"username": user["username"], "role": user["role"], "scopes": user["scopes"], "host_metrics": user.get("host_metrics", False), "csrf": session["csrf"], "expires": session["expires"], "demo": self.config.get("demo", False), "read_only": self.config.get("read_only", True), "enable_console": self.config.get("enable_console", False), "manage_all_instances": self.config.get("manage_all_instances", False) and user["role"] == "administrador", "allow_remote_images": self.config.get("allow_remote_images", False), "hosts": [{"id": h["id"], "alias": h["alias"], "transport": h.get("transport", "tls")} for h in self.config["hosts"] if h["id"] in user["scopes"]], "mutable_instances": {h: {p: values for p, values in projects.items() if p in user["scopes"].get(h, [])} for h, projects in self.config.get("mutable_instances", {}).items() if h in user["scopes"]}}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -297,7 +298,8 @@ class Handler(BaseHTTPRequestHandler):
                     query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
                     data = self.app.service.read(session["user"], query.get("host"), query.get("project"), query.get("resource"), query.get("target"))
                     transport = next(h.get("transport", "tls") for h in self.app.config["hosts"] if h["id"] == query.get("host"))
-                    self.send(200, {"data": data, "timestamp": time.time(), "source": "fixture explícita" if self.app.config.get("demo") else "Incus via SSH" if transport == "ssh" else "Incus REST TLS"})
+                    source = {"ssh": "Incus via SSH", "unix": "Incus socket Unix", "tls": "Incus REST TLS"}.get(transport, "Incus")
+                    self.send(200, {"data": data, "timestamp": time.time(), "source": "fixture explícita" if self.app.config.get("demo") else source})
                 else:
                     raise PanelError(404, "Rota não encontrada.")
             elif not mutation:
@@ -347,16 +349,37 @@ def valid_origin(config, port):
     return origin.startswith("https://") or (config.get("local_only") is True and origin == f"http://127.0.0.1:{port}")
 
 
+def listener(config, port):
+    host = config.get("listen_host", "127.0.0.1")
+    certificate, key = config.get("tls_certificate"), config.get("tls_key")
+    if bool(certificate) != bool(key):
+        raise ValueError("Configure certificado e chave HTTPS juntos.")
+    if host != "127.0.0.1" and (not certificate or not config.get("origin", "").startswith("https://")):
+        raise ValueError("Acesso pela rede exige HTTPS com certificado e chave.")
+    if certificate and not config.get("origin", "").startswith("https://"):
+        raise ValueError("A origem deve usar HTTPS quando houver certificado.")
+    context = None
+    if certificate:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(certificate, key)
+    return host, context
+
+
 def serve(config, port, clients=None):
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    host, tls = listener(config, port)
+    app = Application(config, clients)
+    server = ThreadingHTTPServer((host, port), Handler)
+    if tls:
+        server.socket = tls.wrap_socket(server.socket, server_side=True)
     server.daemon_threads = True
-    server.app = Application(config, clients)
+    server.app = app
     def reap_sessions():
         while True:
             time.sleep(1)
             server.app.reap()
     threading.Thread(target=reap_sessions, daemon=True).start()
-    print(f"Incus Panel disponível em http://127.0.0.1:{port}", flush=True)
+    print(f"Incus Panel disponível em {'https' if tls else 'http'}://{host}:{port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

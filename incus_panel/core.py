@@ -177,6 +177,9 @@ class Service:
                 return clients[host["id"]]
             if config.get("demo"):
                 return Demo()
+            if host.get("transport") == "unix":
+                from .unix_transport import UnixIncus
+                return UnixIncus(host)
             if host.get("transport") == "ssh":
                 from .ssh_transport import SSHIncus
                 return SSHIncus(host)
@@ -189,6 +192,10 @@ class Service:
         if host not in self.hosts or project not in user.get("scopes", {}).get(host, []):
             raise PanelError(403, "Host ou Project fora do escopo autorizado.")
         return self.hosts[host]
+
+    def can_manage(self, user, host, project, target):
+        self.context(user, host, project)
+        return (user['role'] == 'administrador' and self.config.get('manage_all_instances', False)) or target in self.config.get('mutable_instances', {}).get(host, {}).get(project, [])
 
     def read(self, user, host, project, resource, target=None, extra=None):
         client = self.context(user, host, project)
@@ -225,7 +232,7 @@ class Service:
             raise PanelError(403, "Modo somente leitura ou papel sem permissão.")
         name(target)
         allowed = self.config.get("mutable_instances", {}).get(host, {}).get(project, [])
-        if target not in allowed:
+        if not self.can_manage(user, host, project, target):
             raise PanelError(403, "Alvo fora da lista explícita de containers de teste.")
         expected = f"{host}/{project}/{target}"
         if body.get("confirmation") != expected:
@@ -237,13 +244,18 @@ class Service:
             images = client.request("GET", "/1.0/images", project)["metadata"]
             image = next((i for i in images if i["fingerprint"] == body.get("image")), None)
             host_arch = server.get("environment", {}).get("kernel_architecture")
-            if not image or image.get("type", "container") != "container" or architecture(image.get("architecture")) != architecture(host_arch):
+            remote = body.get('remote_image')
+            if remote is not None and (not self.config.get('allow_remote_images', False) or not isinstance(remote, str) or not re.fullmatch(r'[a-z0-9][a-z0-9/_.-]{0,100}', remote) or '..' in remote):
+                raise PanelError(400, 'Alias de imagem remota inválido ou não autorizado.')
+            if remote is None and (not image or image.get("type", "container") != "container" or architecture(image.get("architecture")) != architecture(host_arch)):
                 raise PanelError(400, "Imagem ausente ou incompatível com a arquitetura do host.")
             profiles = body.get("profiles", ["default"])
             known = {p["name"] for p in client.request("GET", "/1.0/profiles", project)["metadata"]}
             if not isinstance(profiles, list) or not profiles or any(p not in known for p in profiles):
                 raise PanelError(400, "Selecione profiles existentes.")
-            payload = {"name": target, "type": "container", "source": {"type": "image", "fingerprint": image["fingerprint"]}, "profiles": profiles}
+            payload = {"name": target, "type": "container", "source": {"type": "image", "fingerprint": image["fingerprint"] if image else ""}, "profiles": profiles}
+            if remote is not None:
+                payload['source'] = {'type': 'image', 'mode': 'pull', 'server': 'https://images.linuxcontainers.org', 'protocol': 'simplestreams', 'alias': remote}
             path = "/1.0/instances"
         else:
             instance = client.request("GET", path, project)["metadata"]

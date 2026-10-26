@@ -16,7 +16,7 @@ const pages = [ ['overview','◫','Visão geral'],['instances','▣','Containers
 const fmt = n => n === null || n === undefined ? 'n/d' : new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1}).format(n);
 const bytes = n => n === null || n === undefined ? 'n/d' : n >= 1073741824 ? fmt(n/1073741824)+' GiB' : fmt(n/1048576)+' MiB';
 const date = n => n ? new Date(typeof n === 'number' ? n*1000 : n).toLocaleString('pt-BR') : 'n/d';
-const transportLabel = () => session?.hosts.find(h=>h.id===host)?.transport==='ssh'?'SSH verificado':'TLS verificado';
+const transportLabel = () => ({ssh:'SSH verificado',unix:'Socket local Incus',tls:'TLS verificado'})[session?.hosts.find(h=>h.id===host)?.transport||'tls'];
 const badge = (text, cls='') => el('span',{class:'badge '+cls},text);
 const status = text => el('span',{class:'status '+String(text).toLowerCase()},({'Running':'Em execução','Stopped':'Parado','Success':'Concluída','Failure':'Falhou','Running operation':'Em andamento'})[text] || text || 'Desconhecido');
 const json = value => el('pre',{},JSON.stringify(value,null,2));
@@ -40,7 +40,7 @@ async function read(resource,target,scope={host,project}) {
 }
 function route() { const [page='overview',target='',tab='summary'] = location.hash.slice(1).split('/').map(decodeURIComponent); return {page,target,tab}; }
 function instanceLink(name, tab='summary') { return '#instance/'+encodeURIComponent(name)+'/'+tab; }
-function canMutate(target) { return !session.read_only && session.role!=='observador' && (session.mutable_instances?.[host]?.[project] || []).includes(target); }
+function canMutate(target) { return !session.read_only && session.role!=='observador' && (session.manage_all_instances || (session.mutable_instances?.[host]?.[project] || []).includes(target)); }
 function actionButton(label, action, target, extra={}) { return el('button',{disabled:canMutate(target)?null:'',onclick:()=>openAction(action,target,extra)},label); }
 function openAction(action,target,extra={}) {
   pendingAction={host,project,action,target,...extra};
@@ -82,7 +82,7 @@ $('#login-form').onsubmit=async event=>{
 function enter() {
   clearTimeout(expiryTimer); expiryTimer=setTimeout(logoutLocal,Math.max(0,session.expires*1000-Date.now()));
   $('#login').hidden=true; $('#shell').hidden=false; $('#identity').textContent=`${session.username} · ${session.role}`;
-  $('#mode').textContent=session.demo?'DEMONSTRAÇÃO':session.read_only?'SOMENTE LEITURA':'LABORATÓRIO';
+  $('#mode').textContent=session.demo?'DEMONSTRAÇÃO':session.read_only?'SOMENTE LEITURA':session.manage_all_instances?'ADMINISTRAÇÃO':'LABORATÓRIO';
   $('#host').replaceChildren(...session.hosts.map(h=>el('option',{value:h.id},h.alias)));
   let remembered;try{remembered=JSON.parse(localStorage.getItem('incus-scope')||'null');}catch{remembered=null;}
   host=session.hosts.some(h=>h.id===remembered?.host)?remembered.host:session.hosts[0]?.id;
@@ -242,10 +242,11 @@ async function createView(scope,server) {
   const compatible=images.data.filter(i=>(i.type||'container')==='container'&&normalize(i.architecture)===normalize(server.environment?.kernel_architecture));
   const form=el('form',{class:'panel-body'});
   const target=el('input',{required:'',pattern:'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}',placeholder:'lab-novo'});
-  const image=el('select',{required:''},...compatible.map(i=>el('option',{value:i.fingerprint},i.properties?.description||i.aliases?.[0]?.name||i.fingerprint)));
+  const image=el('select',{},...compatible.map(i=>el('option',{value:i.fingerprint},i.properties?.description||i.aliases?.[0]?.name||i.fingerprint)));
+  const remote=el('input',{placeholder:'debian/12',value:session.allow_remote_images?'debian/12':''});
   const profile=el('select',{required:''},...profiles.data.map(p=>el('option',{value:p.name},p.name)));
-  form.append(kv([['Host',scope.host],['Project',scope.project],['Tipo','Container'],['Arquitetura',server.environment?.kernel_architecture]]),el('label',{},'Nome do container',target),el('br'),el('label',{},'Imagem local compatível',image),el('br'),el('label',{},'Profile (define rede, storage e limites)',profile),el('br'),notice('O nome precisa constar na lista de containers de teste configurada pelo administrador. A criação usa rede, pool e limites do profile escolhido.'),el('button',{class:'primary',disabled:session.read_only||session.role==='observador'||!compatible.length?'':null},'Revisar criação →'));
-  form.onsubmit=event=>{event.preventDefault();openAction('create',target.value,{image:image.value,profiles:[profile.value]});};
+  form.append(kv([['Host',scope.host],['Project',scope.project],['Tipo','Container'],['Arquitetura',server.environment?.kernel_architecture]]),el('label',{},'Nome do container',target),el('br'),el('label',{},'Imagem local compatível',image),...(session.allow_remote_images?[el('label',{},'Ou imagem remota (ex.: debian/12, alpine/3.22)',remote)]:[]),el('br'),el('label',{},'Profile (define rede, storage e limites)',profile),el('br'),notice('Administradores locais podem escolher o nome. Imagens remotas são baixadas durante a criação e precisam existir para a arquitetura do host. A criação usa rede, pool e limites do profile escolhido.'),el('button',{class:'primary',disabled:session.read_only||session.role==='observador'||(!compatible.length&&!session.allow_remote_images)?'':null},'Revisar criação →'));
+  form.onsubmit=event=>{event.preventDefault();openAction('create',target.value,{...(session.allow_remote_images&&remote.value.trim()?{remote_image:remote.value.trim()}:{image:image.value}),profiles:[profile.value]});};
   return panel('Novo container de laboratório',form);
 }
 api('/api/session').then(data=>{session=data;enter();}).catch(()=>{});
