@@ -16,6 +16,7 @@ const pages = [ ['overview','◫','Visão geral'],['instances','▣','Containers
 const fmt = n => n === null || n === undefined ? 'n/d' : new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1}).format(n);
 const bytes = n => n === null || n === undefined ? 'n/d' : n >= 1073741824 ? fmt(n/1073741824)+' GiB' : fmt(n/1048576)+' MiB';
 const date = n => n ? new Date(typeof n === 'number' ? n*1000 : n).toLocaleString('pt-BR') : 'n/d';
+const transportLabel = () => session?.hosts.find(h=>h.id===host)?.transport==='ssh'?'SSH verificado':'TLS verificado';
 const badge = (text, cls='') => el('span',{class:'badge '+cls},text);
 const status = text => el('span',{class:'status '+String(text).toLowerCase()},({'Running':'Em execução','Stopped':'Parado','Success':'Concluída','Failure':'Falhou','Running operation':'Em andamento'})[text] || text || 'Desconhecido');
 const json = value => el('pre',{},JSON.stringify(value,null,2));
@@ -136,7 +137,7 @@ async function render() {
       const memory=resources.data?.memory;
       const cards=[['Containers',instances.length,`${running} em execução · ${instances.filter(i=>i.status==='Stopped').length} parados`],['Memória do host',bytes(memory?.used),memory?'de '+bytes(memory.total):'Fonte indisponível ou não autorizada'],['Arquitetura',server.environment?.kernel_architecture||'n/d','Containers LXC · sem criação de VM'],['Incus',server.environment?.server_version||'n/d',server.environment?.server_clustered?'Cluster configurado':'Servidor standalone']];
       container.append(el('div',{class:'cards'},cards.map(([label,value,note])=>el('div',{class:'card'},el('div',{class:'label'},label),el('div',{class:'value'},value),el('div',{class:'note'},note)))));
-      container.append(el('div',{class:'grid'},panel('Containers',instanceTable(instances),el('a',{href:'#instances'},'Ver todos ↗')),panel('Identidade do servidor',el('div',{class:'panel-body'},kv([['Servidor',server.environment?.server_name],['Project',project],['Conexão',session.demo?'Fixture explícita':'TLS verificado + fingerprint'],['Atualização','REST a cada 15 s, com aba visível']])))));
+      container.append(el('div',{class:'grid'},panel('Containers',instanceTable(instances),el('a',{href:'#instances'},'Ver todos ↗')),panel('Identidade do servidor',el('div',{class:'panel-body'},kv([['Servidor',server.environment?.server_name],['Project',project],['Conexão',session.demo?'Fixture explícita':transportLabel()],['Atualização','A cada 15 s, com aba visível']])))));
       if(resources.error)container.append(errorNode(resources.error));
       container.append(await storageView(scope,true));
     } else if(r.page==='instances') container.append(filteredInstances(instances));
@@ -149,14 +150,14 @@ async function render() {
       if(r.page==='projects')container.append(notice('A lista contém somente os escopos configurados no servidor do painel. A autorização final permanece no Incus.'));
     } else if(r.page==='tasks') container.append(await taskView(scope));
     else if(r.page==='create') container.append(await createView(scope,server));
-    else if(r.page==='settings') container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only?'Somente leitura':'Mutações limitadas à allowlist'],['Autorização','Proxy por usuário + Incus TLS restrito'],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice('O inventário é atualizado a cada 15 segundos. Quando habilitados pelo administrador, eventos antecipam a atualização. O console é encerrado por logout, expiração ou inatividade.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',json((await read('audit',undefined,scope)).data)));
+    else if(r.page==='settings') container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only?'Somente leitura':'Mutações limitadas à allowlist'],['Autorização','Escopo no painel + '+transportLabel()],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice('O inventário é atualizado a cada 15 segundos. Quando habilitados pelo administrador, eventos antecipam a atualização. O console é encerrado por logout, expiração ou inatividade.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',json((await read('audit',undefined,scope)).data)));
     else container.append(empty('Página não encontrada.'));
     if(id!==generation||!session)return;
     const tracked=[...tasks.values()].filter(t=>t.host===scope.host&&t.project===scope.project);
     for(const task of tracked)if(task.status_code<200){try{Object.assign(task,(await read('operation',task.id,scope)).data);}catch{task.status='Resultado incerto';}}
     if(id!==generation||!session)return;
     $('#task-summary').textContent=tracked.length?tracked.map(t=>`${t.target}: ${t.status}`).join(' · '):'Operações rastreadas pelo Incus';
-    $('#content').replaceChildren(container); $('#connection').textContent=(session.demo?'● Simulação conectada':'● Conectado via TLS')+' · '+host+' / '+project;
+    $('#content').replaceChildren(container); $('#connection').textContent=(session.demo?'● Simulação conectada':'● Conectado · '+transportLabel())+' · '+host+' / '+project;
     $('#updated').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
   } catch(error) {
     if(id===generation&&session){$('#content').replaceChildren(errorNode(error),notice('Não foi possível atualizar este escopo. A falha de conexão não indica que os containers estejam parados.'));$('#connection').textContent=error.status===403?'Sem permissão':'Conexão degradada';}

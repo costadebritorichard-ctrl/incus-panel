@@ -31,6 +31,14 @@ Console e eventos remotos são opt-in e precisam ser validados no Incus da insta
 
 ## Configurar um Incus real
 
+Para uma TV Box já acessível por SSH, há um assistente que conecta em modo de leitura, sem instalar nada no equipamento:
+
+```powershell
+python scripts/connect_tvbox.py --host ENDERECO_DA_TVBOX --user suricata
+```
+
+Digite a senha quando o OpenSSH solicitar. O painel real usa `http://127.0.0.1:8081`, com login próprio gerado no terminal. Consulte [integração SSH](docs/tvbox.md) para requisitos, isolamento e limites. A integração HTTPS abaixo continua disponível.
+
 1. Leia o [manual de operação e segurança](docs/operacao.md).
 2. Copie `config.example.json` para `config.local.json` (ignorado pelo Git).
 3. Configure um endpoint HTTPS fixo, CA, certificado de cliente restrito a Projects e chave privada fora da raiz web. Confirme o fingerprint SHA-256 fora de banda. CA, hostname e fingerprint são verificados; não há opção de desabilitar TLS.

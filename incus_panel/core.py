@@ -170,9 +170,18 @@ class Demo:
 
 
 class Service:
-    def __init__(self, config):
+    def __init__(self, config, clients=None):
         self.config = config
-        self.hosts = {h["id"]: (Demo() if config.get("demo") else Incus(h)) for h in config["hosts"]}
+        def connect(host):
+            if clients and host["id"] in clients:
+                return clients[host["id"]]
+            if config.get("demo"):
+                return Demo()
+            if host.get("transport") == "ssh":
+                from .ssh_transport import SSHIncus
+                return SSHIncus(host)
+            return Incus(host)
+        self.hosts = {h["id"]: connect(h) for h in config["hosts"]}
         self.audit = []
         self.lock = threading.RLock()
 

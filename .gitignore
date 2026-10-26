@@ -8,3 +8,5 @@ config.local.json
 .env
 artifacts/
 .git-local/
+.credentials/
+config.tvbox.local.json
