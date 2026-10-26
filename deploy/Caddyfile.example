@@ -1,0 +1,4 @@
+# Exemplo a adaptar pelo administrador; não foi instalado automaticamente.
+panel.example.invalid {
+    reverse_proxy 127.0.0.1:8080
+}

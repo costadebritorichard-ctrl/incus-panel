@@ -1,0 +1,22 @@
+[Unit]
+Description=Incus Panel - laboratorio
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=incus-panel
+Group=incus-panel
+WorkingDirectory=/opt/incus-panel
+ExecStart=/usr/bin/python3 -m incus_panel.server --config /etc/incus-panel/config.local.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

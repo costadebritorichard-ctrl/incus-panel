@@ -1,0 +1,80 @@
+# Incus Panel
+
+Painel web em português para laboratórios Incus, com foco em containers e equipamentos de baixo custo. Implementação inicial da especificação em [`especificacao/`](especificacao/), sem dependências Python ou JavaScript externas.
+
+**Estado: versão experimental 0.1.0.** Há implementação e testes locais para F1, núcleo de F2 e parte de F3. Os gates de aceite em host real, os experimentos de F4 e funcionalidades restantes estão abertos. Consulte a [matriz de rastreabilidade](docs/rastreabilidade.md) e o [relatório de entrega](docs/entrega.md). Não foi alterado nenhum host Incus real.
+
+## Executar a demonstração
+
+Requer Python 3.11 ou superior. Execute na raiz:
+
+```powershell
+python -m incus_panel.server --demo
+```
+
+Abra **http://127.0.0.1:8080**. O terminal exibe o usuário `demo` e uma senha temporária gerada a cada execução. Todos os dados e alterações são explicitamente simulados e ficam em memória. O modo demo não emula um shell nem um host real. Os Projects `laboratorio` e `redes` possuem containers homônimos para exercitar o isolamento; `lab-novo` pode ser criado pela interface.
+
+## Funcionalidades
+
+- Login, sessão com expiração, logout, CSRF e papéis efetivos no backend.
+- Dashboard, navegação lateral, seleção de host/Project, busca e filtros de containers.
+- Detalhes de containers: recursos, dispositivos locais/herdados, configuração, snapshots e backups.
+- Leitura de imagens, profiles, redes, pools e escopos de Projects.
+- Start, Stop, Restart, criação, exclusão protegida e criação de snapshots/backups em alvos explicitamente autorizados.
+- Operações rastreadas por UUID, com resultado confirmado pelo Incus e auditoria temporária.
+- Alertas de capacidade de pool em 80/90%; métricas ausentes aparecem como `n/d`.
+- Console textual `/bin/sh`: canais WebSocket TLS no backend, entrada por linha no navegador, encerramento por logout/expiração/inatividade.
+- Eventos lifecycle/operation: reconexão com backoff e ressincronização REST. Atualização periódica a cada 15 s como fallback.
+- Múltiplas conexões configuráveis, mantendo identidade composta `host/Project/container`; nenhuma criação ou alteração de cluster.
+
+Console e eventos remotos são opt-in e precisam ser validados no Incus da instalação. O console não é um emulador VT completo: aplicativos como `vim`/`top` em tela inteira não são suportados nesta versão. Backend local em loopback; acesso remoto exige proxy reverso HTTPS.
+
+## Configurar um Incus real
+
+1. Leia o [manual de operação e segurança](docs/operacao.md).
+2. Copie `config.example.json` para `config.local.json` (ignorado pelo Git).
+3. Configure um endpoint HTTPS fixo, CA, certificado de cliente restrito a Projects e chave privada fora da raiz web. Confirme o fingerprint SHA-256 fora de banda. CA, hostname e fingerprint são verificados; não há opção de desabilitar TLS.
+4. Gere o hash de senha sem gravar a senha em argumentos ou arquivos:
+
+   ```powershell
+   python -m incus_panel.server --hash-password
+   ```
+
+5. Configure usuários e seus `scopes`, mantendo `read_only: true` para F1. Ative métricas globais somente em identidades que podem conhecer todo o host.
+6. Configure o proxy HTTPS de acordo com `origin` e execute:
+
+   ```powershell
+   python -m incus_panel.server --config config.local.json
+   ```
+
+Para F2/F3, use apenas um Project isolado e containers descartáveis na `mutable_instances`. Habilite `enable_console` e `enable_events` somente após conferir a API e as permissões no servidor alvo. Nenhuma credencial Incus chega ao navegador. O navegador recebe apenas dados redigidos e um cookie HttpOnly.
+
+## Verificar
+
+```powershell
+python -m unittest discover -s tests -v
+node --check web/app.js
+python scripts/traceability.py --check
+```
+
+No Windows, `./scripts/check.ps1` executa os três comandos. Node é necessário somente para verificação sintática e QA opcional; não é necessário em produção. Há CI para Python 3.11–3.14, ainda não executada remotamente.
+
+## Histórico Git e publicação
+
+O ambiente de desenvolvimento restringiu gravações em `.git`, mas permitiu um histórico alternativo em `.git-local`. Os commits foram preservados ali. Para consultar antes da importação:
+
+```powershell
+git --git-dir=.git-local --work-tree=. log --oneline
+```
+
+O GitHub não pôde ser acessado pela sessão de desenvolvimento, mesmo após a autenticação do usuário, devido ao bloqueio de conexões externas do executor. A criação e o push do remoto **não foram confirmados**.
+
+Para importar o histórico para `.git`, criar o repositório **privado** `incus-panel` na sua conta autenticada e publicar todos os commits, execute no seu terminal:
+
+```powershell
+./scripts/publish.ps1
+```
+
+O script preserva os arquivos de trabalho, não faz force push, não substitui um `origin` diferente e interrompe em caso de erro. Em clones normais, o diretório `.git-local` não é necessário. O histórico também está exportado no arquivo local `artifacts/incus-panel.bundle`, que não é enviado ao GitHub.
+
+Licença MIT para o código novo; referências e documentação de terceiros mantêm suas respectivas licenças. Consulte [arquitetura](docs/arquitetura.md), [experimentos](docs/experimentos.md) e [changelog](CHANGELOG.md).
