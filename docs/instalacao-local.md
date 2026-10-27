@@ -22,14 +22,22 @@ mostrado antes de confiar nesse certificado. O acesso painel–Incus usa somente
 O administrador do painel controla todos os containers dos Projects descobertos
 na instalação. O usuário de sistema `incus-panel` recebe acesso ao grupo do socket.
 
-Use **Containers → Criar container**, escolha a imagem e clique em **Criar container**.
+Use **Containers → Criar container**, informe o nome, escolha a imagem e clique em **Criar container**.
 A lista mostra imagens locais e imagens do servidor oficial compatíveis com a
-arquitetura. O painel gera um nome, usa o profile default e completa disco e rede
+arquitetura. O nome aceita até 63 caracteres com letras, números e hífens (sem
+hífen no início ou fim). Nomes já usados são recusados pelo Incus. O painel usa
+o profile default e completa disco e rede
 com recursos disponíveis quando necessário. O resultado aparece na própria tela:
 download/criação, início e confirmação de que o container está em execução. Se
 falhar, aparece o motivo retornado pelo Incus. Depois use **Abrir container** e a
 aba **Console** para abrir `/bin/sh`. Não há formulário adicional ou confirmação
 digitada para criar; confirmações de operações destrutivas continuam exigidas.
+A tela dedicada apresenta as etapas e uma barra de progresso: porcentagens
+vêm dos metadados do Incus e correspondem à etapa em andamento, não a uma
+estimativa do tempo total. Sem porcentagem, a barra indica atividade. O resultado
+só chega a concluído após confirmar que o container está executando. É possível
+navegar pelo painel e voltar à criação na mesma sessão para continuar acompanhando.
+Consultas exibem um indicador de carregamento enquanto aguardam a TV Box.
 O console é textual, com entrada por linha. Imagens remotas precisam estar
 disponíveis para a arquitetura da TV Box e exigem Internet no equipamento.
 

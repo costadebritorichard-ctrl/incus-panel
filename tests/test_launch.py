@@ -31,11 +31,28 @@ class LaunchContracts(unittest.TestCase):
         return result, self.service.read(self.user, 'demo', 'laboratorio', 'operation', result['operation'])
 
     def test_only_image_creates_and_starts_with_generated_name(self):
-        result, job = self.launch(target='ignored', profiles=['untrusted'], devices={'bad': {}})
+        result, job = self.launch(profiles=['untrusted'], devices={'bad': {}})
         self.assertRegex(result['target'], r'^container-[a-f0-9]{10}$')
         self.assertEqual(job['status_code'], 200)
         self.assertEqual(self.client.instances['laboratorio', result['target']]['status'], 'Running')
         self.assertEqual(self.client.instances['laboratorio', result['target']]['profiles'], ['default'])
+
+    def test_chosen_name_is_used_and_invalid_names_never_create(self):
+        result, job = self.launch(target='meu-container')
+        self.assertEqual(result['target'], 'meu-container')
+        self.assertEqual(job['phase'], 'done')
+        self.assertEqual(self.client.instances['laboratorio', 'meu-container']['status'], 'Running')
+        for target in ('', '-nome', 'nome-', 'nome com espaco', '../teste', 'a' * 64, 'nome_invalido'):
+            with patch.object(self.client, 'request') as request:
+                with self.assertRaises(PanelError):
+                    self.launch(target=target)
+                request.assert_not_called()
+
+    def test_duplicate_name_is_rejected_and_original_is_preserved(self):
+        self.launch(target='meu-container')
+        with self.assertRaises(PanelError):
+            self.launch(target='meu-container')
+        self.assertEqual(self.client.instances['laboratorio', 'meu-container']['status'], 'Running')
 
     def test_missing_profile_uses_automatic_disk_and_network(self):
         original = self.client.request

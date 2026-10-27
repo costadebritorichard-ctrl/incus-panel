@@ -12,6 +12,7 @@ const el = (tag, attrs = {}, ...children) => {
 let session, host, project, generation = 0, pendingAction, timer, expiryTimer, busy = false, consoleId, consoleTimer;
 let eventTimer,eventVersion;
 const tasks = new Map();
+const creationRuns = new Map();
 const pages = [ ['overview','◫','Visão geral'],['instances','▣','Containers'],['images','◇','Imagens'],['storage','▤','Armazenamento'],['networks','⌘','Redes'],['profiles','☷','Profiles'],['projects','▱','Projects'],['tasks','◷','Tarefas'],['alerts','△','Alertas'],['server','▧','Servidor'],['settings','⚙','Configurações'] ];
 const fmt = n => n === null || n === undefined ? 'n/d' : new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1}).format(n);
 const bytes = n => n === null || n === undefined ? 'n/d' : n >= 1073741824 ? fmt(n/1073741824)+' GiB' : fmt(n/1048576)+' MiB';
@@ -26,6 +27,7 @@ const kv = pairs => el('dl',{class:'key-values'},pairs.map(([k,v])=>el('div',{},
 function table(headers, rows) { return el('div',{class:'table-wrap'},rows.length ? el('table',{},el('thead',{},el('tr',{},headers.map(h=>el('th',{},h)))),el('tbody',{},rows.map(r=>el('tr',{},r.map(c=>el('td',{},c)))))) : empty('Nenhum recurso encontrado neste escopo.')); }
 function notice(text, critical=false) { return el('div',{class:'alert'+(critical?' critical':'')},text); }
 function errorNode(error) { return notice((error.status===403?'Sem permissão. ':error.status===503?'Desconectado. ':'')+error.message,true); }
+function loadingView(message) { return el('div',{class:'loading-state',role:'status','aria-live':'polite'},el('span',{class:'spinner','aria-hidden':'true'}),el('p',{},message)); }
 async function api(path, body) {
   const response = await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':session?.csrf || ''}:{},body:body?JSON.stringify(body):undefined,cache:'no-store'});
   const result = await response.json();
@@ -55,7 +57,7 @@ function openAction(action,target,extra={}) {
 }
 $('#cancel-action').onclick=()=>$('#confirm').close();
 $('#action-form').onsubmit=async event=>{
-  event.preventDefault(); $('#submit-action').disabled=true;
+  event.preventDefault(); $('#submit-action').disabled=true;$('#submit-action').textContent='Processando…';
   try {
     if(pendingAction.action==='console'){
       const result=await api('/api/console/start',{...pendingAction,confirmation:$('#confirmation').value});
@@ -65,19 +67,21 @@ $('#action-form').onsubmit=async event=>{
     tasks.set(`${pendingAction.host}/${pendingAction.project}/${data.operation}`,{...pendingAction,id:data.operation,status:'Aguardando confirmação',status_code:100});
     $('#confirm').close(); await render();
   } catch(error) { $('#action-error').textContent=error.message; }
-  finally { $('#submit-action').disabled=false; }
+  finally { $('#submit-action').disabled=false;$('#submit-action').textContent='Confirmar operação'; }
 };
 function logoutLocal() {
   closeConsole();
+  for(const run of creationRuns.values())clearTimeout(run.timer);
+  creationRuns.clear();
   session=null; generation++; clearTimeout(timer); clearTimeout(expiryTimer); clearTimeout(eventTimer); tasks.clear(); $('#content').replaceChildren(); $('#tree').replaceChildren(); $('#shell').hidden=true; $('#login').hidden=false;
   if($('#confirm').open) $('#confirm').close();
 }
 $('#logout').onclick=async()=>{try{await api('/api/logout',{});}finally{logoutLocal();}};
 $('#login-form').onsubmit=async event=>{
-  event.preventDefault(); $('#login-error').textContent=''; const form=event.target; const button=form.querySelector('button'); button.disabled=true;
+  event.preventDefault(); $('#login-error').textContent=''; const form=event.target; const button=form.querySelector('button');const label=button.textContent;button.disabled=true;button.textContent='Entrando…';
   try { session=await api('/api/login',Object.fromEntries(new FormData(form))); form.reset(); enter(); }
   catch(error) { $('#login-error').textContent=error.message; }
-  finally { button.disabled=false; }
+  finally { button.disabled=false;button.textContent=label; }
 };
 function enter() {
   clearTimeout(expiryTimer); expiryTimer=setTimeout(logoutLocal,Math.max(0,session.expires*1000-Date.now()));
@@ -122,6 +126,7 @@ async function render() {
   $('#navigation').replaceChildren(...pages.map(([key,icon,label])=>el('a',{href:'#'+key,class:r.page===key?'active':''},el('span',{},icon),label)));
   $('#banner').hidden=!session.demo; $('#banner').textContent='DEMONSTRAÇÃO · Todos os dados e operações são simulados em memória. Nada é enviado a um servidor Incus real.';
   $('#connection').textContent='Consultando Incus…'; $('#content').setAttribute('aria-busy','true');
+  $('#content').replaceChildren(loadingView(route().page==='create'?'Carregando imagens disponíveis…':'Carregando '+title+'…'));
   const container=el('div');
   try {
     const [serverResult, instancesResult]=await Promise.allSettled([read('server',undefined,scope),read('instances',undefined,scope)]);
@@ -238,46 +243,69 @@ async function taskView(scope) {
 }
 async function createView(scope,server) {
   if(!session.manage_all_instances)return advancedCreateView(scope,server);
+  const key=scope.host+'/'+scope.project;
+  if(creationRuns.has(key))return creationScreen(creationRuns.get(key));
   const result=(await read('creation-images',undefined,scope)).data;
-  const form=el('form',{class:'panel-body'});
+  const form=el('form',{class:'panel-body create-form'});
+  const target=el('input',{name:'container-name',required:'',maxlength:'63',pattern:'[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?',placeholder:'meu-container',autocomplete:'off','aria-describedby':'container-name-help'});
   const image=el('select',{required:'','aria-label':'Imagem do container'},...result.images.map(i=>el('option',{value:i.id},i.label)));
   const button=el('button',{class:'primary',disabled:!result.images.length||session.read_only?'':null},'Criar container');
   const progress=el('div',{'aria-live':'polite',role:'status'});
   if(result.warning)form.append(notice(result.warning,true));
-  form.append(el('label',{},'Escolha a imagem',image),notice('O nome, o armazenamento e a rede são configurados automaticamente. O container será criado e iniciado. ' + (session.low_resource?'Modo leve: limite de 128 MiB por container.':'')),button,progress);
+  form.append(el('label',{},'Nome do container',target),el('small',{id:'container-name-help'},'Use letras, números e hífens. Exemplo: meu-servidor.'),el('label',{},'Escolha a imagem',image),notice('O armazenamento e a rede são configurados automaticamente. O container será criado e iniciado. ' + (session.low_resource?'Modo leve: limite de 128 MiB por container.':'')),button,progress);
   if(!result.images.length)form.append(notice('Nenhuma imagem compatível disponível. Confira a conexão da TV box com a Internet e tente novamente.',true),el('button',{type:'button',onclick:()=>render()},'Tentar novamente'));
   form.onsubmit=async event=>{
-    event.preventDefault();button.disabled=true;image.disabled=true;
-    progress.replaceChildren(notice('Enviando solicitação ao Incus…'));
+    event.preventDefault();if(button.disabled)return;button.disabled=true;image.disabled=true;target.disabled=true;
+    const run={key,scope,owner:session,target:target.value.trim(),phase:'prepare',status_code:100,metadata:{}};
+    creationRuns.set(key,run);$('#content').replaceChildren(creationScreen(run));
     const selected=result.images.find(i=>i.id===image.value);
     try{
-      const created=await api('/api/create',{...scope,...(selected.remote_image?{remote_image:selected.remote_image}:{image:selected.image})});
-      const key=`${scope.host}/${scope.project}/${created.operation}`;
-      const task={...scope,id:created.operation,target:created.target,action:'create',status_code:100};
-      tasks.set(key,task);
-      const owner=session;
-      const poll=async()=>{
-        if(session!==owner)return;
-        try{
-          const state=(await read('operation',created.operation,scope)).data;
-          tasks.set(key,{...task,...state});
-          if(state.status_code>=200){
-            button.disabled=false;image.disabled=false;
-            if(state.status_code===200){
-              progress.replaceChildren(notice(`Container ${created.target} criado e em execução.`),el('a',{href:instanceLink(created.target)},'Abrir container →'));
-            }else progress.replaceChildren(notice(`Falha ao criar/iniciar ${created.target}: ${state.err||state.status}`,true));
-            return;
-          }
-          progress.replaceChildren(notice(`${created.target}: ${state.status}. Isso pode levar alguns minutos.`),el('pre',{},JSON.stringify(state.metadata||{})));
-          setTimeout(poll,session.low_resource?5000:1500);
-        }catch(error){
-          progress.replaceChildren(errorNode(error),notice(`Não foi possível confirmar o resultado de ${created.target}. Confira Containers ou Tarefas antes de repetir.`),el('button',{type:'button',onclick:()=>{progress.replaceChildren(notice('Consultando criação…'));poll();}},'Consultar novamente'));
-        }
-      };
-      poll();
-    }catch(error){progress.replaceChildren(errorNode(error));button.disabled=false;image.disabled=false;}
+      const created=await api('/api/create',{...scope,target:run.target,...(selected.remote_image?{remote_image:selected.remote_image}:{image:selected.image})});
+      if(session!==run.owner)return;
+      Object.assign(run,created,{phase:'create'});updateCreationScreen(run);pollCreation(run);
+    }catch(error){
+      if(session!==run.owner)return;
+      Object.assign(run,{status_code:400,err:error.message,uncertain:!error.status||error.status>=500});updateCreationScreen(run);
+    }
   };
   return panel('Criar container',form);
+}
+function updateCreationScreen(run){
+  if(session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page==='create')$('#content').replaceChildren(creationScreen(run));
+}
+async function pollCreation(run){
+  if(session!==run.owner||run.polling)return;
+  clearTimeout(run.timer);run.polling=true;
+  try{
+    const state=(await read('operation',run.operation,run.scope)).data;
+    if(session!==run.owner)return;
+    Object.assign(run,state,{connectionError:null});
+    tasks.set(`${run.scope.host}/${run.scope.project}/${run.operation}`,{...run.scope,...state,action:'create'});
+    updateCreationScreen(run);
+    if(state.status_code<200)run.timer=setTimeout(()=>pollCreation(run),session.low_resource?5000:1500);
+  }catch(error){run.connectionError=error.message;updateCreationScreen(run);}
+  finally{run.polling=false;}
+}
+function creationScreen(run){
+  const success=run.status_code===200,failed=run.status_code>=400;
+  const phases=[['prepare','Preparar configuração'],['create','Baixar imagem e criar container'],['start','Iniciar container'],['verify','Confirmar funcionamento']];
+  const current=success?phases.length:Math.max(0,phases.findIndex(([key])=>key===run.phase));
+  const screen=el('section',{class:'panel creation-screen','aria-labelledby':'creation-heading'});
+  const body=el('div',{class:'panel-body'});
+  const label=success?'Container pronto':failed?'Não foi possível concluir':run.connectionError?'Conexão interrompida':'Criando seu container';
+  body.append(el('div',{class:'creation-heading'},...(!success&&!failed&&!run.connectionError?[el('span',{class:'spinner','aria-hidden':'true'})]:[]),el('h2',{id:'creation-heading'},label)),el('p',{class:'creation-target'},run.target));
+  const percentage=Object.entries(run.metadata||{}).filter(([key,value])=>/progress/i.test(key)&&typeof value==='string').sort(([a],[b])=>Number(/download/i.test(a))-Number(/download/i.test(b))).map(([,value])=>value.match(/(\d+(?:\.\d+)?)%/)).find(Boolean);
+  const numeric=percentage?Math.min(100,Math.max(0,Number(percentage[1]))):null;
+  const bar=el('progress',{max:'100','aria-label':'Progresso da etapa atual',...(success?{value:'100'}:numeric!==null?{value:String(numeric)}:{})});
+  if(!failed&&!run.connectionError)body.append(bar,el('p',{class:'muted',role:'status'},success?'Container criado e em execução.':numeric!==null?`Progresso informado pelo Incus: ${numeric}% nesta etapa.`:'Etapa em andamento. Aguardando o progresso informado pelo Incus…'));
+  body.append(el('ol',{class:'creation-steps'},...phases.map(([key,title],index)=>el('li',{class:index<current?'complete':index===current?'current':'','aria-current':index===current?'step':null},el('span',{'aria-hidden':'true'},index<current?'✓':String(index+1)),title))));
+  if(success)body.append(el('a',{class:'primary creation-link',href:instanceLink(run.target)},'Abrir container →'));
+  else if(failed)body.append(notice(run.err||'O Incus não concluiu a operação.',true));
+  else if(!run.connectionError)body.append(el('p',{class:'muted'},'Você pode navegar pelo painel. A criação continua em segundo plano; volte a esta tela para acompanhar.'));
+  if(run.connectionError)body.append(notice(run.connectionError,true),el('button',{type:'button',onclick:()=>pollCreation(run)},'Consultar novamente'));
+  if(run.uncertain)body.append(notice('A conexão falhou antes da confirmação. Confira Containers ou Tarefas antes de tentar criar novamente.',true));
+  if(success||failed)body.append(el('button',{type:'button',onclick:()=>{creationRuns.delete(run.key);render();}},success?'Criar outro container':'Voltar ao formulário'));
+  screen.append(body);return screen;
 }
 async function advancedCreateView(scope,server) {
   const [images,profiles]=await Promise.all([read('images',undefined,scope),read('profiles',undefined,scope)]);

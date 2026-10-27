@@ -269,7 +269,10 @@ class Service:
         if self.low_resource and not self.config.get('demo') and any(h['id'] == host and h.get('transport') == 'unix' for h in self.config['hosts']):
             from .resources import check_creation_memory
             check_creation_memory()
-        target = 'container-' + uuid.uuid4().hex[:10]
+        requested = body.get('target')
+        target = name(requested) if requested is not None else 'container-' + uuid.uuid4().hex[:10]
+        if requested is not None and (len(target) > 63 or not re.fullmatch(r'[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?', target)):
+            raise PanelError(400, 'Use um nome de até 63 caracteres, com letras, números e hífens, sem hífen no início ou no fim.')
         with self.lock:
             if len(self.launches) >= 100:
                 completed = [key for key, value in self.launches.items() if value['status_code'] >= 200]
@@ -299,7 +302,7 @@ class Service:
         job_id = str(uuid.uuid4())
         job = {'id': job_id, 'host': host, 'project': project, 'identity': user['username'], 'target': target,
                'description': 'Criar e iniciar ' + target, 'status': 'Baixando imagem e criando container', 'status_code': 100,
-               'metadata': {}, 'err': '', 'incus_operation': result['operation']}
+               'metadata': {}, 'phase': 'create', 'err': '', 'incus_operation': result['operation']}
         with self.lock:
             self.launches[job_id] = job
         threading.Thread(target=self._finish_launch, args=(client, project, target, job), daemon=True).start()
@@ -323,17 +326,19 @@ class Service:
                     raise PanelError(504, 'Tempo de espera excedido. Confira o estado no Incus antes de repetir.')
                 if phase == 'create':
                     with self.lock:
-                        job['status'] = 'Iniciando container'
+                        job.update(status='Iniciando container', phase='start', metadata={})
                     result = client.request('PUT', f'/1.0/instances/{target}/state', project, {'action': 'start', 'timeout': 30, 'force': False})
                     operation = result.get('operation', '')
                     if not re.fullmatch(r'/1.0/operations/[a-f0-9-]{36}', operation):
                         raise PanelError(502, 'Não foi possível acompanhar o início do container.')
                     job['incus_operation'] = operation.rsplit('/', 1)[-1]
+            with self.lock:
+                job.update(status='Verificando container', phase='verify', metadata={})
             instance = client.request('GET', f'/1.0/instances/{target}', project)['metadata']
             if instance.get('status') != 'Running':
                 raise PanelError(409, 'Container criado, mas não está em execução. Confira o estado no Incus.')
             with self.lock:
-                job.update(status='Success', status_code=200)
+                job.update(status='Success', status_code=200, phase='done')
         except Exception as exc:
             with self.lock:
                 job.update(status='Failure', status_code=400, err=redact(str(exc))[:2000] if isinstance(exc, PanelError) else 'Falha ao acompanhar a criação. Confira o estado no Incus.')

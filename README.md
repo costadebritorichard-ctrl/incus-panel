@@ -22,12 +22,16 @@ outro computador da mesma rede. O certificado é local; confira o fingerprint
 exibido pelo instalador antes de aceitá-lo no navegador.
 
 O painel permite criar containers, iniciar, parar, reiniciar, excluir containers
-parados, criar snapshots/backups e abrir um shell `/bin/sh`. Para criar, escolha
-uma imagem e clique em **Criar container**. A lista reúne imagens locais e imagens
-do catálogo oficial compatíveis com o processador. Nome, disco e rede são
-automáticos. O painel acompanha o download, a criação e o início do container,
+parados, criar snapshots/backups e abrir um shell `/bin/sh`. Para criar, informe
+um nome, escolha uma imagem e clique em **Criar container**. A lista reúne imagens
+locais e imagens do catálogo oficial compatíveis com o processador. Disco e rede
+são automáticos. Uma tela específica acompanha o download, a criação e o início,
 mostrando sucesso apenas depois de confirmar que está em execução. Falhas aparecem
 na própria tela, com a mensagem do Incus. A criação continua se você mudar de tela.
+Ao voltar à criação na mesma sessão, o painel retoma a tela de acompanhamento.
+A barra mostra a porcentagem da etapa quando o Incus a informa; nas demais
+etapas, indica atividade sem estimar um percentual. Consultas e login também
+exibem indicadores de carregamento.
 
 O instalador concede ao usuário do serviço acesso administrativo ao socket
 local do Incus. Não expõe a API Incus na rede. Se o Incus estiver vazio e sem pool,
