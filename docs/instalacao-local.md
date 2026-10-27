@@ -58,6 +58,19 @@ Se o painel abrir apenas na própria TV Box, confira o IP usado e o firewall da
 LAN para a porta 8444. Falhas de criação aparecem nas tarefas Incus: confira o
 alias, a arquitetura, espaço livre e os dispositivos de disco/rede do profile.
 
+O HTTPS negocia TLS em tarefas separadas, com timeout de 5 segundos, e limita
+o atendimento simultâneo a oito conexões. Conexões incompletas não bloqueiam a
+aceitação de outros clientes. Se o serviço estiver ativo, mas não responder,
+confira a fila com `sudo ss -ltnp 'sport = :8444'`. Versões anteriores podiam
+ficar bloqueadas negociando TLS antes de aceitar os demais clientes; atualizar
+o código e executar o instalador reinicia o serviço com a correção.
+
+Teste local (substitua o IP pelo exibido no instalador):
+
+```bash
+sudo curl --noproxy '*' --connect-timeout 5 --max-time 10 --cacert /etc/incus-panel/server.crt -o /dev/null -w 'HTTP %{http_code}\n' https://192.168.0.107:8444/
+```
+
 Os testes automatizados cobrem autorização, criação, ciclo de vida e o contrato
 HTTP do socket. A instalação systemd e os containers ainda precisam ser validados
 em uma TV Box real; os testes em Windows não demonstram compatibilidade do kernel.

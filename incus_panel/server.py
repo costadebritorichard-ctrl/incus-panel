@@ -369,13 +369,49 @@ def listener(config, port):
     return host, context
 
 
+class PanelHTTPServer(ThreadingHTTPServer):
+    """TLS é negociado no worker, nunca na fila que aceita conexões."""
+    daemon_threads = True
+    request_queue_size = 16
+    handshake_timeout = 5
+    request_timeout = 30
+
+    def __init__(self, address, handler, tls=None):
+        self.tls = tls
+        self.workers = threading.BoundedSemaphore(8)
+        super().__init__(address, handler)
+
+    def process_request(self, request, client_address):
+        if not self.workers.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self.workers.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            request.settimeout(self.handshake_timeout)
+            if self.tls:
+                request = self.tls.wrap_socket(request, server_side=True, do_handshake_on_connect=False)
+                request.do_handshake()
+            request.settimeout(self.request_timeout)
+            self.finish_request(request, client_address)
+        except (ssl.SSLError, TimeoutError, ConnectionError):
+            pass
+        except Exception:
+            self.handle_error(request, client_address)
+        finally:
+            self.shutdown_request(request)
+            self.workers.release()
+
+
 def serve(config, port, clients=None):
     host, tls = listener(config, port)
     app = Application(config, clients)
-    server = ThreadingHTTPServer((host, port), Handler)
-    if tls:
-        server.socket = tls.wrap_socket(server.socket, server_side=True)
-    server.daemon_threads = True
+    server = PanelHTTPServer((host, port), Handler, tls)
     server.app = app
     def reap_sessions():
         while True:
