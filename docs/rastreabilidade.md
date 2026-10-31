@@ -54,12 +54,12 @@ Gerada por `python scripts/traceability.py`. Implementação local não signific
 | TEL-06 / WBS-04.06 — Resumo da instancia | Implementado; aceite real pendente | Identidade composta, estado e ações condicionais. |
 | TEL-07 / WBS-04.07 — Recursos da instancia | Parcial | RAM, CPU acumulada, rede/disco JSON; sem gráficos históricos nem taxas. |
 | TEL-08 / WBS-04.08 — Rede e dispositivos da instancia | Implementado; aceite real pendente | Dispositivos expandidos e distinção local/herdado. |
-| TEL-09 / WBS-04.09 — Opcoes e configuracao | Parcial | Configuração local/expandida redigida; edição não oferecida. |
+| TEL-09 / WBS-04.09 — Opcoes e configuracao | Parcial | Edição parcial de descrição/limites/autostart/proteção, revisão/ETag e confirmação do Incus; tests/test_edit.py; aceite real pendente. |
 | TEL-10 / WBS-04.10 — Console interativo | Parcial | Shell textual por linha, canais TLS, fechamento e resize na API; VT completo e validação Incus pendentes. |
 | TEL-11 / WBS-04.11 — Snapshots | Parcial | Listar/criar snapshots; restaurar/excluir pendentes. |
 | TEL-12 / WBS-04.12 — Backups | Parcial | Listar/gerar backups; download/restauração pendentes. |
 | TEL-13 / WBS-04.13 — Assistente de criacao de container | Parcial | Imagem local compatível e um profile; recursos/rede/pool definidos pelo profile. |
-| TEL-14 / WBS-04.14 — Imagens | Parcial | Consulta de imagens e filtro compatível no assistente; importação/remoção pendentes. |
+| TEL-14 / WBS-04.14 — Imagens | Parcial | Listagem local e download de Alpine/Debian do catálogo por arquitetura, progresso e confirmação no Incus; tests/test_images.py; importação de arquivos/remoção e aceite real pendentes. |
 | TEL-15 / WBS-04.15 — Storage pools e volumes | Parcial | Pools, recursos físicos e alertas 80/90%; API de volumes existe, UI pendente. |
 | TEL-16 / WBS-04.16 — Redes | Parcial | Redes e detalhes JSON; leases e associações dedicadas pendentes. |
 | TEL-17 / WBS-04.17 — Profiles | Parcial | Profiles e devices; edição/impacto e filtros aprofundados pendentes. |

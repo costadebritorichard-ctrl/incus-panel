@@ -23,6 +23,44 @@ def name(value):
     return value
 
 
+EDITABLE_CONFIG = frozenset(('limits.memory', 'limits.cpu', 'boot.autostart', 'security.protection.delete'))
+
+
+def edit_revision(instance):
+    values = {'description': instance.get('description', ''),
+              'config': {k: instance.get('config', {}).get(k, '') for k in sorted(EDITABLE_CONFIG)}}
+    return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
+
+
+def edit_payload(body, instance):
+    changes = body.get('changes')
+    if not isinstance(changes, dict) or not changes or set(changes) - {'description', 'config'}:
+        raise PanelError(400, 'Informe os campos editáveis do container.')
+    payload = {'description': instance.get('description', '')}
+    if 'description' in changes:
+        description = changes['description']
+        if not isinstance(description, str) or len(description) > 1024:
+            raise PanelError(400, 'A descrição deve ter até 1024 caracteres.')
+        payload['description'] = description
+    if 'config' in changes:
+        config = changes['config']
+        if not isinstance(config, dict) or not config or set(config) - EDITABLE_CONFIG:
+            raise PanelError(400, 'Configuração não permitida no editor.')
+        for key, value in config.items():
+            if not isinstance(value, str):
+                raise PanelError(400, 'Os valores da configuração devem ser texto.')
+            if value == '':
+                continue  # Remove apenas a configuração local; o perfil continua válido.
+            if key == 'limits.memory' and not re.fullmatch(r'(?:[1-9][0-9]{0,5}(?:\.[0-9]{1,2})?(?:MiB|GiB)|(?:[1-9]|[1-9][0-9]|100)%)', value):
+                raise PanelError(400, 'Memória inválida. Use, por exemplo, 256MiB, 1GiB ou 50%.')
+            if key == 'limits.cpu' and (not re.fullmatch(r'[1-9][0-9]{0,3}', value) or int(value) > 1024):
+                raise PanelError(400, 'CPU inválida. Informe de 1 a 1024 núcleos.')
+            if key in ('boot.autostart', 'security.protection.delete') and value not in ('true', 'false'):
+                raise PanelError(400, 'Selecione ativado, desativado ou herdar do perfil.')
+        payload['config'] = dict(config)
+    return payload
+
+
 def redact(value):
     if isinstance(value, dict):
         return {k: ("[oculto]" if re.search(r"secret|password|token|certificate|private|cloud-init|user\.|environment\.", k, re.I) else redact(v)) for k, v in value.items()}
@@ -78,6 +116,9 @@ class Incus:
                 messages = {401: "Identidade Incus recusada.", 403: "Sem permissão no Incus.", 404: "Recurso ausente ou não suportado.", 409: "Conflito no recurso.", 412: "Configuração alterada; recarregue antes de salvar."}
                 raise PanelError(response.status, messages.get(response.status, "Incus recusou a operação. Consulte o administrador."))
             data = json.loads(raw)
+            etag_value = response.getheader("ETag")
+            if isinstance(etag_value, str):
+                data["_etag"] = etag_value
             if data.get("type") == "error":
                 raise PanelError(502, "Incus informou falha.")
             return data
@@ -95,13 +136,21 @@ class Demo:
         self.lock = threading.RLock()
         self.instances = {}
         self.operations = {}
+        self.images = {project: [{"fingerprint": "a" * 64, "architecture": "armv7l", "type": "container", "aliases": [{"name": "debian-lab"}], "properties": {"description": "Debian • fixture local"}, "size": 50000000}]
+                       for project in ("laboratorio", "redes")}
         for project in ("laboratorio", "redes"):
             for n, status in (("lab-web", "Running"), ("lab-db", "Stopped")):
                 self.instances[project, n] = {"name": n, "type": "container", "status": status, "architecture": "armv7l", "profiles": ["default"], "config": {"limits.memory": "128MiB", "security.protection.delete": "false"}, "expanded_config": {"limits.memory": "128MiB"}, "devices": {}, "expanded_devices": {"root": {"type": "disk", "pool": "lab", "path": "/"}, "eth0": {"type": "nic", "network": "labbr0"}}, "snapshots": [], "backups": []}
 
     def request(self, method, path, project, body=None, etag=None):
         with self.lock:
+            if etag and method == 'PATCH':
+                current = self.instances.get((project, path.rsplit('/', 1)[-1]))
+                if current is None or etag != edit_revision(current):
+                    raise PanelError(412, 'Configuração alterada; recarregue antes de salvar.')
             data = self._request(method, path, project, body or {})
+            if method == 'GET' and re.fullmatch(r'/1.0/instances/[^/]+', path):
+                data['_etag'] = edit_revision(data['metadata'])
             return copy.deepcopy(data)
 
     def _request(self, method, path, project, body):
@@ -117,7 +166,7 @@ class Demo:
             elif path == "/1.0/instances":
                 result = [v for (p, _), v in self.instances.items() if p == project]
             elif path == "/1.0/images":
-                result = [{"fingerprint": "a" * 64, "architecture": "armv7l", "type": "container", "aliases": [{"name": "debian-lab"}], "properties": {"description": "Debian • fixture local"}, "size": 50000000}]
+                result = self.images.get(project, [])
             elif path == "/1.0/profiles":
                 result = [{"name": "default", "config": {}, "devices": {"root": {"type": "disk", "path": "/", "pool": "lab"}, "eth0": {"type": "nic", "network": "labbr0"}}}]
             elif path == "/1.0/networks":
@@ -141,17 +190,37 @@ class Demo:
                 elif parts[3] in ("snapshots", "backups"):
                     result = instance[parts[3]]
         else:
-            if path == "/1.0/instances" and method == "POST":
+            if path == '/1.0/images' and method == 'POST':
+                alias = body['source']['alias']
+                fingerprint = hashlib.sha256(alias.encode()).hexdigest()
+                if not any(image['fingerprint'] == fingerprint for image in self.images.get(project, [])):
+                    self.images.setdefault(project, []).append({
+                        'fingerprint': fingerprint, 'architecture': 'armv7l', 'type': 'container',
+                        'aliases': copy.deepcopy(body.get('aliases', [])),
+                        'properties': {'description': alias + ' • fixture local'}, 'size': 25000000})
+            elif path == "/1.0/instances" and method == "POST":
                 key = (project, body["name"])
                 if key in self.instances:
                     raise PanelError(409, "Nome já existe neste Project.")
-                self.instances[key] = {"name": body["name"], "type": "container", "architecture": "armv7l", "status": "Stopped", "profiles": body["profiles"], "config": {}, "devices": {}, "expanded_devices": {}, "snapshots": [], "backups": []}
+                self.instances[key] = {"name": body["name"], "type": "container", "architecture": "armv7l", "status": "Stopped", "profiles": body["profiles"], "description": "", "config": copy.deepcopy(body.get("config", {})), "expanded_config": copy.deepcopy(body.get("config", {})), "devices": copy.deepcopy(body.get("devices", {})), "expanded_devices": copy.deepcopy(body.get("devices", {})), "snapshots": [], "backups": []}
             elif len(parts) >= 3 and parts[1] == "instances":
                 key = (project, parts[2])
                 if key not in self.instances:
                     raise PanelError(404, "Container não encontrado.")
                 instance = self.instances[key]
-                if len(parts) == 3 and method == "DELETE":
+                if len(parts) == 3 and method == 'PATCH':
+                    instance['description'] = body.get('description', instance.get('description', ''))
+                    config = instance.setdefault('config', {})
+                    expanded = instance.setdefault('expanded_config', {})
+                    for key, value in body.get('config', {}).items():
+                        if value == '':
+                            config.pop(key, None)
+                            expanded.pop(key, None)
+                        else:
+                            config[key] = value
+                            expanded[key] = value
+                    return {'type': 'sync', 'metadata': {}}
+                elif len(parts) == 3 and method == "DELETE":
                     del self.instances[key]
                 elif parts[-1] == "state":
                     instance["status"] = "Stopped" if body["action"] == "stop" else "Running"
@@ -163,6 +232,8 @@ class Demo:
                 raise PanelError(404, "Recurso não encontrado.")
             operation = str(uuid.uuid4())
             self.operations[operation] = {"id": operation, "status": "Success", "status_code": 200, "description": method + " " + path, "may_cancel": False, "metadata": {}, "err": ""}
+            if path == '/1.0/images':
+                self.operations[operation]['metadata']['fingerprint'] = fingerprint
             return {"type": "async", "operation": "/1.0/operations/" + operation, "metadata": self.operations[operation]}
         if result is None:
             raise PanelError(404, "Recurso não disponível.")
@@ -202,6 +273,14 @@ class Service:
 
     def read(self, user, host, project, resource, target=None, extra=None):
         client = self.context(user, host, project)
+        if resource == 'image-catalog':
+            if not self.config.get('allow_remote_images', False):
+                raise PanelError(403, 'O download de imagens está desabilitado na configuração do painel.')
+            arch = client.request('GET', '/1.0', project)['metadata'].get('environment', {}).get('kernel_architecture')
+            from .catalog import index_choices, remote_images
+            if self.config.get('demo'):
+                return index_choices(['alpine:edge:armhf:default', 'debian:bookworm:armhf:default'], arch)
+            return remote_images(arch)
         if resource == 'creation-images':
             arch = client.request('GET', '/1.0', project)['metadata'].get('environment', {}).get('kernel_architecture')
             local = client.request('GET', '/1.0/images', project)['metadata']
@@ -242,6 +321,9 @@ class Service:
         if resource in ("resources", "pools", "pool-resources", "volumes") and not user.get("host_metrics", False):
             raise PanelError(403, "Métricas globais não autorizadas para esta identidade.")
         data = client.request("GET", path, project)["metadata"]
+        if resource == 'instance':
+            data = copy.deepcopy(data)
+            data['_revision'] = edit_revision(data)
         if resource == 'operations' and isinstance(data, dict):
             data = copy.deepcopy(data)
             with self.lock:
@@ -251,6 +333,38 @@ class Service:
             data = {k: data[k] for k in ("auth", "api_extensions", "environment", "api_version") if k in data}
             data.get("environment", {}).pop("certificate", None)
         return redact(data)
+
+    def download_image(self, user, host, project, body):
+        client = self.context(user, host, project)
+        if self.config.get('read_only', True) or user['role'] != 'administrador' or not self.config.get('allow_remote_images', False):
+            raise PanelError(403, 'Baixar imagens exige administrador, modo de escrita e downloads habilitados.')
+        alias = body.get('remote_image')
+        if not isinstance(alias, str) or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9/_.-]{0,100}', alias) or '..' in alias:
+            raise PanelError(400, 'Selecione uma imagem do catálogo.')
+        choices = self.read(user, host, project, 'image-catalog')
+        if not any(image['remote_image'] == alias for image in choices):
+            raise PanelError(400, 'Imagem ausente do catálogo ou incompatível com a arquitetura do servidor.')
+        images = client.request('GET', '/1.0/images', project)['metadata']
+        if any(a.get('name') == alias for image in images for a in image.get('aliases', [])):
+            raise PanelError(409, 'Esta imagem já está disponível neste projeto.')
+        payload = {'public': False, 'auto_update': False, 'aliases': [{'name': alias}],
+                   'source': {'type': 'image', 'mode': 'pull', 'server': 'https://images.linuxcontainers.org',
+                              'protocol': 'simplestreams', 'image_type': 'container', 'alias': alias}}
+        record = {'identity': user['username'], 'host': host, 'project': project, 'target': alias,
+                  'action': 'download-image', 'timestamp': time.time(), 'result': 'solicitada'}
+        with self.lock:
+            self.audit.append(record)
+            self.audit[:] = self.audit[-200:]
+        try:
+            response = client.request('POST', '/1.0/images', project, payload)
+            operation = response.get('operation', '')
+            if response.get('type') != 'async' or not re.fullmatch(r'/1.0/operations/[a-f0-9-]{36}', operation):
+                raise PanelError(502, 'O Incus não retornou uma operação rastreável. Confira Imagens e Tarefas antes de repetir.')
+            record.update(result='aceita; aguardando Incus', operation=operation.rsplit('/', 1)[-1])
+            return {'operation': record['operation'], 'target': alias}
+        except PanelError:
+            record['result'] = 'falha ou resultado incerto; consultar Incus'
+            raise
 
     def launch(self, user, host, project, body):
         self.context(user, host, project)
@@ -358,6 +472,7 @@ class Service:
             raise PanelError(400, "Confirme o alvo completo: " + expected)
         path = "/1.0/instances/" + target
         method, payload = "POST", {}
+        write_etag = None
         if action == "create":
             server = client.request("GET", "/1.0", project)["metadata"]
             images = client.request("GET", "/1.0/images", project)["metadata"]
@@ -381,10 +496,20 @@ class Service:
                     payload['config'] = {'limits.memory': '128MiB', 'limits.cpu.allowance': '50ms/100ms', 'boot.autostart': 'false'}
             path = "/1.0/instances"
         else:
-            instance = client.request("GET", path, project)["metadata"]
+            instance_response = client.request("GET", path, project)
+            instance = instance_response["metadata"]
             if instance.get("type") != "container":
                 raise PanelError(403, "Somente containers são permitidos.")
-            if action in ("start", "stop", "restart"):
+            if action == 'update':
+                if user['role'] != 'administrador':
+                    raise PanelError(403, 'Somente administradores podem editar configurações.')
+                if body.get('revision') != edit_revision(instance):
+                    raise PanelError(409, 'A configuração mudou enquanto você editava. Recarregue antes de salvar.')
+                method, payload = 'PATCH', edit_payload(body, instance)
+                write_etag = instance_response.get('_etag')
+                if not isinstance(write_etag, str) or not write_etag:
+                    raise PanelError(502, 'O Incus não forneceu uma revisão segura para editar. Recarregue ou confira a versão do servidor.')
+            elif action in ("start", "stop", "restart"):
                 if (action == "start" and instance["status"] != "Stopped") or (action != "start" and instance["status"] != "Running"):
                     raise PanelError(409, "Estado mudou ou ação incompatível; atualize.")
                 method, path, payload = "PUT", path + "/state", {"action": action, "timeout": 30, "force": False}
@@ -394,7 +519,7 @@ class Service:
                 if action == "snapshot":
                     payload["stateful"] = False
             elif action == "delete":
-                if user["role"] != "administrador" or instance["status"] != "Stopped" or instance.get("config", {}).get("security.protection.delete") == "true":
+                if user["role"] != "administrador" or instance["status"] != "Stopped" or instance.get("expanded_config", {}).get("security.protection.delete", instance.get("config", {}).get("security.protection.delete")) == "true":
                     raise PanelError(403, "Exclusão exige administrador, container parado e sem proteção.")
                 method = "DELETE"
             else:
@@ -404,7 +529,26 @@ class Service:
             self.audit.append(record)
             self.audit[:] = self.audit[-200:]
         try:
-            response = client.request(method, path, project, payload)
+            response = (client.request(method, path, project, payload, etag=write_etag)
+                        if write_etag else client.request(method, path, project, payload))
+            if action == 'update' and response.get('type') == 'sync':
+                confirmed = client.request('GET', path, project)['metadata']
+                matches = confirmed.get('description', '') == payload['description'] and all(
+                    confirmed.get('config', {}).get(k, '') == v for k, v in payload.get('config', {}).items())
+                if not matches:
+                    raise PanelError(409, 'A edição foi recebida, mas a configuração mudou. Recarregue para conferir o resultado.')
+                operation_id = str(uuid.uuid4())
+                job = {'id': operation_id, 'host': host, 'project': project, 'identity': user['username'],
+                       'target': target, 'action': 'update', 'description': 'Editar ' + target,
+                       'status': 'Success', 'status_code': 200, 'phase': 'done', 'metadata': {}, 'err': ''}
+                with self.lock:
+                    if len(self.launches) >= 100:
+                        completed = next((k for k, v in self.launches.items() if v['status_code'] >= 200), None)
+                        if completed is not None:
+                            del self.launches[completed]
+                    self.launches[operation_id] = job
+                record.update(result='confirmada pelo Incus', operation=operation_id)
+                return {'operation': operation_id}
             operation = response.get("operation", "")
             if response.get("type") != "async" or not re.fullmatch(r"/1.0/operations/[a-f0-9-]{36}", operation):
                 raise PanelError(502, "Incus não retornou uma operação rastreável; verifique o estado antes de repetir.")

@@ -25,13 +25,42 @@ O painel permite criar containers, iniciar, parar, reiniciar, excluir containers
 parados, criar snapshots/backups e abrir um shell `/bin/sh`. Para criar, informe
 um nome, escolha uma imagem e clique em **Criar container**. A lista reúne imagens
 locais e imagens do catálogo oficial compatíveis com o processador. Disco e rede
-são automáticos. Uma tela específica acompanha o download, a criação e o início,
+são automáticos. Na criação automática, o nome também é opcional: deixe em branco
+para gerar um nome. A interface oferece seleção visual de imagens e acompanhamento
+da criação. No modo de laboratório com alvos limitados, escolha nome e imagem,
+revise o resumo e confirme com um clique, sem digitar servidor/projeto/container.
+O perfil fica em **Opções avançadas**, com `default` selecionado quando disponível.
+As permissões do servidor são preservadas. Uma tela específica acompanha o download, a criação e o início,
 mostrando sucesso apenas depois de confirmar que está em execução. Falhas aparecem
 na própria tela, com a mensagem do Incus. A criação continua se você mudar de tela.
+
+Em **Imagens**, um administrador pode selecionar uma imagem no catálogo e clicar
+em **Baixar imagem**, sem criar um container. O catálogo oferece Alpine e Debian
+compatíveis com a arquitetura do servidor. A tela acompanha o progresso informado
+pelo Incus e atualiza as imagens locais após confirmar o download. Você pode
+navegar pelo painel e voltar para acompanhar; a operação também aparece em
+**Tarefas**. O recurso exige `allow_remote_images: true` e `read_only: false`.
+As imagens são baixadas no servidor e projeto selecionados; a demonstração simula
+o processo em memória, sem acesso à Internet.
 Ao voltar à criação na mesma sessão, o painel retoma a tela de acompanhamento.
 A barra mostra a porcentagem da etapa quando o Incus a informa; nas demais
 etapas, indica atividade sem estimar um percentual. Consultas e login também
 exibem indicadores de carregamento.
+
+Na lista de containers, os ícones permitem editar, iniciar, parar, reiniciar e
+excluir conforme estado e permissão. **Parar** desliga sem apagar os dados.
+Em **Editar**, administradores podem mudar descrição, limites de memória e CPU,
+inicialização automática e proteção contra exclusão. Desative a inicialização
+automática para manter o container desligado após reiniciar o servidor. Campos
+vazios removem somente o limite local e deixam o perfil definir o valor.
+
+A edição preserva os demais campos, exige revisão válida (ETag) e recusa
+sobrescrever uma configuração alterada por outra pessoa. Respostas imediatas do
+Incus são confirmadas por releitura; operações em segundo plano são acompanhadas
+até o resultado. A exclusão exige administrador, container parado, sem proteção
+efetiva e confirmação digitando o nome. As demais ações usam revisão por clique;
+o console mantém a confirmação do alvo completo. A implementação segue a
+[configuração parcial do Incus](https://linuxcontainers.org/incus/docs/main/howto/instances_configure/).
 
 O instalador concede ao usuário do serviço acesso administrativo ao socket
 local do Incus. Não expõe a API Incus na rede. Se o Incus estiver vazio e sem pool,

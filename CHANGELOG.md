@@ -1,5 +1,21 @@
 # Changelog
 
+## Download de imagens — 2026-10-31
+
+- Catálogo compatível com a arquitetura e botão **Baixar imagem** na tela Imagens, sem criar containers.
+- Progresso do Incus, acompanhamento após navegação, erros e confirmação na lista local; operação em Tarefas.
+- Download restrito a administradores com escrita e imagens remotas habilitadas; origem fixa, imagens privadas e tipo container.
+- Demonstração em memória e testes de autorização, escopo, transporte e integração HTTP.
+
+## Gerenciamento de containers — 2026-10-31
+
+- Edição de descrição, memória, CPU, inicialização automática e proteção contra exclusão.
+- Validação no servidor, revisão/ETag, edição parcial e confirmação de respostas imediatas ou assíncronas.
+- Ações diretas na lista e confirmação de exclusão pelo nome; exclusão bloqueada por proteção efetiva ou container em execução.
+- Menu hambúrguer em celulares e tablets, sem navegação horizontal, com fechamento por Escape/toque e controle de foco.
+- Ícones SVG locais nos controles de criação, saída e gerenciamento; formulário responsivo e mensagens de resultado.
+- Testes de permissões, concorrência, transporte e integração HTTP; ciclo de gerenciamento validado em Chromium com demonstração isolada.
+
 ## Integração SSH — 2026-10-26
 
 - Transporte de leitura por conexão SSH persistente, sem persistir senha nem instalar arquivos remotos.

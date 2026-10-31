@@ -30,9 +30,10 @@ class UnixIncus:
         self.path = path
 
     def request(self, method, path, project, body=None, etag=None):
-        write = ((method == 'POST' and path == '/1.0/instances') or
+        write = ((method == 'POST' and path in ('/1.0/instances', '/1.0/images')) or
                  (method == 'POST' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}/(?:exec|snapshots|backups)', path)) or
                  (method == 'PUT' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}/state', path)) or
+                 (method == 'PATCH' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', path)) or
                  (method == 'DELETE' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', path)))
         if method != 'GET' and not write:
             raise PanelError(403, 'Operação local não permitida.')
@@ -56,6 +57,9 @@ class UnixIncus:
                 raise PanelError(response.status if response.status >= 400 else 502, 'Incus: ' + redact(str(detail or 'Operação recusada.'))[:2000])
             if not isinstance(data, dict) or data.get('type') not in ('sync', 'async') or 'metadata' not in data:
                 raise PanelError(502, 'Resposta inesperada do Incus local.')
+            etag_value = response.getheader('ETag')
+            if isinstance(etag_value, str):
+                data['_etag'] = etag_value
             return data
         except PermissionError as exc:
             raise PanelError(403, 'O usuário do serviço não tem acesso ao socket Incus.') from exc
