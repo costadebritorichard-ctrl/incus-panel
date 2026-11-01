@@ -1,4 +1,4 @@
-"""Check local namespace prerequisites without modifying the host."""
+"""Verifica o ambiente; opções de instalação preparam faixas locais de UID/GID."""
 from pathlib import Path
 import argparse
 import os
@@ -11,6 +11,7 @@ from incus_panel.memory import describe_memory, memory_status
 
 MIN_IDS = 65536
 PREPARE_IDS = 10000000
+PENDING_IDMAP_RESTART = Path('/run/incus-panel/idmaps-pending')
 HOST_GUIDANCE = (
     'No hospedeiro do LXC, o administrador precisa permitir nesting e delegar '
     'UIDs/GIDs suficientes ao container externo; depois, alinhar /etc/subuid e '
@@ -93,7 +94,7 @@ def free_range(mapped, allocated):
     raise PreflightError('Não há faixa livre de 10 milhões de IDs delegados. ' + HOST_GUIDANCE)
 
 
-def prepare_idmaps(proc=Path('/proc/self'), etc=Path('/etc')):
+def prepare_idmaps(proc=Path('/proc/self'), etc=Path('/etc'), pending_restart=None):
     """Explicit repair of missing root allocations; never replace existing ranges."""
     options = []
     for mapfile, subfile, usersfile, option in (
@@ -130,14 +131,45 @@ def prepare_idmaps(proc=Path('/proc/self'), etc=Path('/etc')):
             raise PreflightError(f'Não foi possível preparar {subfile}: {exc}') from exc
     if options:
         # shadow's usermod handles account-file locks and preserves other entries.
+        if pending_restart is not None:
+            # Record intent before usermod: interrupted/failed restarts must be retried.
+            try:
+                pending_restart.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
+                pending_restart.touch(mode=0o600)
+            except OSError as exc:
+                raise PreflightError(f'Não foi possível registrar a aplicação pendente dos IDs: {exc}') from exc
         try:
             subprocess.run(['usermod', *options, 'root'], check=True, capture_output=True,
                            text=True, timeout=15)
         except (OSError, subprocess.SubprocessError) as exc:
             detail = getattr(exc, 'stderr', '') or str(exc)
             raise PreflightError(f'Falha ao configurar IDs de root: {detail}') from exc
-        print('Faixas de root configuradas. Reinicie o daemon Incus antes de criar novos containers.')
+        print('Faixas de root configuradas. ' + ('O instalador aplicará a mudança ao serviço Incus.'
+              if pending_restart is not None else 'Reinicie o daemon Incus antes de criar novos containers.'), flush=True)
     return bool(options)
+
+
+def apply_idmaps_to_incus(pending_restart=PENDING_IDMAP_RESTART):
+    if not pending_restart.exists():
+        return
+    try:
+        result = subprocess.run(['systemctl', 'show', 'incus.service', '--property=LoadState', '--value'],
+                                capture_output=True, text=True, timeout=15)
+        state = result.stdout.strip()
+        if state == 'not-found':
+            # A fresh installation will start Incus with the new ranges later.
+            pending_restart.unlink()
+            return
+        if result.returncode or state != 'loaded':
+            raise PreflightError('Não foi possível verificar incus.service: ' + (state or result.stderr.strip()))
+        print('Etapa: aplicar faixas UID/GID ao Incus, reiniciando o serviço se estiver ativo.', flush=True)
+        subprocess.run(['systemctl', 'try-restart', 'incus.service'], check=True,
+                       capture_output=True, text=True, timeout=120)
+        pending_restart.unlink()
+    except (OSError, subprocess.SubprocessError) as exc:
+        detail = getattr(exc, 'stderr', '') or str(exc)
+        raise PreflightError('Faixas preparadas, mas não foi possível aplicar a mudança ao Incus: '
+                             + detail + '. A próxima instalação tentará novamente.') from exc
 
 
 def check_idmaps(proc=Path('/proc/self'), etc=Path('/etc')):
@@ -188,18 +220,31 @@ def check_environment():
         )
 
 
+def run_preflight(prepare=False, restart_incus=False):
+    if restart_incus and not prepare:
+        raise PreflightError('A aplicação das faixas ao Incus exige preparar os IDs primeiro.')
+    if prepare:
+        if sys.platform != 'linux' or os.geteuid() != 0:
+            raise PreflightError('Execute em Linux com sudo.')
+        check_install_memory()
+        prepare_idmaps(pending_restart=PENDING_IDMAP_RESTART if restart_incus else None)
+    check_environment()
+    status = check_install_memory()
+    if restart_incus:
+        apply_idmaps_to_incus(PENDING_IDMAP_RESTART)
+    return status
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--prepare-idmaps', action='store_true',
                         help='Configura faixas ausentes de root usando IDs já delegados e livres')
+    parser.add_argument('--restart-incus', action='store_true',
+                        help='Aplica faixas preparadas ao serviço Incus; usado automaticamente pelo instalador')
     args = parser.parse_args()
     try:
-        if args.prepare_idmaps:
-            if sys.platform != 'linux' or os.geteuid() != 0:
-                raise PreflightError('Execute em Linux com sudo.')
-            prepare_idmaps()
-        check_environment()
-        print(describe_memory(check_install_memory()))
+        status = run_preflight(args.prepare_idmaps, args.restart_incus)
+        print(describe_memory(status))
     except PreflightError as exc:
         print(f'Pré-verificação interrompida: {exc}', file=sys.stderr)
         return 1

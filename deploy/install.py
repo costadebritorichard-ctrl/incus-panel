@@ -16,7 +16,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from incus_panel.server import password_hash
-from deploy.preflight import check_environment, check_install_memory
+from deploy.preflight import run_preflight
 from incus_panel.memory import describe_memory
 
 
@@ -123,8 +123,7 @@ def main():
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error('Execute com sudo para instalar o serviço systemd.')
-    check_environment()
-    print(describe_memory(check_install_memory()), flush=True)
+    print(describe_memory(run_preflight(prepare=True, restart_incus=True)), flush=True)
     if not args.address:
         route = run(['ip', '-j', 'route', 'get', '1.1.1.1'], capture_output=True)
         args.address = json.loads(route.stdout)[0]['prefsrc']

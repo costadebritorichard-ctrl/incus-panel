@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from deploy.preflight import PreflightError, check_environment, check_idmaps, covers, prepare_idmaps, free_range
+from deploy.preflight import PreflightError, apply_idmaps_to_incus, check_environment, check_idmaps, covers, prepare_idmaps, free_range, run_preflight
 
 
 class HostPrerequisites(unittest.TestCase):
@@ -47,8 +47,101 @@ class HostPrerequisites(unittest.TestCase):
 
     def test_prepare_is_noop_when_root_is_already_configured(self):
         self.configure('0 100000 1000000000\n', subuid='root:1000000:10000000\n', subgid='root:1000000:10000000\n')
+        pending = self.root / 'run/idmaps-pending'
         with patch('deploy.preflight.subprocess.run') as run:
-            self.assertFalse(prepare_idmaps(self.proc, self.etc))
+            self.assertFalse(prepare_idmaps(self.proc, self.etc, pending_restart=pending))
+        run.assert_not_called()
+        self.assertFalse(pending.exists())
+
+    def test_automatic_preparation_applies_ranges_once_and_is_idempotent(self):
+        self.configure('0 100000 1000000000\n')
+        pending = self.root / 'run/idmaps-pending'
+        commands = []
+        def command(arguments, **kwargs):
+            commands.append(arguments)
+            if arguments[0] == 'usermod':
+                self.assertTrue(pending.exists())
+                for option, filename in (('--add-subuids', 'subuid'), ('--add-subgids', 'subgid')):
+                    start, end = map(int, arguments[arguments.index(option) + 1].split('-'))
+                    (self.etc / filename).write_text(f'root:{start}:{end - start + 1}\n')
+            return Mock(returncode=0, stdout='loaded\n', stderr='')
+        def prepare(**kwargs):
+            return prepare_idmaps(self.proc, self.etc, **kwargs)
+        with patch('deploy.preflight.sys.platform', 'linux'), \
+             patch('deploy.preflight.os.geteuid', return_value=0, create=True), \
+             patch('deploy.preflight.PENDING_IDMAP_RESTART', pending), \
+             patch('deploy.preflight.prepare_idmaps', side_effect=prepare), \
+             patch('deploy.preflight.check_environment', side_effect=lambda: check_idmaps(self.proc, self.etc)), \
+             patch('deploy.preflight.check_install_memory', return_value={}), \
+             patch('deploy.preflight.subprocess.run', side_effect=command), patch('builtins.print'):
+            run_preflight(prepare=True, restart_incus=True)
+            first_commands = list(commands)
+            run_preflight(prepare=True, restart_incus=True)
+        self.assertFalse(pending.exists())
+        self.assertEqual(commands, first_commands)
+        self.assertEqual([entry[0] for entry in commands], ['usermod', 'systemctl', 'systemctl'])
+        self.assertEqual(commands[-1], ['systemctl', 'try-restart', 'incus.service'])
+        check_idmaps(self.proc, self.etc)
+
+    def test_fresh_installation_does_not_restart_missing_incus_service(self):
+        pending = self.root / 'idmaps-pending'
+        pending.touch()
+        with patch('deploy.preflight.subprocess.run', return_value=Mock(returncode=0, stdout='not-found\n')) as run:
+            apply_idmaps_to_incus(pending)
+        self.assertEqual(run.call_count, 1)
+        self.assertFalse(pending.exists())
+
+    def test_failed_incus_restart_is_retried_without_reallocating_ids(self):
+        pending = self.root / 'idmaps-pending'
+        pending.touch()
+        with patch('deploy.preflight.subprocess.run', side_effect=[
+            Mock(returncode=0, stdout='loaded\n'),
+            subprocess.CalledProcessError(1, ['systemctl'], stderr='reinício recusado'),
+            Mock(returncode=0, stdout='loaded\n'),
+            Mock(returncode=0),
+        ]) as run, patch('builtins.print'):
+            with self.assertRaisesRegex(PreflightError, 'reinício recusado'):
+                apply_idmaps_to_incus(pending)
+            self.assertTrue(pending.exists())
+            apply_idmaps_to_incus(pending)
+        self.assertFalse(pending.exists())
+        self.assertEqual(run.call_count, 4)
+
+    def test_read_only_preflight_never_prepares_ids_or_restarts_services(self):
+        with patch('deploy.preflight.check_environment'), \
+             patch('deploy.preflight.check_install_memory', return_value={}), \
+             patch('deploy.preflight.prepare_idmaps') as prepare, \
+             patch('deploy.preflight.apply_idmaps_to_incus') as restart:
+            run_preflight()
+        prepare.assert_not_called()
+        restart.assert_not_called()
+
+    def test_failed_environment_validation_never_restarts_incus(self):
+        with patch('deploy.preflight.sys.platform', 'linux'), \
+             patch('deploy.preflight.os.geteuid', return_value=0, create=True), \
+             patch('deploy.preflight.check_install_memory', return_value={}), \
+             patch('deploy.preflight.prepare_idmaps'), \
+             patch('deploy.preflight.check_environment', side_effect=PreflightError('namespaces recusados')), \
+             patch('deploy.preflight.apply_idmaps_to_incus') as restart:
+            with self.assertRaisesRegex(PreflightError, 'namespaces recusados'):
+                run_preflight(prepare=True, restart_incus=True)
+        restart.assert_not_called()
+
+    def test_low_memory_never_allocates_ids(self):
+        with patch('deploy.preflight.sys.platform', 'linux'), \
+             patch('deploy.preflight.os.geteuid', return_value=0, create=True), \
+             patch('deploy.preflight.check_install_memory', side_effect=PreflightError('Memória insuficiente')), \
+             patch('deploy.preflight.prepare_idmaps') as prepare:
+            with self.assertRaisesRegex(PreflightError, 'Memória insuficiente'):
+                run_preflight(prepare=True, restart_incus=True)
+        prepare.assert_not_called()
+
+    def test_failed_pending_restart_record_never_changes_id_allocations(self):
+        self.configure('0 100000 1000000000\n')
+        (self.root / 'not-a-directory').write_text('fixture')
+        with patch('deploy.preflight.subprocess.run') as run:
+            with self.assertRaisesRegex(PreflightError, 'registrar a aplicação pendente'):
+                prepare_idmaps(self.proc, self.etc, self.root / 'not-a-directory/pending')
         run.assert_not_called()
 
     def test_prepare_refuses_invalid_existing_root_without_changing_either_file(self):

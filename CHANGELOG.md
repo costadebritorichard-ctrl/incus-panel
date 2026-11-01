@@ -1,5 +1,12 @@
 # Changelog
 
+## Preparação automática de IDs — 2026-11-01
+
+- `install.sh` e `deploy/install.py` preparam faixas ausentes de UID/GID de root antes da instalação, usando somente IDs já delegados e livres.
+- A configuração é aplicada ao Incus existente quando há mudanças; instalações novas leem as faixas ao iniciar o serviço.
+- Preparação idempotente, preservação de faixas existentes e retomada da aplicação ao serviço após interrupção ou falha.
+- CI de instalação real passa a verificar a preparação feita pelo próprio bootstrap, sem etapa manual anterior.
+
 ## Diagnóstico do bootstrap — 2026-11-01
 
 - Pré-verificação de RAM disponível e limites visíveis de cgroups v1/v2 antes de etapas de pacotes; swap informada separadamente.

@@ -57,9 +57,9 @@ apt_refresh() {
 }
 # No checkout usual, verificar antes de instalar pacotes ou alterar serviços.
 # O bootstrap isolado obtém somente as ferramentas e o código da verificação.
-if ! command -v python3 >/dev/null 2>&1 || ! command -v unshare >/dev/null 2>&1 || [ ! -f "$source_dir/deploy/preflight.py" ]; then
+if ! command -v python3 >/dev/null 2>&1 || ! command -v unshare >/dev/null 2>&1 || ! command -v usermod >/dev/null 2>&1 || [ ! -f "$source_dir/deploy/preflight.py" ]; then
   apt_refresh
-  apt_run 'Instalar ferramentas mínimas do bootstrap' install -y --no-install-recommends ca-certificates curl python3 util-linux
+  apt_run 'Instalar ferramentas mínimas do bootstrap' install -y --no-install-recommends ca-certificates curl python3 util-linux passwd
 fi
 if [ ! -f "$source_dir/deploy/install.py" ] || [ ! -d "$source_dir/incus_panel" ]; then
   work=$(mktemp -d /var/tmp/incus-panel-install.XXXXXXXX)
@@ -74,7 +74,8 @@ fi
 python3 -c 'import sys; assert sys.version_info >= (3,11), "Requer Python 3.11+"'
 [ -f "$source_dir/deploy/preflight.py" ] || fail 'Código sem pré-verificação. Atualize o checkout ou INCUS_PANEL_REF.'
 [ -f "$source_dir/deploy/install_watch.py" ] && [ -f "$source_dir/incus_panel/memory.py" ] || fail 'Código incompleto: atualize o checkout inteiro, incluindo deploy/ e incus_panel/, não apenas install.sh.'
-python3 "$source_dir/deploy/preflight.py"
+printf '\nEtapa: preparar faixas UID/GID e verificar o ambiente\n'
+python3 "$source_dir/deploy/preflight.py" --prepare-idmaps --restart-incus
 apt_refresh
 apt_run 'Instalar dependências de containers e HTTPS' install -y --no-install-recommends ca-certificates curl python3 openssl iproute2 util-linux uidmap dnsmasq-base nftables lxcfs apparmor
 if ! command -v incus >/dev/null 2>&1 || ! systemctl cat incus.service >/dev/null 2>&1; then

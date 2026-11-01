@@ -21,14 +21,13 @@ jobs:
           test "$status" -ne 0
           grep -q 'Mapeamento UID incompatível' /tmp/preflight.log
           test ! -e /etc/incus-panel/config.local.json
-      - name: Preparar faixas ausentes e confirmar idempotência
-        run: |
-          sudo python3 deploy/preflight.py --prepare-idmaps
-          sudo sha256sum /etc/subuid /etc/subgid > /tmp/subids.sha256
-          sudo python3 deploy/preflight.py --prepare-idmaps
-          sudo sha256sum -c /tmp/subids.sha256
-      - name: Instalar tudo pelo bootstrap e verificar container real
+      - name: Instalar tudo pelo bootstrap, preparando faixas e verificando container real
         run: sudo sh install.sh
+      - name: Confirmar idempotência da preparação automática
+        run: |
+          sudo sha256sum /etc/subuid /etc/subgid > /tmp/subids.sha256
+          sudo python3 deploy/preflight.py --prepare-idmaps --restart-incus
+          sudo sha256sum -c /tmp/subids.sha256
       - name: Reinstalação preservando configurações e credenciais
         run: |
           sudo sha256sum /etc/incus-panel/config.local.json > /tmp/config.sha256

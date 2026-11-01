@@ -10,8 +10,11 @@ Na pasta do projeto, em Linux compatível:
 sudo sh install.sh
 ```
 
-O instalador verifica IDs e namespaces antes de configurar o Incus. Se sua VPS
-for um LXC com restrições, ele informa a delegação necessária no hospedeiro.
+O instalador prepara automaticamente as faixas UID/GID ausentes de root, usando
+somente IDs já disponíveis, e verifica os namespaces antes de configurar o Incus.
+Quando altera as faixas, aplica a configuração ao serviço Incus se já estiver ativo.
+Faixas existentes são preservadas. Se sua VPS for um LXC sem delegação suficiente,
+ele informa o ajuste necessário no hospedeiro.
 Para verificar separadamente: `sudo python3 deploy/preflight.py`.
 Veja o [diagnóstico de LXC e VMs](docs/instalacao-local.md).
 

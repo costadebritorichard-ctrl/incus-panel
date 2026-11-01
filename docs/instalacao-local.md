@@ -43,25 +43,31 @@ Para verificar sem instalar ou alterar serviços, na pasta do projeto:
 sudo python3 deploy/preflight.py
 ```
 
-Se há IDs delegados suficientes, mas nenhuma faixa de root, prepare as faixas
-explicitamente, sem precisar alterar o hospedeiro:
+O comando `sudo sh install.sh` prepara automaticamente faixas ausentes de root
+e aplica a configuração ao Incus instalado. O caminho `deploy/install.py` faz
+a mesma preparação. Para executar somente essa etapa de forma independente:
 
 ```bash
-sudo python3 deploy/preflight.py --prepare-idmaps
-sudo systemctl restart incus.service
-sudo sh install.sh
+sudo python3 deploy/preflight.py --prepare-idmaps --restart-incus
 ```
 
-A opção `--prepare-idmaps` escolhe 10 milhões de IDs já disponíveis no namespace,
+A preparação escolhe 10 milhões de IDs já disponíveis no namespace,
 evita faixas subordinadas e contas locais existentes, e usa `usermod` para adicionar
 somente as faixas ausentes de root. Valida UID e GID antes de alterar os arquivos.
-Faixas existentes incompatíveis são preservadas e exigem revisão manual. A opção
-não cria delegação no hospedeiro. Reiniciar o daemon faz o Incus reler a configuração;
-containers de testes anteriores podem continuar com mapas antigos, por isso o
+Faixas existentes incompatíveis são preservadas e exigem revisão manual. A preparação
+não cria delegação no hospedeiro. Quando há mudanças, o instalador reinicia o daemon
+se ele estiver ativo, para o Incus reler a configuração. Em uma instalação nova,
+o serviço lerá as faixas na primeira inicialização. Uma marca temporária em
+`/run/incus-panel/idmaps-pending` permite retomar a aplicação caso haja interrupção;
+ela é removida após sucesso. Reexecutar a instalação com faixas válidas não as
+reescreve nem provoca outro reinício por esse motivo. A opção manual
+`--prepare-idmaps` sem `--restart-incus` mantém o reinício sob controle do operador.
+
+Containers de testes anteriores podem continuar com mapas antigos, por isso o
 instalador cria um novo container de teste. Em ambientes com workloads, programe
 o reinício com o administrador.
 
-No checkout local com Python e util-linux presentes, essa verificação ocorre antes
+No checkout local com Python, util-linux e usermod presentes, essa preparação ocorre antes
 do `apt-get`. No bootstrap baixado isoladamente, primeiro são obtidos o código e
 as ferramentas mínimas; Incus, rede, armazenamento e painel só são configurados
 após a verificação. O caminho direto `deploy/install.py` também a executa.
@@ -77,10 +83,10 @@ depende do gerenciador. Aumentar a faixa dentro da VPS sem a delegação externa
 concede acesso. Essas mudanças exigem coordenação com o administrador e podem
 exigir reinício do container externo. Como alternativa, use uma VM completa KVM/QEMU.
 
-O instalador padrão não modifica mapas de IDs, containers existentes ou a segurança do
-hospedeiro para contornar a falha. A preparação de faixas ausentes é uma opção
-explícita e só usa IDs já delegados. Depois de o administrador ajustar a delegação,
-repita a pré-verificação e `sudo sh install.sh`; a senha existente é preservada.
+O instalador configura apenas faixas subordinadas ausentes dentro dos IDs já
+delegados. Mapas do hospedeiro, containers existentes e políticas de segurança
+não são alterados para contornar restrições externas. Depois de o administrador
+ajustar a delegação, repita `sudo sh install.sh`; a senha existente é preservada.
 Referência: [mapeamento de usuários no Incus](https://linuxcontainers.org/incus/docs/main/userns-idmap/).
 
 ### Congelamento durante a instalação de pacotes
