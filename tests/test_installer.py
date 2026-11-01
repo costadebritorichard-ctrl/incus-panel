@@ -3,6 +3,29 @@ from unittest.mock import Mock, patch
 
 
 class InstallerNetwork(unittest.TestCase):
+    def test_null_storage_collection_creates_dir_pool(self):
+        from deploy.install import ensure_default_storage
+        query = Mock(side_effect=[None, {'devices': {}}])
+        with patch('deploy.install.run') as run:
+            ensure_default_storage(query)
+        self.assertEqual(run.call_args_list[0].args[0], ['incus', 'storage', 'create', 'local:panel-dir', 'dir'])
+        self.assertEqual(run.call_count, 2)
+
+    def test_null_network_collection_creates_bridge(self):
+        from deploy.install import ensure_default_network
+        query = Mock(side_effect=[{'devices': {}}, None])
+        with patch('deploy.install.run') as run:
+            ensure_default_network(query)
+        self.assertEqual(run.call_args_list[0].args[0], ['incus', 'network', 'create', 'local:panelbr0', 'ipv4.address=auto', 'ipv4.nat=true', 'ipv6.address=none'])
+        self.assertEqual(run.call_count, 2)
+
+    def test_invalid_collection_does_not_modify_incus(self):
+        from deploy.install import ensure_default_storage
+        query = Mock(return_value={'unexpected': 'response'})
+        with patch('deploy.install.run') as run, self.assertRaisesRegex(RuntimeError, 'esperada uma lista'):
+            ensure_default_storage(query)
+        run.assert_not_called()
+
     def test_fresh_storage_uses_dir_without_formatting_disks(self):
         from deploy.install import ensure_default_storage
         query = Mock(side_effect=[[], {'devices': {}}])

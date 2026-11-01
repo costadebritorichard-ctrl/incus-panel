@@ -22,11 +22,21 @@ def run(command, **kwargs):
     return subprocess.run(command, check=True, **kwargs)
 
 
+def query_list(query, path):
+    result = query(path)
+    # Incus 6.0 can serialize an empty collection as JSON null.
+    if result is None:
+        return []
+    if not isinstance(result, list):
+        raise RuntimeError(f'Resposta Incus inválida para {path}: esperada uma lista.')
+    return result
+
+
 def ensure_default_network(query):
     profile = query('/1.0/profiles/default')
     if any(device.get('type') == 'nic' for device in profile.get('devices', {}).values()):
         return
-    networks = query('/1.0/networks?recursion=1')
+    networks = query_list(query, '/1.0/networks?recursion=1')
     bridge = next((n['name'] for n in networks if n.get('managed') and n.get('type') == 'bridge' and n.get('status') == 'Created'), None)
     if not bridge:
         existing_names = {n['name'] for n in networks}
@@ -39,7 +49,7 @@ def ensure_default_network(query):
 
 def ensure_default_storage(query):
     """Driver dir: sem ZFS, discos dedicados ou arquivos loop em flash."""
-    pools = query('/1.0/storage-pools?recursion=1')
+    pools = query_list(query, '/1.0/storage-pools?recursion=1')
     devices = query('/1.0/profiles/default').get('devices', {})
     if any(d.get('type') == 'disk' and d.get('path') == '/' for d in devices.values()):
         return
