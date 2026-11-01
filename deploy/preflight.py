@@ -1,11 +1,13 @@
 """Check local namespace prerequisites without modifying the host."""
 from pathlib import Path
+import argparse
 import os
 import subprocess
 import sys
 
 
 MIN_IDS = 65536
+PREPARE_IDS = 10000000
 HOST_GUIDANCE = (
     'No hospedeiro do LXC, o administrador precisa permitir nesting e delegar '
     'UIDs/GIDs suficientes ao container externo; depois, alinhar /etc/subuid e '
@@ -61,6 +63,68 @@ def covers(ranges, start, end):
     return False
 
 
+def free_range(mapped, allocated):
+    """Choose only delegated IDs, avoiding existing users and subordinate ranges."""
+    for low, high in sorted(mapped):
+        start = max(low, 1000000)
+        for used_low, used_high in sorted(allocated):
+            if used_high <= start:
+                continue
+            if used_low >= start + PREPARE_IDS:
+                break
+            start = max(start, used_high)
+        if start + PREPARE_IDS <= high:
+            return start
+    raise PreflightError('Não há faixa livre de 10 milhões de IDs delegados. ' + HOST_GUIDANCE)
+
+
+def prepare_idmaps(proc=Path('/proc/self'), etc=Path('/etc')):
+    """Explicit repair of missing root allocations; never replace existing ranges."""
+    options = []
+    for mapfile, subfile, usersfile, option in (
+        ('uid_map', 'subuid', 'passwd', '--add-subuids'),
+        ('gid_map', 'subgid', 'group', '--add-subgids'),
+    ):
+        try:
+            mapped = mapped_ranges((proc / mapfile).read_text())
+            path = etc / subfile
+            text = path.read_text() if path.exists() else ''
+            existing = root_ranges(text)
+            if existing:
+                if not any(end - start >= MIN_IDS and start > 0 and covers(mapped, start, end)
+                           for start, end in existing):
+                    raise PreflightError(f'{path} já contém uma faixa de root incompatível; ela foi preservada. ' + HOST_GUIDANCE)
+                continue
+            allocated = []
+            for line in text.splitlines():
+                if not line.strip() or line.lstrip().startswith('#'):
+                    continue
+                owner, start, count = line.split(':')
+                start, count = int(start), int(count)
+                if start < 0 or count <= 0:
+                    raise ValueError('Faixa subordinada inválida')
+                allocated.append((start, start + count))
+            # Reserve local accounts too, even when they have no sub-ID allocation.
+            for line in (etc / usersfile).read_text().splitlines():
+                if line.strip() and not line.lstrip().startswith('#'):
+                    identifier = int(line.split(':')[2])
+                    allocated.append((identifier, identifier + 1))
+            start = free_range(mapped, allocated)
+            options += [option, f'{start}-{start + PREPARE_IDS - 1}']
+        except (OSError, ValueError) as exc:
+            raise PreflightError(f'Não foi possível preparar {subfile}: {exc}') from exc
+    if options:
+        # shadow's usermod handles account-file locks and preserves other entries.
+        try:
+            subprocess.run(['usermod', *options, 'root'], check=True, capture_output=True,
+                           text=True, timeout=15)
+        except (OSError, subprocess.SubprocessError) as exc:
+            detail = getattr(exc, 'stderr', '') or str(exc)
+            raise PreflightError(f'Falha ao configurar IDs de root: {detail}') from exc
+        print('Faixas de root configuradas. Reinicie o daemon Incus antes de criar novos containers.')
+    return bool(options)
+
+
 def check_idmaps(proc=Path('/proc/self'), etc=Path('/etc')):
     for kind, filename in (('UID', 'uid_map'), ('GID', 'gid_map')):
         try:
@@ -83,7 +147,9 @@ def check_idmaps(proc=Path('/proc/self'), etc=Path('/etc')):
                 f'IDs disponíveis neste ambiente: {available}. '
                 f'Faixas de root em {allocation_file}: {requested}. '
                 f'É necessária uma faixa subordinada de pelo menos {MIN_IDS} IDs '
-                'inteiramente contida no mapeamento do ambiente. ' + HOST_GUIDANCE
+                'inteiramente contida no mapeamento do ambiente. '
+                'Se há IDs suficientes mas nenhuma faixa de root, execute '
+                'sudo python3 deploy/preflight.py --prepare-idmaps. ' + HOST_GUIDANCE
             )
 
 
@@ -108,7 +174,15 @@ def check_environment():
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--prepare-idmaps', action='store_true',
+                        help='Configura faixas ausentes de root usando IDs já delegados e livres')
+    args = parser.parse_args()
     try:
+        if args.prepare_idmaps:
+            if sys.platform != 'linux' or os.geteuid() != 0:
+                raise PreflightError('Execute em Linux com sudo.')
+            prepare_idmaps()
         check_environment()
     except PreflightError as exc:
         print(f'Pré-verificação interrompida: {exc}', file=sys.stderr)

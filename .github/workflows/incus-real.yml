@@ -23,6 +23,12 @@ jobs:
           test ! -e /etc/incus-panel/config.local.json
       - name: Instalar tudo pelo bootstrap e verificar container real
         run: sudo sh install.sh
+      - name: Preparar faixas ausentes e confirmar idempotência
+        run: |
+          sudo python3 deploy/preflight.py --prepare-idmaps
+          sudo sha256sum /etc/subuid /etc/subgid > /tmp/subids.sha256
+          sudo python3 deploy/preflight.py --prepare-idmaps
+          sudo sha256sum -c /tmp/subids.sha256
       - name: Reinstalação preservando configurações e credenciais
         run: |
           sudo sha256sum /etc/incus-panel/config.local.json > /tmp/config.sha256
