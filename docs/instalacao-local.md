@@ -83,6 +83,61 @@ explícita e só usa IDs já delegados. Depois de o administrador ajustar a dele
 repita a pré-verificação e `sudo sh install.sh`; a senha existente é preservada.
 Referência: [mapeamento de usuários no Incus](https://linuxcontainers.org/incus/docs/main/userns-idmap/).
 
+### Congelamento durante a instalação de pacotes
+
+Uma última linha como `Setting up rsync` indica apenas a última mensagem recebida.
+Ela não identifica o pacote culpado nem comprova falta de RAM. É necessário
+verificar memória efetiva, swap, disco, pressão de I/O e registros do kernel.
+O RSS medido do processo do painel não inclui APT, Incus e o download/extração
+de imagens; não houve medição do pico da instalação completa em uma TV box.
+
+O bootstrap consulta `MemAvailable` e os limites visíveis de cgroups v1/v2,
+incluindo ancestrais, antes de iniciar cada etapa monitorada. Isso evita usar
+somente a RAM do hospedeiro como se estivesse toda disponível à VPS. Requer
+512 MB nominais e pelo menos 256 MiB disponíveis para iniciar a etapa; swap
+é informada separadamente. O consumo pode subir após a verificação.
+
+Com Python e o checkout completo disponíveis, as etapas de pacotes e início
+dos serviços registram saída incremental em `/var/log/incus-panel/install-*.log`,
+arquivos com modo 0600. A cada 15 s o terminal informa PID, tempo, memória e
+indicadores de pressão de memória/I/O. Isso informa atividade do monitor,
+sem afirmar que o gerenciador de pacotes está avançando. O bootstrap não mata
+APT/DPKG por demora. Uma falha preserva o código de saída e coleta diagnóstico
+de disco/kernel. As credenciais emitidas pelo instalador do painel não passam
+por esse log de pacotes.
+
+Traduções APT são dispensadas e o índice não é atualizado repetidamente sem
+mudança de repositório. Os ajustes do alocador
+glibc também são aplicados aos processos do bootstrap. As dependências de
+containers continuam sendo instaladas, sem QEMU ou pacotes recomendados.
+
+Após recuperar acesso à VM, primeiro colete, sem reinstalar ou alterar pacotes:
+
+```bash
+free -h
+df -h / /var
+sudo journalctl -k -b --no-pager -n 80
+```
+
+Se houve reboot, consulte também o boot anterior com `-b -1`. O journal pode
+não ter sido persistido. Com o código atualizado, há um diagnóstico equivalente:
+
+```bash
+sudo python3 deploy/install_watch.py --diagnose
+```
+
+Para verificar se APT/DPKG ainda estão executando e se existem pacotes pendentes:
+
+```bash
+ps -C apt,apt-get,dpkg -o pid,stat,etime,comm
+sudo dpkg --audit
+```
+
+Confirme o término desses processos antes de tentar reparar uma instalação
+interrompida. Não apague arquivos de lock para forçar uma segunda instalação.
+Uma atualização do instalador exige o checkout completo, incluindo os novos
+arquivos em `deploy/` e `incus_panel/`.
+
 ## Instalação
 
 O bootstrap instala Incus, Python 3.11+, OpenSSL e ferramentas de rede/usuários.
@@ -196,10 +251,18 @@ Essa fixture é simulada e fica exclusivamente em `127.0.0.1:8082`.
 
 ## Equipamentos com pouca memória
 
-O socket local ativa o modo leve por padrão, inclusive para configurações antigas
+O modo leve é o padrão em todos os transportes, inclusive para configurações antigas
 sem a opção `low_resource`. Não há atualização periódica do inventário ou assinatura
-de eventos. Use o botão Atualizar. A criação consulta o progresso a cada 5 segundos,
-continua em segundo plano e permite apenas uma criação de cada vez.
+de eventos. O inventário é reutilizado entre telas; use o botão Atualizar para obter
+mudanças externas ao painel. Ações pelo painel invalidam esse cache. A criação consulta
+o progresso a cada 5 segundos enquanto a tela estiver visível, continua no Incus em
+segundo plano e permite apenas uma criação de cada vez. Ao voltar à tela, a consulta
+é retomada. Armazenamento e Alertas consultam os pools sob demanda.
+
+As tabelas exibem 25 linhas por página, com busca sobre o inventário completo.
+O explorador mostra até 25 containers e um link para a lista completa. Desfoques,
+sombras e animações contínuas são desativados. `low_resource: false` permite
+reativar a atualização periódica e os efeitos visuais.
 
 O catálogo remoto usa apenas o índice de produtos (leitura limitada a 1 MiB), em
 vez do histórico completo de versões; oferece Alpine e Debian da arquitetura local.
@@ -209,9 +272,15 @@ são alterados. Aplicações que exigem mais memória podem falhar com esse limi
 
 Antes da criação, o painel exige `MemAvailable` de pelo menos 256 MiB. Isso é uma
 precaução e não uma garantia: o download e a extração rodam no daemon Incus e podem
-consumir mais recursos. O serviço do painel tem `CPUQuota=25%`, `MemoryHigh=96M` e
-`MemoryMax=160M`; esses limites dependem do suporte a cgroups do equipamento e
+consumir mais recursos. O serviço do painel tem `CPUQuota=25%`, `MemoryHigh=64M` e
+`MemoryMax=128M`; esses limites dependem do suporte a cgroups do equipamento e
 não abrangem o daemon Incus. Se o painel atingir seu limite, ele poderá reiniciar.
+
+O serviço define `MALLOC_ARENA_MAX=2` e `MALLOC_MMAP_THRESHOLD_=131072` em sistemas
+glibc para reduzir retenção de memória após autenticação e respostas grandes.
+Os parâmetros do scrypt permanecem iguais. Esses ajustes são aplicados ao reexecutar
+`sudo sh install.sh`; não alteram o ambiente de um Python iniciado manualmente.
+Veja as [medições locais e suas limitações](desempenho.md).
 
 Se a TV Box cair, não repita imediatamente a criação. Quando recuperar o acesso,
 pare o painel e verifique memória e logs da inicialização anterior:

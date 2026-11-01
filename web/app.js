@@ -31,13 +31,14 @@ function iconLabel(name,label){return [icon(name),el('span',{},label)];}
 function notify(message){$('#feedback').textContent=message;$('#feedback').hidden=false;}
 async function waitOperation(operation,scope,owner){
   let state;
-  for(let attempt=0;attempt<30;attempt++){
+  for(let attempt=0;attempt<(owner.low_resource?6:30);attempt++){
     if(session!==owner)throw new Error('A sessão mudou. Consulte Tarefas para conferir a operação.');
     state=(await read('operation',operation,scope)).data;
-    tasks.set(`${scope.host}/${scope.project}/${operation}`,{...tasks.get(`${scope.host}/${scope.project}/${operation}`),...scope,id:operation,...state});
+    trackTask(`${scope.host}/${scope.project}/${operation}`,{...tasks.get(`${scope.host}/${scope.project}/${operation}`),...scope,id:operation,...state});
+    if(state.status_code>=200)readCache.clear();
     if(state.status_code>=400)throw new Error(state.err||'O Incus não concluiu a operação.');
     if(state.status_code>=200)return state;
-    await new Promise(resolve=>setTimeout(resolve,1000));
+    await new Promise(resolve=>setTimeout(resolve,owner.low_resource?5000:1000));
   }
   return state;
 }
@@ -46,24 +47,47 @@ let eventTimer,eventVersion;
 const tasks = new Map();
 const creationRuns = new Map();
 const imageDownloads = new Map();
+const readCache = new Map();
+function trackTask(key,task){
+  tasks.set(key,task);
+  if(tasks.size>100){const completed=[...tasks].find(([id,item])=>id!==key&&item.status_code>=200);tasks.delete(completed?.[0]||tasks.keys().next().value);}
+}
+function watchingRun(run,page){return session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page===page&&!document.hidden;}
+function resumeRun(run,poll){if(run.status_code<200&&!run.connectionError&&!run.polling){clearTimeout(run.timer);run.timer=setTimeout(()=>poll(run),0);}}
 const pages = [ ['overview','◫','Visão geral'],['instances','▣','Containers'],['images','◇','Imagens'],['storage','▤','Armazenamento'],['networks','⌘','Redes'],['profiles','☷','Profiles'],['projects','▱','Projetos'],['tasks','◷','Tarefas'],['alerts','△','Alertas'],['server','▧','Servidor'],['settings','⚙','Configurações'] ];
-const fmt = n => n === null || n === undefined ? 'n/d' : new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1}).format(n);
+const numberFormat = new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1});
+const fmt = n => n === null || n === undefined ? 'n/d' : numberFormat.format(n);
 const bytes = n => n === null || n === undefined ? 'n/d' : n >= 1073741824 ? fmt(n/1073741824)+' GiB' : fmt(n/1048576)+' MiB';
 const date = n => n ? new Date(typeof n === 'number' ? n*1000 : n).toLocaleString('pt-BR') : 'n/d';
 const transportLabel = () => ({ssh:'SSH verificado',unix:'Socket local Incus',tls:'TLS verificado'})[session?.hosts.find(h=>h.id===host)?.transport||'tls'];
 const badge = (text, cls='') => el('span',{class:'badge '+cls},text);
 const status = text => el('span',{class:'status '+String(text).toLowerCase()},({'Running':'Em execução','Stopped':'Parado','Success':'Concluída','Failure':'Falhou','Running operation':'Em andamento'})[text] || text || 'Desconhecido');
 const json = value => el('pre',{},JSON.stringify(value,null,2));
+function inspect(value){const details=el('details',{},el('summary',{},'Inspecionar configuração'));let rendered=false;details.addEventListener('toggle',()=>{if(details.open&&!rendered){rendered=true;details.append(json(value));}});return details;}
 const panel = (title, content, action) => el('section',{class:'panel'},el('div',{class:'panel-head'},el('h2',{},title),action),content);
 const empty = text => el('div',{class:'empty'},text);
 const kv = pairs => el('dl',{class:'key-values'},pairs.map(([k,v])=>el('div',{},el('dt',{},k),el('dd',{},v ?? 'n/d'))));
-function table(headers, rows) { return el('div',{class:'table-wrap'},rows.length ? el('table',{},el('thead',{},el('tr',{},headers.map(h=>el('th',{},h)))),el('tbody',{},rows.map(r=>el('tr',{},r.map(c=>el('td',{},c)))))) : empty('Nenhum recurso encontrado neste escopo.')); }
+function table(headers, rows) {
+  if(!rows.length)return empty('Nenhum recurso encontrado neste escopo.');
+  const body=el('tbody'),holder=el('div',{},el('div',{class:'table-wrap'},el('table',{},el('thead',{},el('tr',{},headers.map(h=>el('th',{},h)))),body)));
+  const size=25;let page=0;
+  const label=el('span',{'aria-live':'polite'}),previous=el('button',{type:'button',onclick:()=>{page--;update();}},'Anterior'),next=el('button',{type:'button',onclick:()=>{page++;update();}},'Próxima');
+  function update(){
+    body.replaceChildren(...rows.slice(page*size,(page+1)*size).map(row=>el('tr',{},(typeof row==='function'?row():row).map(c=>el('td',{},c)))));
+    label.textContent=`${page*size+1}–${Math.min((page+1)*size,rows.length)} de ${rows.length}`;
+    previous.disabled=page===0;next.disabled=(page+1)*size>=rows.length;
+  }
+  if(rows.length>size)holder.append(el('div',{class:'pagination'},previous,label,next));
+  update();return holder;
+}
 function notice(text, critical=false) { return el('div',{class:'alert'+(critical?' critical':'')},text); }
 function errorNode(error) { return notice((error.status===403?'Sem permissão. ':error.status===503?'Desconectado. ':'')+error.message,true); }
 function loadingView(message) { return el('div',{class:'loading-state',role:'status','aria-live':'polite'},el('span',{class:'spinner','aria-hidden':'true'}),el('p',{},message)); }
 async function api(path, body) {
+  if(body&&['/api/action','/api/create','/api/images/download'].includes(path))readCache.clear();
   const response = await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':session?.csrf || ''}:{},body:body?JSON.stringify(body):undefined,cache:'no-store'});
   const result = await response.json();
+  if(body&&['/api/action','/api/create','/api/images/download'].includes(path))readCache.clear();
   if (!response.ok) {
     if (response.status===401 && path!=='/api/login') logoutLocal();
     throw Object.assign(new Error(result.error || 'Falha na solicitação.'),{status:response.status});
@@ -71,9 +95,17 @@ async function api(path, body) {
   return result;
 }
 async function read(resource,target,scope={host,project}) {
-  return api('/api/read?'+new URLSearchParams({...scope,resource,...(target?{target}:{})}));
+  const path='/api/read?'+new URLSearchParams({...scope,resource,...(target?{target}:{})});
+  if(!['server','instance-list'].includes(resource))return api(path);
+  const cached=readCache.get(path);
+  if(cached&&Date.now()<cached.expires)return cached.promise;
+  const entry={expires:Infinity};
+  entry.promise=api(path).then(result=>{entry.expires=session?.low_resource?Infinity:Date.now()+(resource==='server'?60000:15000);return result;},error=>{if(readCache.get(path)===entry)readCache.delete(path);throw error;});
+  readCache.set(path,entry);
+  if(readCache.size>8)readCache.delete(readCache.keys().next().value);
+  return entry.promise;
 }
-function route() { const [page='overview',target='',tab='summary'] = location.hash.slice(1).split('/').map(decodeURIComponent); return {page,target,tab}; }
+function route() { const [page='',target='',tab='summary'] = location.hash.slice(1).split('/').map(decodeURIComponent); return {page:page||'overview',target,tab}; }
 function instanceLink(name, tab='summary') { return '#instance/'+encodeURIComponent(name)+'/'+tab; }
 function canMutate(target) { return !session.read_only && session.role!=='observador' && (session.manage_all_instances || (session.mutable_instances?.[host]?.[project] || []).includes(target)); }
 function actionButton(label, action, target, extra={}) { return el('button',{class:'action-button'+(action==='delete'?' danger-button':''),disabled:canMutate(target)?null:'',onclick:()=>openAction(action,target,extra)},...iconLabel(iconPaths[action]?action:'plus',label)); }
@@ -105,7 +137,7 @@ $('#action-form').onsubmit=async event=>{
       consoleId=result.console;$('#confirm').close();pollConsole();return;
     }
     const data=await api('/api/action',{...action,confirmation:`${action.host}/${action.project}/${action.target}`,name:$('#artifact-name').value});
-    tasks.set(`${action.host}/${action.project}/${data.operation}`,{...action,id:data.operation,status:'Aguardando confirmação',status_code:100});
+    trackTask(`${action.host}/${action.project}/${data.operation}`,{...action,id:data.operation,status:'Aguardando confirmação',status_code:100});
     $('#submit-action').textContent='Aguardando o Incus…';
     const state=await waitOperation(data.operation,{host:action.host,project:action.project},owner);
     if(session!==owner)return;
@@ -118,12 +150,13 @@ $('#action-form').onsubmit=async event=>{
   finally { $('#cancel-action').disabled=false; $('#submit-action').disabled=false;$('#submit-action').textContent='Confirmar operação'; }
 };
 function logoutLocal() {
+  document.body.classList.add('low-resource');
   setMenu(false,{restoreFocus:false});
   closeConsole();
   for(const run of creationRuns.values())clearTimeout(run.timer);
   creationRuns.clear();
   for(const run of imageDownloads.values())clearTimeout(run.timer);
-  imageDownloads.clear();
+  imageDownloads.clear();readCache.clear();
   $('#feedback').hidden=true;
   session=null; generation++; clearTimeout(timer); clearTimeout(expiryTimer); clearTimeout(eventTimer); tasks.clear(); $('#content').replaceChildren(); $('#tree').replaceChildren(); $('#shell').hidden=true; $('#login').hidden=false;
   if($('#confirm').open) $('#confirm').close();
@@ -178,6 +211,7 @@ $('#login-form').onsubmit=async event=>{
   finally { button.disabled=false;button.replaceChildren(...label); }
 };
 function enter() {
+  readCache.clear();document.body.classList.toggle('low-resource',Boolean(session.low_resource));
   clearTimeout(expiryTimer); expiryTimer=setTimeout(logoutLocal,Math.max(0,session.expires*1000-Date.now()));
   $('#login').hidden=true; $('#shell').hidden=false; $('#identity').textContent=`${session.username} · ${session.role}`;
   $('#mode').textContent=session.demo?'DEMONSTRAÇÃO':session.read_only?'SOMENTE LEITURA':session.manage_all_instances?'ADMINISTRAÇÃO':'LABORATÓRIO';
@@ -188,6 +222,7 @@ function enter() {
   $('#host').value=host; fillProjects(remembered?.project); render();
 }
 function fillProjects(preferred) {
+  readCache.clear();
   const projects=session.scopes[host]||[];
   project=projects.includes(preferred)?preferred:projects[0];
   $('#project').replaceChildren(...projects.map(p=>el('option',{value:p},p))); $('#project').value=project;
@@ -195,10 +230,16 @@ function fillProjects(preferred) {
   eventVersion=undefined;clearTimeout(eventTimer);eventTimer=setTimeout(pollEvents,2000);
 }
 $('#host').onchange=()=>{closeConsole();host=$('#host').value;fillProjects();render();};
-$('#project').onchange=()=>{closeConsole();project=$('#project').value;localStorage.setItem('incus-scope',JSON.stringify({host,project}));eventVersion=undefined;clearTimeout(eventTimer);eventTimer=setTimeout(pollEvents,2000);render();};
-$('#refresh').onclick=()=>{closeConsole();render();}; $('#tree-view').onchange=()=>render();
+$('#project').onchange=()=>{closeConsole();readCache.clear();project=$('#project').value;localStorage.setItem('incus-scope',JSON.stringify({host,project}));eventVersion=undefined;clearTimeout(eventTimer);eventTimer=setTimeout(pollEvents,2000);render();};
+$('#refresh').onclick=()=>{closeConsole();readCache.clear();render();}; $('#tree-view').onchange=()=>render();
 window.addEventListener('hashchange',()=>{setMenu(false,{restoreFocus:false});closeConsole();if(session)render();});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&session&&!consoleId&&!menuOpen&&!$('#content form')&&!$('#confirm').open)render();});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){clearTimeout(timer);clearTimeout(eventTimer);for(const run of [...creationRuns.values(),...imageDownloads.values()])clearTimeout(run.timer);return;}
+  if(!session)return;
+  for(const run of creationRuns.values())if(watchingRun(run,'create'))resumeRun(run,pollCreation);
+  for(const run of imageDownloads.values())if(watchingRun(run,'images'))resumeRun(run,pollImageDownload);
+  if(!session.low_resource){eventTimer=setTimeout(pollEvents,2000);if(!consoleId&&!menuOpen&&!$('#content form')&&!$('#confirm').open){readCache.clear();render();}else scheduleRefresh();}
+});
 function instanceActions(item){
   const actions=el('div',{class:'row-actions'});
   const edit=el('a',{class:'button-link',href:instanceLink(item.name,'options'),title:'Editar '+item.name,'aria-label':'Editar '+item.name},icon('edit'));
@@ -216,7 +257,7 @@ function instanceActions(item){
   return actions;
 }
 function instanceTable(items) {
-  return table(['CONTAINER','ESTADO','ARQUITETURA','AÇÕES'],items.map(i=>[el('a',{class:'container-name',href:instanceLink(i.name)},icon('box'),i.name),status(i.status),i.architecture||'n/d',instanceActions(i)]));
+  return table(['CONTAINER','ESTADO','ARQUITETURA','AÇÕES'],items.map(i=>()=>[el('a',{class:'container-name',href:instanceLink(i.name)},icon('box'),i.name),status(i.status),i.architecture||'n/d',instanceActions(i)]));
 }
 function filteredInstances(items) {
   const input=el('input',{placeholder:'Buscar container, estado ou arquitetura…','aria-label':'Buscar containers'});
@@ -224,7 +265,7 @@ function filteredInstances(items) {
   const sort=el('select',{'aria-label':'Ordenar containers'},el('option',{value:'name'},'Ordenar por nome'),el('option',{value:'status'},'Ordenar por estado'));
   const holder=el('div');
   function update(){const term=input.value.toLowerCase();holder.replaceChildren(instanceTable(items.filter(i=>(!filter.value||i.status===filter.value)&&[i.name,i.status,i.architecture].join(' ').toLowerCase().includes(term)).sort((a,b)=>String(a[sort.value]).localeCompare(String(b[sort.value])))));}
-  input.oninput=update;filter.onchange=update;sort.onchange=update;update();
+  let filterTimer;input.oninput=()=>{clearTimeout(filterTimer);filterTimer=setTimeout(update,120);};filter.onchange=update;sort.onchange=update;update();
   return el('div',{},el('div',{class:'toolbar'},input,filter,sort,el('a',{href:'#create',class:'primary button-link'},...iconLabel('plus','Criar container'))),panel('Seus containers',holder));
 }
 async function render() {
@@ -239,23 +280,23 @@ async function render() {
   $('#content').replaceChildren(loadingView(route().page==='create'?'Carregando imagens disponíveis…':'Carregando '+title+'…'));
   const container=el('div');
   try {
-    const [serverResult, instancesResult]=await Promise.allSettled([read('server',undefined,scope),read('instances',undefined,scope)]);
+    const [serverResult, instancesResult]=await Promise.allSettled([read('server',undefined,scope),read('instance-list',undefined,scope)]);
     if(id!==generation||!session)return;
     if(serverResult.status==='rejected')throw serverResult.reason;
     if(instancesResult.status==='rejected')throw instancesResult.reason;
     const server=serverResult.value.data, instances=instancesResult.value.data;
-    $('#tree').replaceChildren(el('a',{href:'#server'},'▧ '+(server.environment?.server_name||host)),el('a',{href:'#projects'},'▱ '+project),...instances.map(i=>el('a',{class:'leaf',href:instanceLink(i.name)},(i.status==='Running'?'● ':'○ ')+i.name)));
+    $('#tree').replaceChildren(el('a',{href:'#server'},'▧ '+(server.environment?.server_name||host)),el('a',{href:'#projects'},'▱ '+project),...instances.slice(0,25).map(i=>el('a',{class:'leaf',href:instanceLink(i.name)},(i.status==='Running'?'● ':'○ ')+i.name)),...(instances.length>25?[el('a',{href:'#instances'},`Ver todos os ${instances.length} containers →`)]:[]));
     if($('#tree-view').value==='project')$('#tree').prepend(el('small',{},'Agrupamento: '+project+' → '+host));
     if(r.page==='overview') {
       container.append(el('section',{class:'welcome-panel'},el('div',{},el('span',{class:'eyebrow'},'SEU PRÓXIMO EXPERIMENTO COMEÇA AQUI'),el('h2',{},'Uma ideia. Um novo container.'),el('p',{},'Escolha um sistema e prepare seu ambiente em poucos passos.')),el('a',{href:'#create',class:'primary creation-link'},...iconLabel('plus','Criar container'))));
       const running=instances.filter(i=>i.status==='Running').length;
-      const resources=await read('resources',undefined,scope).catch(error=>({error}));
+      const resources=session.host_metrics?await read('host-summary',undefined,scope).catch(error=>({error})):{};
       const memory=resources.data?.memory;
       const cards=[['Containers',instances.length,`${running} em execução · ${instances.filter(i=>i.status==='Stopped').length} parados`],['Memória do host',bytes(memory?.used),memory?'de '+bytes(memory.total):'Fonte indisponível ou não autorizada'],['Arquitetura',server.environment?.kernel_architecture||'n/d','Containers LXC · sem criação de VM'],['Incus',server.environment?.server_version||'n/d',server.environment?.server_clustered?'Cluster configurado':'Servidor standalone']];
       container.append(el('div',{class:'cards'},cards.map(([label,value,note])=>el('div',{class:'card'},el('div',{class:'label'},label),el('div',{class:'value'},value),el('div',{class:'note'},note)))));
       container.append(el('div',{class:'grid'},panel('Containers',instanceTable(instances),el('a',{href:'#instances'},'Ver todos ↗')),panel('Identidade do servidor',el('div',{class:'panel-body'},kv([['Servidor',server.environment?.server_name],['Project',project],['Conexão',session.demo?'Fixture explícita':transportLabel()],['Atualização',session.low_resource?'Manual pelo botão Atualizar':'A cada 15 s, com aba visível']])))));
       if(resources.error)container.append(errorNode(resources.error));
-      container.append(await storageView(scope,true));
+      if(!session.low_resource&&session.host_metrics)container.append(await storageView(scope,true));
     } else if(r.page==='instances') container.append(filteredInstances(instances));
     else if(r.page==='instance') container.append(await detail(r,scope));
     else if(r.page==='storage'||r.page==='alerts') container.append(await storageView(scope,r.page==='alerts'));
@@ -263,19 +304,17 @@ async function render() {
     else if(r.page==='images') container.append(await imagesView(scope,server));
     else if(['networks','profiles','projects'].includes(r.page)) {
       const result=await read(r.page,undefined,scope); const data=result.data;
-      container.append(panel(title,table(['NOME','DETALHES'],data.map(item=>[item.name,el('details',{},el('summary',{},'Inspecionar configuração'),json(item))]))));
+      container.append(panel(title,table(['NOME','DETALHES'],data.map(item=>()=>[item.name,inspect(item)]))));
       if(r.page==='projects')container.append(notice('A lista contém somente os escopos configurados no servidor do painel. A autorização final permanece no Incus.'));
     } else if(r.page==='tasks') container.append(await taskView(scope));
     else if(r.page==='create') container.append(await createView(scope,server));
-    else if(r.page==='settings') container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only?'Somente leitura':'Mutações limitadas à allowlist'],['Autorização','Escopo no painel + '+transportLabel()],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice('O inventário é atualizado a cada 15 segundos. Quando habilitados pelo administrador, eventos antecipam a atualização. O console é encerrado por logout, expiração ou inatividade.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',json((await read('audit',undefined,scope)).data)));
+    else if(r.page==='settings') container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only?'Somente leitura':'Mutações limitadas à allowlist'],['Autorização','Escopo no painel + '+transportLabel()],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice(session.low_resource?'Modo leve: inventário manual pelo botão Atualizar. Consulte Armazenamento e Alertas para verificar a capacidade dos pools.':'O inventário é atualizado a cada 15 segundos. Quando habilitados pelo administrador, eventos antecipam a atualização.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',json((await read('audit',undefined,scope)).data)));
     else container.append(empty('Página não encontrada.'));
     if(id!==generation||!session)return;
     const tracked=[...tasks.values()].filter(t=>t.host===scope.host&&t.project===scope.project);
-    for(const task of tracked)if(task.status_code<200){try{Object.assign(task,(await read('operation',task.id,scope)).data);}catch{task.status='Resultado incerto';}}
-    if(id!==generation||!session)return;
     $('#task-summary').textContent=tracked.length?tracked.map(t=>`${t.target}: ${t.status}`).join(' · '):'Operações rastreadas pelo Incus';
     $('#content').replaceChildren(container); $('#connection').textContent=(session.demo?'● Simulação conectada':'● Conectado · '+transportLabel())+' · '+host+' / '+project;
-    $('#updated').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
+    $('#updated').textContent='Inventário '+new Date(instancesResult.value.timestamp*1000).toLocaleTimeString('pt-BR');
   } catch(error) {
     if(id===generation&&session){$('#content').replaceChildren(errorNode(error),notice('Não foi possível atualizar este escopo. A falha de conexão não indica que os containers estejam parados.'));$('#connection').textContent=error.status===403?'Sem permissão':'Conexão degradada';}
   } finally {
@@ -284,11 +323,11 @@ async function render() {
 }
 function scheduleRefresh(){clearTimeout(timer);if(session?.low_resource)return;timer=setTimeout(()=>{if(!session)return;if(!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement))render();else scheduleRefresh();},15000);}
 async function pollEvents(){
-  if(!session||session.low_resource)return;const scope=host+'/'+project;
+  if(!session||session.low_resource||document.hidden)return;const scope=host+'/'+project;
   try{const result=await api('/api/events?'+new URLSearchParams({host,project}));if(!session||scope!==host+'/'+project)return;if(!result.enabled)return;
     const changed=result.version!==eventVersion;eventVersion=result.version;
     if(!result.connected){$('#connection').textContent='Eventos desconectados · fallback REST ativo';}
-    if(changed&&!busy&&!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement))await render();
+    if(changed&&!busy&&!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement)){readCache.clear();await render();}
   }catch{}
   if(session)eventTimer=setTimeout(pollEvents,2000);
 }
@@ -307,8 +346,8 @@ async function storageView(scope,alertsOnly=false) {
   } catch(error){return errorNode(error);}
 }
 async function detail(r,scope) {
-  const [instanceResult,stateResult]=await Promise.all([read('instance',r.target,scope),read('state',r.target,scope)]);
-  const item=instanceResult.data,state=stateResult.data;
+  const [instanceResult,stateResult]=await Promise.all([read('instance',r.target,scope),['summary','resources'].includes(r.tab)?read('state',r.target,scope):Promise.resolve(null)]);
+  const item=instanceResult.data,state=stateResult?.data||{status:item.status};
   const tabs=[['summary','Resumo'],['resources','Recursos'],['devices','Dispositivos'],['options','Editar'],['snapshots','Snapshots'],['backups','Backups'],['console','Console']];
   const wrapper=el('div',{},el('div',{class:'tabs'},tabs.map(([tab,label])=>el('a',{href:instanceLink(r.target,tab),class:r.tab===tab?'active':''},label))));
   if(r.tab==='summary') {
@@ -365,7 +404,7 @@ function editView(item,scope){
     const owner=session;fields.disabled=true;save.disabled=true;message.textContent='Salvando e aguardando a confirmação do Incus…';
     try{
       const result=await api('/api/action',{...scope,action:'update',target:item.name,confirmation:`${scope.host}/${scope.project}/${item.name}`,revision:item._revision,changes});
-      tasks.set(`${scope.host}/${scope.project}/${result.operation}`,{...scope,id:result.operation,target:item.name,action:'update',status_code:100});
+      trackTask(`${scope.host}/${scope.project}/${result.operation}`,{...scope,id:result.operation,target:item.name,action:'update',status_code:100});
       const state=await waitOperation(result.operation,scope,owner);
       if(session!==owner)return;
       notify(state.status_code<200?'Edição em andamento. Acompanhe em Tarefas.':'Alterações salvas e confirmadas pelo Incus.');
@@ -387,7 +426,7 @@ function editView(item,scope){
 async function closeConsole(){clearTimeout(consoleTimer);const id=consoleId;consoleId=null;if(id&&session)try{await api('/api/console/close',{console:id});}catch{} }
 async function pollConsole(){
   const id=consoleId;if(!id)return;
-  try{const result=await api('/api/console/read?'+new URLSearchParams({console:id}));if(consoleId!==id)return;const output=$('#console-output');if(!output){closeConsole();return;}output.textContent=(output.textContent+result.output).slice(-65536);output.scrollTop=output.scrollHeight;if(result.closed){output.append('\n[Console encerrado]');consoleId=null;return;}consoleTimer=setTimeout(pollConsole,500);}
+  try{const result=await api('/api/console/read?'+new URLSearchParams({console:id}));if(consoleId!==id)return;const output=$('#console-output');if(!output){closeConsole();return;}if(result.output){output.textContent=(output.textContent+result.output).slice(-65536);output.scrollTop=output.scrollHeight;}if(result.closed){output.append('\n[Console encerrado]');consoleId=null;return;}consoleTimer=setTimeout(pollConsole,document.hidden?5000:session.low_resource?(result.output?1000:3000):500);}
   catch(error){const output=$('#console-output');if(output)output.append('\n'+error.message);closeConsole();}
 }
 async function taskView(scope) {
@@ -396,21 +435,21 @@ async function taskView(scope) {
   const all=new Map();
   for(const operation of remote)if(typeof operation==='object')all.set(operation.id,operation);
   for(const [key,task] of tasks)if(task.host===scope.host&&task.project===scope.project){
-    try{const data=(await read('operation',task.id,scope)).data;const updated={...task,...data,...(task.action==='download-image'?{description:'Baixar '+task.target}:{})};tasks.set(key,updated);all.set(task.id,updated);}catch(error){all.set(task.id,{...task,err:error.message});}
+    try{const data=all.get(task.id)||(task.status_code>=200?task:(await read('operation',task.id,scope)).data);const updated={...task,...data,...(task.action==='download-image'?{description:'Baixar '+task.target}:{})};trackTask(key,updated);all.set(task.id,updated);}catch(error){all.set(task.id,{...task,err:error.message});}
   }
   $('#task-summary').textContent=`${all.size} operações neste escopo · estado confirmado pelo Incus`;
-  return panel('Operações assíncronas',table(['UUID','DESCRIÇÃO','ESTADO','PROGRESSO / ERRO'],[...all.values()].map(i=>[i.id,i.description||i.action,status(i.status),i.err||JSON.stringify(i.metadata||{})])));
+  return panel('Operações assíncronas',table(['UUID','DESCRIÇÃO','ESTADO','PROGRESSO / ERRO'],[...all.values()].map(i=>()=>[i.id,i.description||i.action,status(i.status),i.err||JSON.stringify(i.metadata||{})])));
 }
 async function imagesView(scope,server){
   const owner=session,key=scope.host+'/'+scope.project;
   const images=(await read('images',undefined,scope)).data;
-  const local=panel('Imagens baixadas',images.length?table(['IMAGEM','ARQUITETURA','TAMANHO','TIPO'],images.map(item=>[item.properties?.description||item.aliases?.[0]?.name||item.fingerprint,item.architecture,bytes(item.size),item.type||'container'])):empty('Nenhuma imagem baixada neste projeto. Escolha uma imagem no catálogo abaixo.'));
+  const local=panel('Imagens baixadas',images.length?table(['IMAGEM','ARQUITETURA','TAMANHO','TIPO'],images.map(item=>()=>[item.properties?.description||item.aliases?.[0]?.name||item.fingerprint,item.architecture,bytes(item.size),item.type||'container'])):empty('Nenhuma imagem baixada neste projeto. Escolha uma imagem no catálogo abaixo.'));
   const wrapper=el('div',{},local);
   const download=el('div',{class:'panel-body image-download-body'});
   wrapper.append(panel('Baixar outra imagem',download));
   const progress=el('div',{class:'image-download-status','aria-live':'polite',role:'status'});
   const current=imageDownloads.get(key);
-  if(current)progress.replaceChildren(imageDownloadStatus(current));
+  if(current){progress.replaceChildren(imageDownloadStatus(current));resumeRun(current,pollImageDownload);}
   download.append(el('p',{class:'muted'},'Baixe uma imagem para usar depois na criação de containers. O arquivo fica no servidor selecionado, neste projeto.'),progress);
   if(!session.allow_remote_images){download.append(notice('O download de imagens está desabilitado na configuração do painel.'));return wrapper;}
   if(session.read_only||session.role!=='administrador'){download.append(notice(session.read_only?'Este painel está em modo somente leitura.':'Somente administradores podem baixar imagens.'));return wrapper;}
@@ -437,7 +476,7 @@ async function imagesView(scope,server){
       const result=await api('/api/images/download',{...scope,remote_image:run.target});
       if(session!==owner)return;
       Object.assign(run,result);
-      tasks.set(`${scope.host}/${scope.project}/${run.operation}`,{...scope,id:run.operation,target:run.target,action:'download-image',description:'Baixar '+run.target,status:'Em andamento',status_code:100});
+      trackTask(`${scope.host}/${scope.project}/${run.operation}`,{...scope,id:run.operation,target:run.target,action:'download-image',description:'Baixar '+run.target,status:'Em andamento',status_code:100});
       pollImageDownload(run);
     }catch(error){
       if(session!==owner)return;
@@ -466,7 +505,7 @@ function updateImageDownload(run){
   if(session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page==='images')$('.image-download-status')?.replaceChildren(imageDownloadStatus(run));
 }
 async function pollImageDownload(run){
-  if(session!==run.owner||run.polling)return;
+  if(!watchingRun(run,'images')||!run.operation||run.polling)return;
   clearTimeout(run.timer);run.polling=true;
   try{
     const state=(await read('operation',run.operation,run.scope)).data;
@@ -478,17 +517,17 @@ async function pollImageDownload(run){
     }
     Object.assign(run,state,{connectionError:null});
     if(state.err)run.status_code=400;
-    tasks.set(`${run.scope.host}/${run.scope.project}/${run.operation}`,{...run.scope,...state,target:run.target,action:'download-image',description:'Baixar '+run.target});
+    trackTask(`${run.scope.host}/${run.scope.project}/${run.operation}`,{...run.scope,...state,target:run.target,action:'download-image',description:'Baixar '+run.target});
     updateImageDownload(run);
-    if(run.status_code<200)run.timer=setTimeout(()=>pollImageDownload(run),session.low_resource?5000:1500);
-    else if(host===run.scope.host&&project===run.scope.project&&route().page==='images')await render();
+    if(run.status_code<200){if(watchingRun(run,'images'))run.timer=setTimeout(()=>pollImageDownload(run),session.low_resource?5000:1500);}
+    else if(watchingRun(run,'images')){readCache.clear();await render();}
   }catch(error){if(session===run.owner){run.connectionError=error.message;updateImageDownload(run);}}
   finally{run.polling=false;}
 }
 async function createView(scope,server) {
   if(!session.manage_all_instances)return advancedCreateView(scope,server);
   const key=scope.host+'/'+scope.project;
-  if(creationRuns.has(key))return creationScreen(creationRuns.get(key));
+  if(creationRuns.has(key)){const run=creationRuns.get(key);resumeRun(run,pollCreation);return creationScreen(run);}
   const result=(await read('creation-images',undefined,scope)).data;
   const form=el('form',{class:'panel-body create-form'});
   const target=el('input',{name:'container-name',maxlength:'63',pattern:'[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?',placeholder:'Ex.: meu-servidor (opcional)',autocomplete:'off','aria-describedby':'container-name-help'});
@@ -526,15 +565,16 @@ function updateCreationScreen(run){
   if(session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page==='create')$('#content').replaceChildren(creationScreen(run));
 }
 async function pollCreation(run){
-  if(session!==run.owner||run.polling)return;
+  if(!watchingRun(run,'create')||!run.operation||run.polling)return;
   clearTimeout(run.timer);run.polling=true;
   try{
     const state=(await read('operation',run.operation,run.scope)).data;
     if(session!==run.owner)return;
     Object.assign(run,state,{connectionError:null});
-    tasks.set(`${run.scope.host}/${run.scope.project}/${run.operation}`,{...run.scope,...state,action:'create'});
+    trackTask(`${run.scope.host}/${run.scope.project}/${run.operation}`,{...run.scope,...state,action:'create'});
     updateCreationScreen(run);
-    if(state.status_code<200)run.timer=setTimeout(()=>pollCreation(run),session.low_resource?5000:1500);
+    if(state.status_code<200){if(watchingRun(run,'create'))run.timer=setTimeout(()=>pollCreation(run),session.low_resource?5000:1500);}
+    else readCache.clear();
   }catch(error){run.connectionError=error.message;updateCreationScreen(run);}
   finally{run.polling=false;}
 }

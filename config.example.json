@@ -1,5 +1,6 @@
 {
   "demo": false,
+  "low_resource": true,
   "read_only": true,
   "enable_console": false,
   "enable_events": false,

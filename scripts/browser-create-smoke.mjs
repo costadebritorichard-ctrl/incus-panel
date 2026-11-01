@@ -1,28 +1,28 @@
 // Requer fixture tests/create_fixture.py e Edge/Chromium com CDP em 9223.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-const tabs=await (await fetch('http://127.0.0.1:9223/json/list')).json();
+const tabs=await (await fetch(`http://127.0.0.1:${process.env.CDP_PORT||9223}/json/list`)).json();
 const socket=new WebSocket(tabs.find(t=>t.type==='page').webSocketDebuggerUrl);
 await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=reject;});
-let seq=0;const pending=new Map();const errors=[];
-socket.onmessage=event=>{const data=JSON.parse(event.data);if(data.id){const item=pending.get(data.id);pending.delete(data.id);data.error?item.reject(new Error(data.error.message)):item.resolve(data.result);}if(data.method==='Runtime.exceptionThrown')errors.push(data.params.exceptionDetails.text);};
+let seq=0,operationReads=0;const pending=new Map();const errors=[];
+socket.onmessage=event=>{const data=JSON.parse(event.data);if(data.id){const item=pending.get(data.id);pending.delete(data.id);data.error?item.reject(new Error(data.error.message)):item.resolve(data.result);}if(data.method==='Runtime.exceptionThrown')errors.push(data.params.exceptionDetails.text);if(data.method==='Network.requestWillBeSent'&&data.params.request.url.includes('resource=operation&'))operationReads++;};
 const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});socket.send(JSON.stringify({id,method,params}));});
 const evaluate=async expression=>{const result=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(result.exceptionDetails)throw new Error(JSON.stringify(result.exceptionDetails));return result.result.value;};
 const wait=async expression=>{for(let i=0;i<300;i++){if(await evaluate(expression))return;await new Promise(r=>setTimeout(r,100));}throw new Error('Tempo excedido: '+expression);};
 try{
-  await call('Runtime.enable');await call('Page.enable');
+  await call('Runtime.enable');await call('Page.enable');await call('Network.enable');
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   await call('Page.navigate',{url:'http://127.0.0.1:8082/'});
-  await wait("!!document.querySelector('#login-form')");
+  await wait("typeof api==='function'&&!!document.querySelector('#login-form')");
   await evaluate("document.querySelector('[name=username]').value='test';document.querySelector('[name=password]').value='local-browser-fixture';document.querySelector('#login-form').requestSubmit()");
   await wait("!document.querySelector('#shell').hidden");
   assert.equal(await evaluate('session.low_resource'),true);
   assert.equal(await evaluate('timer===undefined'),true);
   await evaluate("location.hash='create'");
   await wait("!!document.querySelector('#content .loading-state')");
-  await wait("!!document.querySelector('#content form select')");
-  assert.equal(await evaluate("document.querySelectorAll('#content form select').length"),1);
-  assert.equal(await evaluate("document.querySelectorAll('#content form input').length"),1);
+  await wait("!!document.querySelector('#content .image-choice')");
+  assert.equal(await evaluate("document.querySelectorAll('#content form select').length"),0);
+  assert.equal(await evaluate("document.querySelectorAll('#content form input:not([type=hidden])').length"),1);
   await evaluate("document.querySelector('[name=container-name]').value='web-tvbox'");
   await evaluate("document.querySelector('#content form').requestSubmit()");
   await wait("!!document.querySelector('.creation-screen progress')");
@@ -32,6 +32,9 @@ try{
   await fs.writeFile('artifacts/creation-desktop.png',Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
   await evaluate("location.hash='instances'");
   await wait("document.querySelector('#content table')!==null");
+  const readsOffPage=operationReads;
+  await new Promise(resolve=>setTimeout(resolve,5500));
+  assert.equal(operationReads,readsOffPage);
   await evaluate("location.hash='create'");
   await wait("!!document.querySelector('.creation-screen')");
   assert.equal(await evaluate("document.querySelectorAll('#content form').length"),0);

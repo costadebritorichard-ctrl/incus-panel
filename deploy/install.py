@@ -16,10 +16,13 @@ import urllib.request
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from incus_panel.server import password_hash
-from deploy.preflight import check_environment
+from deploy.preflight import check_environment, check_install_memory
+from incus_panel.memory import describe_memory
 
 
 def run(command, **kwargs):
+    # Erros de serviço/CLI não podem deixar a configuração esperando indefinidamente.
+    kwargs.setdefault('timeout', 120)
     return subprocess.run(command, check=True, **kwargs)
 
 
@@ -90,8 +93,8 @@ RestartSec=5
 Nice=10
 CPUQuota=25%
 MemoryAccounting=true
-MemoryHigh=96M
-MemoryMax=160M
+MemoryHigh=64M
+MemoryMax=128M
 TasksMax=32
 NoNewPrivileges=true
 PrivateTmp=true
@@ -101,6 +104,8 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 UMask=0077
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1
+Environment=MALLOC_ARENA_MAX=2
+Environment=MALLOC_MMAP_THRESHOLD_=131072
 
 [Install]
 WantedBy=multi-user.target
@@ -119,6 +124,7 @@ def main():
     if os.geteuid() != 0:
         parser.error('Execute com sudo para instalar o serviço systemd.')
     check_environment()
+    print(describe_memory(check_install_memory()), flush=True)
     if not args.address:
         route = run(['ip', '-j', 'route', 'get', '1.1.1.1'], capture_output=True)
         args.address = json.loads(route.stdout)[0]['prefsrc']
@@ -129,6 +135,7 @@ def main():
         parser.error('Porta inválida.')
     if not shutil.which('incus'):
         parser.error('Instale o Incus nesta TV Box antes de executar o instalador.')
+    print('Etapa: aguardar resposta do serviço Incus.', flush=True)
     run(['systemctl', 'start', 'incus.service'])
     for attempt in range(30):
         try:
@@ -150,6 +157,7 @@ def main():
         response = run(['incus', 'query', '--force-local', '--raw', path], capture_output=True)
         data = json.loads(response.stdout)
         return data.get('metadata', data) if isinstance(data, dict) else data
+    print('Etapa: preparar armazenamento dir e rede local.', flush=True)
     ensure_default_storage(query)
     ensure_default_network(query)
     identity = pwd.getpwnam(args.user)
@@ -207,6 +215,7 @@ def main():
         # Mostre antes do diagnóstico: uma falha posterior não pode perder o login.
         print(f'Credenciais criadas — guarde agora: admin | {password}', flush=True)
 
+    print('Etapa: instalar arquivos e iniciar o painel HTTPS.', flush=True)
     release = base / 'releases' / (time.strftime('%Y%m%d-%H%M%S') + '-' + secrets.token_hex(3))
     release.mkdir(parents=True, mode=0o755)
     for folder in ('incus_panel', 'web'):
@@ -236,7 +245,8 @@ def main():
         verification = ['runuser', '-u', args.user, '--', '/usr/bin/python3', '-m', 'incus_panel.verify', '--config', str(config_path)]
         if args.verify_container:
             verification.append('--container')
-        run(verification, cwd=current)
+        print('Etapa: validar API e ciclo do container real.' if args.verify_container else 'Etapa: validar leitura da API real.', flush=True)
+        run(verification, cwd=current, timeout=2100 if args.verify_container else 120)
     except Exception:
         run(['systemctl', 'stop', 'incus-panel.service'])
         if old_release:

@@ -32,12 +32,34 @@ ram=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
 free_kb=$(df -Pk /var | awk 'END {print $4}')
 [ "$free_kb" -ge 1048576 ] || fail 'Libere ao menos 1 GiB em /var para instalação e imagem de teste.'
 export DEBIAN_FRONTEND=noninteractive
+# O instalador e seus filhos também devem devolver buffers grandes após uso.
+: "${MALLOC_ARENA_MAX:=2}"
+: "${MALLOC_MMAP_THRESHOLD_:=131072}"
+export MALLOC_ARENA_MAX MALLOC_MMAP_THRESHOLD_
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+apt_updated=false
+apt_run() {
+  label=$1
+  shift
+  if command -v python3 >/dev/null 2>&1 && [ -f "$source_dir/deploy/install_watch.py" ] && [ -f "$source_dir/incus_panel/memory.py" ]; then
+    python3 "$source_dir/deploy/install_watch.py" --label "$label" -- apt-get \
+      -o Acquire::Languages=none -o Dpkg::Use-Pty=0 "$@"
+  else
+    printf '\nEtapa: %s\n' "$label"
+    apt-get -o Acquire::Languages=none -o Dpkg::Use-Pty=0 "$@"
+  fi
+}
+apt_refresh() {
+  if [ "$apt_updated" = false ]; then
+    apt_run 'Atualizar índices de pacotes' update
+    apt_updated=true
+  fi
+}
 # No checkout usual, verificar antes de instalar pacotes ou alterar serviços.
 # O bootstrap isolado obtém somente as ferramentas e o código da verificação.
 if ! command -v python3 >/dev/null 2>&1 || ! command -v unshare >/dev/null 2>&1 || [ ! -f "$source_dir/deploy/preflight.py" ]; then
-  apt-get update
-  apt-get install -y --no-install-recommends ca-certificates curl python3 util-linux
+  apt_refresh
+  apt_run 'Instalar ferramentas mínimas do bootstrap' install -y --no-install-recommends ca-certificates curl python3 util-linux
 fi
 if [ ! -f "$source_dir/deploy/install.py" ] || [ ! -d "$source_dir/incus_panel" ]; then
   work=$(mktemp -d /var/tmp/incus-panel-install.XXXXXXXX)
@@ -51,15 +73,17 @@ if [ ! -f "$source_dir/deploy/install.py" ] || [ ! -d "$source_dir/incus_panel" 
 fi
 python3 -c 'import sys; assert sys.version_info >= (3,11), "Requer Python 3.11+"'
 [ -f "$source_dir/deploy/preflight.py" ] || fail 'Código sem pré-verificação. Atualize o checkout ou INCUS_PANEL_REF.'
+[ -f "$source_dir/deploy/install_watch.py" ] && [ -f "$source_dir/incus_panel/memory.py" ] || fail 'Código incompleto: atualize o checkout inteiro, incluindo deploy/ e incus_panel/, não apenas install.sh.'
 python3 "$source_dir/deploy/preflight.py"
-apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl python3 openssl iproute2 util-linux uidmap dnsmasq-base nftables lxcfs apparmor
+apt_refresh
+apt_run 'Instalar dependências de containers e HTTPS' install -y --no-install-recommends ca-certificates curl python3 openssl iproute2 util-linux uidmap dnsmasq-base nftables lxcfs apparmor
 if ! command -v incus >/dev/null 2>&1 || ! systemctl cat incus.service >/dev/null 2>&1; then
   if [ "$base:${VERSION_CODENAME}" = debian:bookworm ]; then
     # Repositório oficial, validado pelo chaveiro Debian já instalado.
     printf '%s\n' 'deb https://deb.debian.org/debian bookworm-backports main' > /etc/apt/sources.list.d/incus-panel-backports.list
-    apt-get update
-    apt-get install -y --no-install-recommends -t bookworm-backports incus-base incus-client
+    apt_updated=false
+    apt_refresh
+    apt_run 'Instalar Incus para containers (Debian backports)' install -y --no-install-recommends -t bookworm-backports incus-base incus-client
   else
     incus_package=incus-base
     # Noble antecede a separação incus-base; QEMU é recomendado, não obrigatório.
@@ -69,14 +93,16 @@ if ! command -v incus >/dev/null 2>&1 || ! systemctl cat incus.service >/dev/nul
     # Ubuntu precisa ter universe habilitado na imagem do sistema.
     if ! apt-cache show "$incus_package" >/dev/null 2>&1; then
       if [ "$base" = ubuntu ]; then
-        apt-get install -y --no-install-recommends software-properties-common
+        apt_run 'Habilitar suporte ao repositório Ubuntu universe' install -y --no-install-recommends software-properties-common
         add-apt-repository -y universe
-        apt-get update
+        apt_updated=false
+        apt_refresh
       fi
     fi
-    apt-get install -y --no-install-recommends "$incus_package" incus-client
+    apt_run 'Instalar Incus para containers' install -y --no-install-recommends "$incus_package" incus-client
   fi
 fi
-systemctl enable --now incus.service
-systemctl enable --now lxcfs.service
+python3 "$source_dir/deploy/install_watch.py" --label 'Iniciar serviço Incus' -- systemctl enable --now incus.service
+python3 "$source_dir/deploy/install_watch.py" --label 'Iniciar serviço lxcfs' -- systemctl enable --now lxcfs.service
+printf '\nEtapa: configurar painel HTTPS e validar o container de teste\n'
 python3 "$source_dir/deploy/install.py" --verify-container "$@"

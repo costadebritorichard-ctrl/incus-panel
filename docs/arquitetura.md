@@ -27,9 +27,13 @@ flowchart LR
   P --> D[Fixture em memória apenas em modo demo]
 ```
 
-REST é o estado autoritativo. Eventos expõem ao navegador apenas um contador de invalidação, não payloads contendo metadados sensíveis. Cada reconexão incrementa a versão para refazer as leituras, com backoff de 1 a 30 s. O browser consulta notificações a cada 2 s e faz polling completo a cada 15 s. Assinaturas de eventos são isoladas por sessão/host/Project, com uma assinatura ativa por sessão.
+REST é o estado autoritativo. O padrão `low_resource: true` mantém um snapshot do inventário por sessão/host/Project até Atualizar, mudança de escopo ou ação pelo painel. Somente identidade, estado, arquitetura e proteção efetiva contra exclusão são enviados na listagem; configurações completas vêm do detalhe. A visão geral recebe apenas memória e quantidade de CPUs; pools são consultados nas telas Armazenamento/Alertas. O cache de leitura do navegador é limitado a oito entradas e o histórico local de tarefas a cem.
 
-Console: `POST exec` interativo, `/bin/sh`, WebSockets de dados e controle no servidor. A ponte navegador/proxy usa chamadas HTTP autenticadas, saída a cada 500 ms e entrada por linha. Buffers limitados a 64 KiB, frames limitados a 1 MiB, um console por sessão/quatro por processo. Ausência de acesso por 30 s, expiração ou logout encerram canais. Não há histórico de comandos persistido; dados do terminal não são logs do aplicativo. O suporte a dimensionamento existe na API do proxy; a UI usa 100×30 inicialmente.
+Com `low_resource: false`, o browser pode consultar notificações a cada 2 s e atualizar as telas a cada 15 s. Eventos expõem apenas um contador de invalidação, com backoff de reconexão de 1 a 30 s. Assinaturas são isoladas por sessão/host/Project, com uma assinatura ativa por sessão. Criação e download só consultam progresso na página correspondente visível; retornar à página retoma a consulta. O processamento Incus continua fora da tela.
+
+Console: `POST exec` interativo, `/bin/sh`, WebSockets de dados e controle no servidor. A ponte navegador/proxy usa chamadas HTTP autenticadas e entrada por linha. No modo leve consulta saída a cada 1 s quando há dados, 3 s em silêncio e 5 s com a aba oculta; no modo normal, 500 ms com a aba visível. Buffers limitados a 64 KiB, frames limitados a 1 MiB, um console por sessão/quatro por processo. Ausência de acesso por 30 s, expiração ou logout encerram canais. A limpeza periódica usa o loop do servidor, a cada 5 s, sem thread própria. O suporte a dimensionamento existe na API do proxy; a UI usa 100×30 inicialmente.
+
+HTML/CSS/JS públicos são lidos e comprimidos no início do processo, com ETags por representação e respostas 304 sem corpo. JSON autenticado permanece `no-store`, sem compressão. O servidor limita a concorrência a quatro requisições no modo leve e oito no modo normal. O loop ocioso aguarda até 5 s, sem atrasar a recepção de conexões disponíveis.
 
 ## Limites da infraestrutura
 

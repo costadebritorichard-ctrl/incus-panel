@@ -243,7 +243,7 @@ class Demo:
 class Service:
     def __init__(self, config, clients=None):
         self.config = config
-        self.low_resource = config.get('low_resource', any(h.get('transport') == 'unix' for h in config['hosts']))
+        self.low_resource = config.get('low_resource', True)
         self.creation_lock = threading.Lock()
         def connect(host):
             if clients and host["id"] in clients:
@@ -299,7 +299,7 @@ class Service:
                 job = self.launches.get(target)
                 if job and job['host'] == host and job['project'] == project and job['identity'] == user['username']:
                     return redact(copy.deepcopy(job))
-        allowed = {"server": "/1.0", "resources": "/1.0/resources", "instances": "/1.0/instances", "images": "/1.0/images", "profiles": "/1.0/profiles", "networks": "/1.0/networks", "pools": "/1.0/storage-pools", "operations": "/1.0/operations"}
+        allowed = {"server": "/1.0", "resources": "/1.0/resources", "host-summary": "/1.0/resources", "instances": "/1.0/instances", "instance-list": "/1.0/instances", "images": "/1.0/images", "profiles": "/1.0/profiles", "networks": "/1.0/networks", "pools": "/1.0/storage-pools", "operations": "/1.0/operations"}
         if resource == "projects":
             # Never request a global project inventory with a broad proxy identity.
             return [{"name": p} for p in user["scopes"][host]]
@@ -318,9 +318,18 @@ class Service:
         else:
             raise PanelError(404, "Consulta não permitida.")
         # Host-global physical metrics may expose other projects. Explicit opt-in per identity.
-        if resource in ("resources", "pools", "pool-resources", "volumes") and not user.get("host_metrics", False):
+        if resource in ("resources", "host-summary", "pools", "pool-resources", "volumes") and not user.get("host_metrics", False):
             raise PanelError(403, "Métricas globais não autorizadas para esta identidade.")
         data = client.request("GET", path, project)["metadata"]
+        if resource == 'instance-list':
+            # Lists need identity/state and the effective deletion guard, never full configs/devices.
+            data = [{**{k: item[k] for k in ('name', 'type', 'status', 'architecture') if k in item},
+                     'expanded_config': {'security.protection.delete': item.get('expanded_config', {}).get(
+                         'security.protection.delete', item.get('config', {}).get('security.protection.delete', 'false'))}}
+                    for item in data]
+        if resource == 'host-summary':
+            data = {'memory': {k: data.get('memory', {})[k] for k in ('used', 'total') if k in data.get('memory', {})},
+                    'cpu': {k: data.get('cpu', {})[k] for k in ('total',) if k in data.get('cpu', {})}}
         if resource == 'instance':
             data = copy.deepcopy(data)
             data['_revision'] = edit_revision(data)

@@ -18,7 +18,9 @@ O assistente usa imagem local compatível com arquitetura e tipo container, mais
 
 Para console, habilite `enable_console`, confirme o risco de shell root e use um container Running na allowlist. O navegador envia linhas a `/bin/sh`; Ctrl+C é um botão separado. `exit`, fechar a tela, logout, expiração e 30 s sem acesso encerram o canal. Navegador abruptamente fechado é tratado pelo timeout. Certificados revogados são detectados em novas chamadas REST e na revalidação do console a cada 15 s durante acesso. A UI textual não suporta programas VT de tela inteira.
 
-Para eventos, habilite `enable_events` após testar o endpoint no host alvo. Em queda de WebSocket, há backoff e ressincronização completa; polling REST continua como fallback. Fechar o navegador libera a assinatura após até 45 s sem acesso. Expiração/logout encerram as assinaturas.
+O padrão é `low_resource: true`: o inventário permanece em cache entre telas, até Atualizar, mudança de escopo ou ação pelo painel. Mudanças feitas diretamente no Incus exigem Atualizar. Tabelas são paginadas em 25 linhas; a busca considera a lista completa. Consulte Armazenamento ou Alertas para atualizar a capacidade dos pools. O progresso de criação/download só é consultado na tela correspondente visível e retoma ao voltar; o Incus continua trabalhando em segundo plano.
+
+Para eventos e atualização periódica, configure `low_resource: false` e habilite `enable_events` após testar o endpoint no host alvo. Em queda de WebSocket, há backoff e ressincronização completa; polling REST continua como fallback. Fechar o navegador libera a assinatura após até 45 s sem acesso. Expiração/logout encerram as assinaturas.
 
 ## Erros e recuperação
 

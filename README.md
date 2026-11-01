@@ -23,6 +23,8 @@ sudo sh -c 'set -eu; apt-get update; apt-get install -y --no-install-recommends 
 
 O instalador prepara Python, Incus e utilitários de rede, configura armazenamento `dir` e rede NAT quando ausentes, gera HTTPS e senha aleatória e habilita os serviços no boot. Mostra URL, usuário `admin`, senha e fingerprint do certificado. Guarde a senha assim que aparecer.
 
+O consumo medido do processo Python **não representa o consumo da instalação completa**. APT/DPKG, Incus, serviços de rede e extração de imagens também usam RAM, CPU e disco; o pico desse conjunto ainda não foi medido em TV boxes. Após obter as ferramentas mínimas, o bootstrap verifica RAM disponível e limites de cgroups antes de cada etapa de pacotes, mostra atividade a cada 15 s e grava logs privados em `/var/log/incus-panel/`. Não elimina o risco de falta de recursos durante a etapa.
+
 A instalação só é confirmada depois de uma leitura autenticada da API e de um teste **real** de criação, início, reinício, parada e exclusão de um Alpine temporário, pelo backend do painel. Precisa de Internet para pacotes e imagens. A imagem fica em cache; falhas mostram o nome do container de teste para diagnóstico.
 
 O script usa o código local quando executado na pasta do projeto; quando baixado isoladamente, obtém um snapshot do GitHub. O comando remoto só inclui alterações já publicadas.
@@ -31,10 +33,11 @@ O script usa o código local quando executado na pasta do projeto; quando baixad
 
 - Debian 12 (backports oficial), Debian 13, Ubuntu 24.04/26.04 e Armbian com essas bases; systemd e pacotes disponíveis para amd64, arm64 ou armhf.
 - Linux com namespaces, cgroups, seccomp e suporte a containers. Android original não atende. O instalador não troca firmware, kernel ou partições.
-- Pelo menos 512 MB nominais de RAM e 1 GiB livre em `/var` para começar; recomendado 1 GB de RAM e espaço adicional para aplicações. Não há garantia para qualquer hardware.
-- Inventário atualizado manualmente, eventos desativados, uma criação por vez e progresso consultado a cada 5 segundos.
+- O instalador exige pelo menos 512 MB nominais, 256 MiB disponíveis e 1 GiB livre em `/var`. São limiares de entrada; não comprovam que a instalação completa caiba em 512 MB. A checagem considera limites de cgroups visíveis e não soma swap à RAM disponível.
+- Modo leve por padrão em todos os transportes: inventário manual reutilizado entre telas, eventos desativados e uma criação por vez. Progresso consultado a cada 5 segundos somente na tela correspondente visível; o Incus continua a operação em segundo plano.
+- Tabelas com 25 linhas por página, detalhes carregados ao abrir e efeitos de desfoque/animação desativados. Arquivos estáticos comprimidos uma vez e revalidados por ETag.
 - Containers novos recebem 128 MiB de RAM, meio núcleo de CPU e autostart desligado. A criação exige 256 MiB disponíveis; download e extração podem precisar de mais.
-- Serviço do painel limitado a 25% de CPU, `MemoryHigh=96M` e `MemoryMax=160M`. São limites configurados, não medições. Incus e containers consomem recursos separados.
+- Serviço do painel com até quatro requisições simultâneas no modo leve, limitado a 25% de CPU, `MemoryHigh=64M` e `MemoryMax=128M`. Ajustes do alocador glibc devolvem grandes buffers temporários ao sistema. São limites configurados; Incus e containers consomem recursos separados.
 - Armazenamento `dir`, sem ZFS ou discos loop. Snapshots copiam dados e precisam de espaço. Containers sem privilégios; a segurança do kernel não é desativada para contornar incompatibilidades.
 
 Os pacotes seguem a [documentação oficial do Incus](https://linuxcontainers.org/incus/docs/main/installing/). O bootstrap usa `incus-base` e `incus-client`; no Ubuntu 24.04 usa `incus` sem pacotes recomendados, evitando o conjunto de máquinas virtuais.
@@ -62,5 +65,7 @@ Node só é necessário para desenvolvimento. A CI `incus-real.yml` instala Ubun
 O console é por linha, sem emulação completa de terminal. Histórico de tarefas/auditoria fica em memória; containers pertencem ao Incus e sobrevivem ao reinício do painel. Restauração de backups/snapshots e gestão de clusters pela interface ainda não estão implementadas. A [rastreabilidade](docs/rastreabilidade.md) registra as demais funcionalidades da especificação.
 
 Para desenvolver com dados simulados: `python -m incus_panel.server --demo`. Esse modo não é usado na instalação.
+
+Para medir tráfego e RSS/CPU com uma fixture local de 200 containers: `python3 scripts/benchmark.py --output artifacts/performance.json`. O ensaio usa as variáveis do alocador presentes no arquivo de serviço e requer Linux; não mede o daemon Incus nem comprova consumo em ARM/TV boxes. Procedimento e resultados locais em [desempenho](docs/desempenho.md).
 
 Licença MIT.

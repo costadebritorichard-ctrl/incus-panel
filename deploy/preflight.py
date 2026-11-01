@@ -5,6 +5,9 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from incus_panel.memory import describe_memory, memory_status
+
 
 MIN_IDS = 65536
 PREPARE_IDS = 10000000
@@ -18,6 +21,18 @@ HOST_GUIDANCE = (
 
 class PreflightError(RuntimeError):
     pass
+
+
+def check_install_memory():
+    try:
+        status = memory_status()
+    except (OSError, ValueError, KeyError) as exc:
+        raise PreflightError(f'Não foi possível verificar os limites de memória: {exc}') from exc
+    if status['total_kib'] < 450000 or status['available_kib'] < 256 * 1024:
+        raise PreflightError('Memória insuficiente para iniciar esta etapa da instalação. '
+                             'Requer 512 MB nominais e pelo menos 256 MiB disponíveis, '
+                             'considerando os limites do container/VM. ' + describe_memory(status))
+    return status
 
 
 def mapped_ranges(text):
@@ -184,6 +199,7 @@ def main():
                 raise PreflightError('Execute em Linux com sudo.')
             prepare_idmaps()
         check_environment()
+        print(describe_memory(check_install_memory()))
     except PreflightError as exc:
         print(f'Pré-verificação interrompida: {exc}', file=sys.stderr)
         return 1

@@ -1,5 +1,6 @@
 """Servidor HTTP local; TLS do navegador deve terminar em proxy reverso confiável."""
 import argparse
+import gzip
 import hashlib
 import hmac
 import json
@@ -46,6 +47,13 @@ class Application:
         self.events = {}
         self.failures = {}
         self.lock = threading.RLock()
+        self.assets = {}
+        for path, filename, mime in (('/', 'index.html', 'text/html'), ('/app.js', 'app.js', 'text/javascript'), ('/style.css', 'style.css', 'text/css')):
+            raw = (ROOT / 'web' / filename).read_bytes()
+            compressed = gzip.compress(raw, compresslevel=6, mtime=0)
+            self.assets[path] = (mime + '; charset=utf-8', {
+                'identity': (raw, '"' + hashlib.sha256(raw).hexdigest() + '"'),
+                'gzip': (compressed, '"' + hashlib.sha256(compressed).hexdigest() + '"')})
 
     @staticmethod
     def validate(config):
@@ -114,6 +122,11 @@ class Application:
     def reap(self):
         with self.lock:
             now = time.time()
+            for token, session in list(self.sessions.items()):
+                if session['expires'] <= now:
+                    self.close_consoles(token)
+                    del self.sessions[token]
+            self.failures = {key: value for key, value in self.failures.items() if now - value[1] < 300}
             for console_id, item in list(self.consoles.items()):
                 console = item["console"]
                 if console.closed or now >= console.deadline or now - console.last_access > 30:
@@ -198,19 +211,49 @@ class Handler(BaseHTTPRequestHandler):
     def app(self):
         return self.server.app
 
-    def send(self, status, data, content_type="application/json; charset=utf-8", cookie=None):
-        encoded = json.dumps(data, ensure_ascii=False).encode() if content_type.startswith("application/json") else data
+    def send(self, status, data, content_type="application/json; charset=utf-8", cookie=None, headers=None):
+        encoded = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode() if content_type.startswith("application/json") else data
         self.send_response(status)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(encoded)))
-        self.send_header("Cache-Control", "no-store")
+        if status != 304:
+            self.send_header("Content-Length", str(len(encoded)))
+        self.send_header("Cache-Control", "public, max-age=0, must-revalidate" if headers else "no-store")
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
         if cookie:
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
-        self.wfile.write(encoded)
+        if status != 304:
+            self.wfile.write(encoded)
+
+    def send_asset(self, path):
+        asset = self.app.assets.get(path)
+        if asset is None:
+            raise PanelError(404, 'Página não encontrada.')
+        # Compress only public files, once at startup. Authenticated API responses stay private.
+        encodings = {}
+        for entry in self.headers.get('Accept-Encoding', '').split(','):
+            encoding, *parameters = entry.strip().lower().split(';')
+            quality = 1.0
+            for parameter in parameters:
+                if parameter.strip().startswith('q='):
+                    try:
+                        quality = float(parameter.strip()[2:])
+                    except ValueError:
+                        quality = 0
+            encodings[encoding] = quality
+        encoding = 'gzip' if encodings.get('gzip', encodings.get('*', 0)) > 0 else 'identity'
+        mime, variants = asset
+        raw, etag = variants[encoding]
+        headers = {'ETag': etag, 'Vary': 'Accept-Encoding'}
+        if encoding == 'gzip':
+            headers['Content-Encoding'] = 'gzip'
+        candidates = [value.strip().removeprefix('W/') for value in self.headers.get('If-None-Match', '').split(',')]
+        unchanged = etag in candidates or '*' in candidates
+        self.send(304 if unchanged else 200, b'' if unchanged else raw, mime, headers=headers)
 
     def session_token(self):
         cookie = SimpleCookie()
@@ -309,11 +352,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     raise PanelError(404, "Rota não encontrada.")
             elif not mutation:
-                files = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8")}
-                if path not in files:
-                    raise PanelError(404, "Página não encontrada.")
-                filename, mime = files[path]
-                self.send(200, (ROOT / "web" / filename).read_bytes(), mime)
+                self.send_asset(path)
             else:
                 raise PanelError(404, "Rota não encontrada.")
         except PanelError as exc:
@@ -379,10 +418,21 @@ class PanelHTTPServer(ThreadingHTTPServer):
     handshake_timeout = 5
     request_timeout = 30
 
-    def __init__(self, address, handler, tls=None):
+    def __init__(self, address, handler, tls=None, max_workers=4):
         self.tls = tls
-        self.workers = threading.BoundedSemaphore(8)
+        self.workers = threading.BoundedSemaphore(max_workers)
+        self.next_reap = 0
         super().__init__(address, handler)
+
+    def service_actions(self):
+        if time.monotonic() >= self.next_reap:
+            # Cleanup must never hold up the accept loop while a login/console owns the lock.
+            if self.app.lock.acquire(blocking=False):
+                try:
+                    self.app.reap()
+                finally:
+                    self.app.lock.release()
+            self.next_reap = time.monotonic() + 5
 
     def process_request(self, request, client_address):
         if not self.workers.acquire(blocking=False):
@@ -414,16 +464,11 @@ class PanelHTTPServer(ThreadingHTTPServer):
 def serve(config, port, clients=None):
     host, tls = listener(config, port)
     app = Application(config, clients)
-    server = PanelHTTPServer((host, port), Handler, tls)
+    server = PanelHTTPServer((host, port), Handler, tls, max_workers=4 if app.service.low_resource else 8)
     server.app = app
-    def reap_sessions():
-        while True:
-            time.sleep(1)
-            server.app.reap()
-    threading.Thread(target=reap_sessions, daemon=True).start()
     print(f"Incus Panel disponível em {'https' if tls else 'http'}://{host}:{port}", flush=True)
     try:
-        server.serve_forever()
+        server.serve_forever(poll_interval=5 if app.service.low_resource else 0.5)
     except KeyboardInterrupt:
         pass
     finally:
