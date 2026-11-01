@@ -32,6 +32,26 @@ ram=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
 free_kb=$(df -Pk /var | awk 'END {print $4}')
 [ "$free_kb" -ge 1048576 ] || fail 'Libere ao menos 1 GiB em /var para instalação e imagem de teste.'
 export DEBIAN_FRONTEND=noninteractive
+source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# No checkout usual, verificar antes de instalar pacotes ou alterar serviços.
+# O bootstrap isolado obtém somente as ferramentas e o código da verificação.
+if ! command -v python3 >/dev/null 2>&1 || ! command -v unshare >/dev/null 2>&1 || [ ! -f "$source_dir/deploy/preflight.py" ]; then
+  apt-get update
+  apt-get install -y --no-install-recommends ca-certificates curl python3 util-linux
+fi
+if [ ! -f "$source_dir/deploy/install.py" ] || [ ! -d "$source_dir/incus_panel" ]; then
+  work=$(mktemp -d /var/tmp/incus-panel-install.XXXXXXXX)
+  trap 'rm -rf -- "$work"' EXIT HUP INT TERM
+  ref=${INCUS_PANEL_REF:-main}
+  case "$ref" in *[!a-zA-Z0-9._-]*|'') fail 'INCUS_PANEL_REF inválida.' ;; esac
+  curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+    "https://codeload.github.com/costadebritorichard-ctrl/incus-panel/tar.gz/$ref" -o "$work/source.tar.gz"
+  tar -xzf "$work/source.tar.gz" -C "$work" --strip-components=1
+  source_dir=$work
+fi
+python3 -c 'import sys; assert sys.version_info >= (3,11), "Requer Python 3.11+"'
+[ -f "$source_dir/deploy/preflight.py" ] || fail 'Código sem pré-verificação. Atualize o checkout ou INCUS_PANEL_REF.'
+python3 "$source_dir/deploy/preflight.py"
 apt-get update
 apt-get install -y --no-install-recommends ca-certificates curl python3 openssl iproute2 util-linux uidmap dnsmasq-base nftables lxcfs apparmor
 if ! command -v incus >/dev/null 2>&1 || ! systemctl cat incus.service >/dev/null 2>&1; then
@@ -57,20 +77,6 @@ if ! command -v incus >/dev/null 2>&1 || ! systemctl cat incus.service >/dev/nul
     apt-get install -y --no-install-recommends "$incus_package" incus-client
   fi
 fi
-python3 -c 'import sys; assert sys.version_info >= (3,11), "Requer Python 3.11+"'
 systemctl enable --now incus.service
 systemctl enable --now lxcfs.service
-source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-if [ -f "$source_dir/deploy/install.py" ] && [ -d "$source_dir/incus_panel" ]; then
-  python3 "$source_dir/deploy/install.py" --verify-container "$@"
-  exit 0
-fi
-work=$(mktemp -d /var/tmp/incus-panel-install.XXXXXXXX)
-trap 'rm -rf -- "$work"' EXIT HUP INT TERM
-# Um único snapshot do código. REF pode ser um SHA para instalação reproduzível.
-ref=${INCUS_PANEL_REF:-main}
-case "$ref" in *[!a-zA-Z0-9._-]*|'') fail 'INCUS_PANEL_REF inválida.' ;; esac
-curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
-  "https://codeload.github.com/costadebritorichard-ctrl/incus-panel/tar.gz/$ref" -o "$work/source.tar.gz"
-tar -xzf "$work/source.tar.gz" -C "$work" --strip-components=1
-python3 "$work/deploy/install.py" --verify-container "$@"
+python3 "$source_dir/deploy/install.py" --verify-container "$@"

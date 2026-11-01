@@ -2,10 +2,18 @@ import unittest
 import subprocess
 from unittest.mock import Mock, patch
 
-from incus_panel.verify import diagnose, verify, wait
+from incus_panel.verify import diagnose, explain_start_failure, verify, wait
 
 
 class RealVerification(unittest.TestCase):
+    def test_reported_idmap_failure_explains_host_delegation(self):
+        log = ('cgroup2_devices - Operation not permitted - Failed to load bpf program\n'
+               'newuidmap failed to write mapping "newuidmap: write to uid_map failed: Operation not permitted"\n'
+               'Failed to set up id mapping.')
+        self.assertIn('hospedeiro', explain_start_failure(log))
+        self.assertIsNone(explain_start_failure('Failed to load bpf program: Operation not permitted'))
+        self.assertIsNone(explain_start_failure('forkstart: exit status 1'))
+
     def test_diagnostics_only_read_local_target_and_are_bounded(self):
         with patch('incus_panel.verify.subprocess.run') as run, patch('builtins.print'):
             run.return_value = Mock(stdout='log', stderr='')

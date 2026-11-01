@@ -3,10 +3,21 @@ import argparse
 import json
 from pathlib import Path
 import subprocess
+import sys
 import time
 import uuid
 
 from .core import PanelError, Service
+
+
+def explain_start_failure(log):
+    if ('newuidmap' in log or 'newgidmap' in log) and ('Operation not permitted' in log or 'not allowed' in log):
+        return ('O kernel recusou o mapeamento UID/GID do container. Confira /proc/self/uid_map, '
+                '/proc/self/gid_map, /etc/subuid e /etc/subgid. Em LXC, o administrador do '
+                'hospedeiro deve delegar IDs suficientes e permitir nesting; ajuste as faixas '
+                'internas à delegação ou use uma VM completa. Reinstalar pacotes não concede '
+                'essas permissões. Consulte docs/instalacao-local.md.')
+    return None
 
 
 def diagnose(target, project):
@@ -21,6 +32,9 @@ def diagnose(target, project):
         try:
             result = subprocess.run(command, capture_output=True, text=True, errors='replace', timeout=15)
             print((result.stdout + result.stderr)[-16000:], flush=True)
+            explanation = explain_start_failure(result.stdout + result.stderr)
+            if explanation:
+                print('Causa identificada: ' + explanation, flush=True)
         except (OSError, subprocess.TimeoutExpired) as exc:
             print(f'Diagnóstico indisponível: {exc}', flush=True)
 
@@ -90,4 +104,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (RuntimeError, OSError, ValueError, PanelError) as exc:
+        print(f'Verificação Incus falhou: {exc}', file=sys.stderr)
+        sys.exit(1)

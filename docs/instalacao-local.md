@@ -22,6 +22,48 @@ restrição do hospedeiro, erro de montagem e outros problemas. Repetir a instal
 sem corrigir a causa não resolve. Preserve o container `panel-check-*` indicado
 até concluir o diagnóstico. A atualização preserva credenciais existentes.
 
+### Falha `newuidmap: write to uid_map failed: Operation not permitted`
+
+Com `systemd-detect-virt` retornando `lxc`, essa falha indica que o kernel recusou
+o mapeamento de usuários do container interno. O aviso BPF pode acompanhar a falha,
+mas sozinho não comprova que seja a causa fatal. Aumentar RAM ou instalar AppArmor
+não corrige a delegação de UIDs/GIDs.
+
+O instalador agora verifica `/proc/self/uid_map`, `/proc/self/gid_map` e as faixas
+de root em `/etc/subuid` e `/etc/subgid`, e testa namespaces em um processo
+temporário. Um LXC limitado precisa de uma faixa subordinada de pelo menos 65536
+IDs inteiramente disponível no namespace atual, para UID e GID. Um ambiente com
+apenas IDs 0–65535 não comporta a faixa 1000000–1000999999 do erro observado.
+Os IDs da segunda coluna de `uid_map` pertencem ao hospedeiro, não são IDs
+disponíveis dentro do container.
+
+Para verificar sem instalar ou alterar serviços, na pasta do projeto:
+
+```bash
+sudo python3 deploy/preflight.py
+```
+
+No checkout local com Python e util-linux presentes, essa verificação ocorre antes
+do `apt-get`. No bootstrap baixado isoladamente, primeiro são obtidos o código e
+as ferramentas mínimas; Incus, rede, armazenamento e painel só são configurados
+após a verificação. O caminho direto `deploy/install.py` também a executa.
+LXC não é rejeitado apenas pelo tipo de virtualização. A aprovação desses testes
+é parcial: montagens, cgroups e o ciclo real do container continuam sendo validados
+durante a instalação.
+
+Se houver recusa, o administrador do **hospedeiro** precisa habilitar nesting,
+delegar uma faixa suficiente ao container externo e configurar dentro dele faixas
+subordinadas compatíveis. Em um hospedeiro Incus, as opções relevantes do container
+externo são `security.nesting` e `security.idmap.size`; no LXC/Proxmox a configuração
+depende do gerenciador. Aumentar a faixa dentro da VPS sem a delegação externa não
+concede acesso. Essas mudanças exigem coordenação com o administrador e podem
+exigir reinício do container externo. Como alternativa, use uma VM completa KVM/QEMU.
+
+O instalador não modifica mapas de IDs, containers existentes ou a segurança do
+hospedeiro para contornar a falha. Depois de o administrador ajustar a delegação,
+repita a pré-verificação e `sudo sh install.sh`; a senha existente é preservada.
+Referência: [mapeamento de usuários no Incus](https://linuxcontainers.org/incus/docs/main/userns-idmap/).
+
 ## Instalação
 
 O bootstrap instala Incus, Python 3.11+, OpenSSL e ferramentas de rede/usuários.

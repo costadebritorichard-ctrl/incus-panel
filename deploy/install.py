@@ -16,6 +16,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from incus_panel.server import password_hash
+from deploy.preflight import check_environment
 
 
 def run(command, **kwargs):
@@ -117,6 +118,7 @@ def main():
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error('Execute com sudo para instalar o serviço systemd.')
+    check_environment()
     if not args.address:
         route = run(['ip', '-j', 'route', 'get', '1.1.1.1'], capture_output=True)
         args.address = json.loads(route.stdout)[0]['prefsrc']
@@ -261,4 +263,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+        print(f'Instalação interrompida: {exc}', file=sys.stderr)
+        sys.exit(1)

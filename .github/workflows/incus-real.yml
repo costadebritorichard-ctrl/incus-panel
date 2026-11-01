@@ -11,6 +11,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Sintaxe do bootstrap
         run: sh -n install.sh
+      - name: Rejeitar namespace sem IDs delegados antes de instalar
+        run: |
+          set +e
+          sudo unshare --user --map-root-user python3 deploy/preflight.py > /tmp/preflight.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/preflight.log
+          test "$status" -ne 0
+          grep -q 'Mapeamento UID incompatível' /tmp/preflight.log
+          test ! -e /etc/incus-panel/config.local.json
       - name: Instalar tudo pelo bootstrap e verificar container real
         run: sudo sh install.sh
       - name: Reinstalação preservando configurações e credenciais
