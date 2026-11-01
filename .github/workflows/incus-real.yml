@@ -14,7 +14,7 @@ jobs:
       - name: Rejeitar namespace sem IDs delegados antes de instalar
         run: |
           set +e
-          sudo unshare --user --map-root-user python3 deploy/preflight.py > /tmp/preflight.log 2>&1
+          sudo unshare --user --map-root-user python3 - < deploy/preflight.py > /tmp/preflight.log 2>&1
           status=$?
           set -e
           cat /tmp/preflight.log
@@ -34,4 +34,4 @@ jobs:
         if: failure()
         run: |
           sudo journalctl -u incus.service -u incus-panel.service --no-pager -n 100
-          sudo incus list
+          if command -v incus >/dev/null 2>&1; then sudo incus list; fi
