@@ -2,10 +2,27 @@
 import argparse
 import json
 from pathlib import Path
+import subprocess
 import time
 import uuid
 
 from .core import PanelError, Service
+
+
+def diagnose(target, project):
+    """Read-only diagnostics; failures must not hide the original error."""
+    commands = [
+        ['incus', 'info', 'local:' + target, '--project', project, '--show-log'],
+        ['systemd-detect-virt'],
+        ['uname', '-r'],
+    ]
+    for command in commands:
+        print('Diagnóstico: ' + ' '.join(command), flush=True)
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, errors='replace', timeout=15)
+            print((result.stdout + result.stderr)[-16000:], flush=True)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f'Diagnóstico indisponível: {exc}', flush=True)
 
 
 def wait(service, user, host, project, operation, timeout=1800):
@@ -59,7 +76,8 @@ def verify(config, container=False):
         print('Container real: criação, início, reinício, parada e exclusão confirmados.', flush=True)
     except Exception:
         # Não força exclusão em caso de resultado incerto ou operação em andamento.
-        print(f'Falha no teste. Confira incus info {target}; remova somente esse container de teste quando seguro.', flush=True)
+        print(f'Falha no teste. Confira sudo incus info local:{target} --project {project} --show-log; remova somente esse container de teste quando seguro.', flush=True)
+        diagnose(target, project)
         raise
 
 

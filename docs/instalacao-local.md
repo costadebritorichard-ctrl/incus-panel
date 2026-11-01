@@ -1,5 +1,29 @@
 # Painel na própria TV Box
 
+## Uso em VM e diagnóstico de inicialização
+
+O mesmo instalador pode ser usado em VMs Linux das distribuições suportadas.
+Comece com 1 vCPU, 512 MB de RAM e espaço livre suficiente para as imagens;
+1 GB de RAM ou mais dá maior margem. Esses são requisitos, não medições de
+consumo. A criação exige 256 MiB disponíveis e usa 128 MiB por container.
+O painel não precisa de virtualização aninhada para executar containers Linux
+dentro de uma VM completa. Hospedagens baseadas em containers podem bloquear
+namespaces, cgroups ou montagens: nesse caso o provedor precisa liberar esses
+recursos. Não há garantia de execução em qualquer VPS ou VM.
+
+O bootstrap instala explicitamente AppArmor, incluindo `apparmor_parser`, mesmo
+com pacotes recomendados desativados. Quando o teste real falha, imprime o log
+do container, o tipo de virtualização e o kernel. Não desativa AppArmor/seccomp
+nem converte containers para privilegiados para contornar restrições.
+
+Se aparecer `forkstart ... exit status 1`, a mensagem sozinha não identifica a
+causa. Use o log exibido em seguida; ele permite distinguir falta de ferramenta,
+restrição do hospedeiro, erro de montagem e outros problemas. Repetir a instalação
+sem corrigir a causa não resolve. Preserve o container `panel-check-*` indicado
+até concluir o diagnóstico. A atualização preserva credenciais existentes.
+
+## Instalação
+
 O bootstrap instala Incus, Python 3.11+, OpenSSL e ferramentas de rede/usuários.
 Requer Linux nativo com systemd (não Android original): Debian 12/13, Ubuntu
 24.04/26.04 ou Armbian dessas bases, em amd64/arm64/armhf. Precisa de Internet,

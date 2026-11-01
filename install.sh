@@ -33,7 +33,7 @@ free_kb=$(df -Pk /var | awk 'END {print $4}')
 [ "$free_kb" -ge 1048576 ] || fail 'Libere ao menos 1 GiB em /var para instalação e imagem de teste.'
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl python3 openssl iproute2 util-linux uidmap dnsmasq-base nftables lxcfs
+apt-get install -y --no-install-recommends ca-certificates curl python3 openssl iproute2 util-linux uidmap dnsmasq-base nftables lxcfs apparmor
 if ! command -v incus >/dev/null 2>&1 || ! systemctl cat incus.service >/dev/null 2>&1; then
   if [ "$base:${VERSION_CODENAME}" = debian:bookworm ]; then
     # Repositório oficial, validado pelo chaveiro Debian já instalado.
