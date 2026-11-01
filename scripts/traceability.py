@@ -67,7 +67,8 @@ def safe(text):return str(text).replace('|','/').replace('\n',' ')
 def generate():
     lines=['# Matriz de rastreabilidade','', 'Gerada por `python scripts/traceability.py`. Implementação local não significa aceite em host real. Todos os gates de hardware e experimento permanecem abertos.','', '## Documentos lidos','', '| Arquivo | SHA-256 |','| --- | --- |']
     for path in sorted((ROOT/'especificacao').glob('*.json')):
-        lines.append(f'| {path.name} | `{hashlib.sha256(path.read_bytes()).hexdigest()}` |')
+        digest = hashlib.sha256(path.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+        lines.append(f'| {path.name} | `{digest}` |')
     lines+=['','## Requisitos funcionais','','| ID / fase | Requisito | Evidência e limite |','| --- | --- | --- |']
     for req in load('03_requisitos_e_qualidade.json')['requisitos_funcionais']:
         lines.append(f"| {req['id']} / {req['fase']} | {safe(req['descricao'])} | {RF_NOTES[req['id']]} |")

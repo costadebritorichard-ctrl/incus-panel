@@ -1,20 +1,37 @@
 # Painel na própria TV Box
 
-Requer Linux com systemd e Incus funcional (não Android puro), Python 3.11 ou
-superior, OpenSSL, iproute2 e ferramentas de usuários do Linux. O kernel deve
-suportar os containers do Incus. O instalador não instala nem troca o kernel ou
-pacotes do Incus. Use o usuário administrador da TV Box com sudo.
+O bootstrap instala Incus, Python 3.11+, OpenSSL e ferramentas de rede/usuários.
+Requer Linux nativo com systemd (não Android original): Debian 12/13, Ubuntu
+24.04/26.04 ou Armbian dessas bases, em amd64/arm64/armhf. Precisa de Internet,
+512 MB nominais de RAM (recomendado 1 GB) e 1 GiB livre em `/var` para começar.
+O kernel deve suportar containers; o instalador não troca kernel ou firmware.
 
 Após clonar e entrar na pasta, execute:
 
 ```bash
-sudo python3 deploy/install.py
+sudo sh install.sh
 ```
 
 O comando detecta o IP LAN pela rota principal. Em equipamentos com múltiplas
 interfaces, passe `--address IP_DA_LAN`. A porta padrão é 8444; altere com `--port`.
 O terminal mostra URL, login e senha gerada apenas na primeira instalação.
 Guarde a senha. O serviço inicia automaticamente após reiniciar a TV Box.
+
+O script usa o checkout local, inclusive alterações não publicadas. Quando
+baixado isoladamente, baixa o projeto do GitHub; `INCUS_PANEL_REF` permite
+escolher um SHA/tag/branch simples. O comando sem clone está no README e
+depende da publicação dessa versão no GitHub.
+
+A instalação confirma HTTPS e leitura autenticada como usuário do serviço.
+O bootstrap também testa criação, início, reinício, parada e exclusão de um
+Alpine real. O download pode demorar. Se falhar, a instalação retorna erro e
+mostra o nome `panel-check-*` para inspeção; não força exclusão com estado incerto.
+A imagem baixada permanece em cache. Não usa containers existentes para testes.
+
+Para uma instalação offline do painel em Incus já preparado, o caminho avançado
+continua sendo `sudo python3 deploy/install.py`; ele verifica leitura real, mas
+não baixa pacotes nem cria um container de teste. Para exigir o teste completo:
+`sudo python3 deploy/install.py --verify-container`.
 
 A conexão navegador–painel usa HTTPS com certificado local. Confira o SHA-256
 mostrado antes de confiar nesse certificado. O acesso painel–Incus usa somente
@@ -44,10 +61,11 @@ disponíveis para a arquitetura da TV Box e exigem Internet no equipamento.
 Em Incus vazio, o instalador inicializa armazenamento mínimo e adiciona rede NAT
 ao profile default quando necessário. Em instalações existentes, usa os profiles,
 redes e pools atuais e completa a rede do profile default caso não tenha nenhuma
-placa de rede. Um Incus parcialmente configurado sem pool é recusado.
+placa de rede. Sem pool e sem disco raiz no perfil, cria um pool `dir`, sem
+formatar discos. Pools existentes indisponíveis exigem correção manual.
 O instalador não cria nem altera containers existentes.
 
-Atualização: `git pull` seguido de `sudo python3 deploy/install.py`. As versões
+Atualização: `git pull` seguido de `sudo sh install.sh`. As versões
 ficam em `/opt/incus-panel/releases`, a configuração e os certificados em
 `/etc/incus-panel`. Se a nova versão falhar na verificação HTTPS, o instalador
 tenta restaurar o serviço e a versão anteriores. Uma configuração anterior de
@@ -60,6 +78,7 @@ sudo systemctl status incus-panel
 sudo journalctl -u incus-panel -n 80 --no-pager
 sudo incus list
 sudo incus profile show default
+sudo -u incus-panel sh -c 'cd /opt/incus-panel/current && python3 -m incus_panel.verify --config /etc/incus-panel/config.local.json'
 ```
 
 Se o painel abrir apenas na própria TV Box, confira o IP usado e o firewall da
@@ -80,8 +99,9 @@ sudo curl --noproxy '*' --connect-timeout 5 --max-time 10 --cacert /etc/incus-pa
 ```
 
 Os testes automatizados cobrem autorização, criação, ciclo de vida e o contrato
-HTTP do socket. A instalação systemd e os containers ainda precisam ser validados
-em uma TV Box real; os testes em Windows não demonstram compatibilidade do kernel.
+HTTP do socket. A CI `incus-real.yml` inclui instalação systemd, teste de container
+e reinstalação em Ubuntu. O bootstrap exige o teste real no host de instalação;
+os testes em Windows não demonstram compatibilidade do kernel de uma TV Box.
 
 O teste de navegador `scripts/browser-create-smoke.mjs` verifica a seleção única,
 criação e início com fixture, ausência de confirmação digitada e erro assíncrono

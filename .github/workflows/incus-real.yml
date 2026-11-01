@@ -1,0 +1,27 @@
+name: Instalação e Incus real
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sintaxe do bootstrap
+        run: sh -n install.sh
+      - name: Instalar tudo pelo bootstrap e verificar container real
+        run: sudo sh install.sh
+      - name: Reinstalação preservando configurações e credenciais
+        run: |
+          sudo sha256sum /etc/incus-panel/config.local.json > /tmp/config.sha256
+          sudo python3 deploy/install.py
+          sudo sha256sum -c /tmp/config.sha256
+      - name: Testes Linux (incluindo socket Unix e instalador)
+        run: python3 -m unittest discover -s tests -v
+      - name: Diagnóstico de falhas
+        if: failure()
+        run: |
+          sudo journalctl -u incus.service -u incus-panel.service --no-pager -n 100
+          sudo incus list

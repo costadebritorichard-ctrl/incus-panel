@@ -1,22 +1,30 @@
 [Unit]
-Description=Incus Panel - laboratorio
-After=network-online.target
+Description=Incus Panel - administração local
+After=network-online.target incus.service
 Wants=network-online.target
+Requires=incus.service
 
 [Service]
 Type=simple
 User=incus-panel
-Group=incus-panel
-WorkingDirectory=/opt/incus-panel
-ExecStart=/usr/bin/python3 -m incus_panel.server --config /etc/incus-panel/config.local.json
+WorkingDirectory=/opt/incus-panel/current
+ExecStart=/usr/bin/python3 -m incus_panel.server --config /etc/incus-panel/config.local.json --port 8444
 Restart=on-failure
 RestartSec=5
+Nice=10
+CPUQuota=25%
+MemoryAccounting=true
+MemoryHigh=96M
+MemoryMax=160M
+TasksMax=32
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 UMask=0077
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target

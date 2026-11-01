@@ -1,11 +1,9 @@
 """Instalador Linux: serviço local de administração Incus com HTTPS e login próprio."""
 import argparse
-import grp
 import ipaddress
 import json
 import os
 from pathlib import Path
-import pwd
 import secrets
 import shutil
 import socket
@@ -33,8 +31,26 @@ def ensure_default_network(query):
     if not bridge:
         existing_names = {n['name'] for n in networks}
         bridge = next('panelbr' + str(i) for i in range(1000) if 'panelbr' + str(i) not in existing_names)
-        run(['incus', 'network', 'create', bridge, 'ipv4.address=auto', 'ipv4.nat=true', 'ipv6.address=none'])
-    run(['incus', 'profile', 'device', 'add', 'default', 'eth0', 'nic', 'network=' + bridge, 'name=eth0'])
+        run(['incus', 'network', 'create', 'local:' + bridge, 'ipv4.address=auto', 'ipv4.nat=true', 'ipv6.address=none'])
+    devices = profile.get('devices', {})
+    device = 'eth0' if 'eth0' not in devices else next('panelnic' + str(i) for i in range(1000) if 'panelnic' + str(i) not in devices)
+    run(['incus', 'profile', 'device', 'add', 'local:default', device, 'nic', 'network=' + bridge, 'name=eth0'])
+
+
+def ensure_default_storage(query):
+    """Driver dir: sem ZFS, discos dedicados ou arquivos loop em flash."""
+    pools = query('/1.0/storage-pools?recursion=1')
+    devices = query('/1.0/profiles/default').get('devices', {})
+    if any(d.get('type') == 'disk' and d.get('path') == '/' for d in devices.values()):
+        return
+    pool = next((p['name'] for p in pools if p.get('status') == 'Created'), None)
+    if pool is None:
+        if pools:
+            raise RuntimeError('Pools existentes indisponíveis; corrija o armazenamento no Incus.')
+        pool = 'panel-dir'
+        run(['incus', 'storage', 'create', 'local:' + pool, 'dir'])
+    device = next('panelroot' + str(i) for i in range(1000) if 'panelroot' + str(i) not in devices)
+    run(['incus', 'profile', 'device', 'add', 'local:default', device, 'disk', 'path=/', 'pool=' + pool])
 
 
 def validate_address(address):
@@ -51,6 +67,7 @@ def service_text(username, port):
 Description=Incus Panel - administração local
 After=network-online.target incus.service
 Wants=network-online.target
+Requires=incus.service
 
 [Service]
 Type=simple
@@ -80,17 +97,20 @@ WantedBy=multi-user.target
 
 
 def main():
+    import grp
+    import pwd
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--user', default='incus-panel', help='Usuário do serviço; incus-panel é criado automaticamente')
     parser.add_argument('--address', help='IPv4 LAN; detectado automaticamente quando omitido')
     parser.add_argument('--port', type=int, default=8444)
+    parser.add_argument('--verify-container', action='store_true', help='Valida o ciclo completo de um container Alpine real')
     args = parser.parse_args()
+    if os.geteuid() != 0:
+        parser.error('Execute com sudo para instalar o serviço systemd.')
     if not args.address:
         route = run(['ip', '-j', 'route', 'get', '1.1.1.1'], capture_output=True)
         args.address = json.loads(route.stdout)[0]['prefsrc']
     address = validate_address(args.address)
-    if os.geteuid() != 0:
-        parser.error('Execute com sudo para instalar o serviço systemd.')
     if sys.version_info < (3, 11):
         parser.error('Requer Python 3.11 ou superior.')
     if not 1024 <= args.port <= 65535:
@@ -98,6 +118,14 @@ def main():
     if not shutil.which('incus'):
         parser.error('Instale o Incus nesta TV Box antes de executar o instalador.')
     run(['systemctl', 'start', 'incus.service'])
+    for attempt in range(30):
+        try:
+            run(['incus', 'query', '--force-local', '--raw', '/1.0'], capture_output=True)
+            break
+        except subprocess.CalledProcessError:
+            if attempt == 29:
+                raise RuntimeError('Incus não iniciou. Consulte journalctl -u incus.service.')
+            time.sleep(1)
     try:
         pwd.getpwnam(args.user)
     except KeyError:
@@ -110,10 +138,7 @@ def main():
         response = run(['incus', 'query', '--force-local', '--raw', path], capture_output=True)
         data = json.loads(response.stdout)
         return data.get('metadata', data) if isinstance(data, dict) else data
-    if not query('/1.0/storage-pools'):
-        if query('/1.0/instances') or query('/1.0/profiles/default').get('devices'):
-            parser.error('Incus parcialmente configurado: configure um pool e o profile default antes de instalar.')
-        run(['incus', 'admin', 'init', '--minimal'])
+    ensure_default_storage(query)
     ensure_default_network(query)
     identity = pwd.getpwnam(args.user)
     if identity.pw_uid == 0:
@@ -162,11 +187,13 @@ def main():
             os.chown(path, 0, identity.pw_gid)
             os.chmod(path, 0o640)
         password = secrets.token_urlsafe(18)
-        config = {'demo': False, 'read_only': False, 'manage_all_instances': True, 'allow_remote_images': True, 'enable_console': True, 'enable_events': True, 'origin': origin, 'listen_host': address, 'tls_certificate': str(certificate), 'tls_key': str(key), 'hosts': [{'id': 'tvbox', 'alias': 'TV Box · Incus local', 'transport': 'unix', 'socket_path': '/var/lib/incus/unix.socket'}], 'users': [{'username': 'admin', 'password_hash': password_hash(password), 'role': 'administrador', 'host_metrics': True, 'scopes': {'tvbox': scopes}}], 'mutable_instances': {}}
+        config = {'demo': False, 'read_only': False, 'manage_all_instances': True, 'allow_remote_images': True, 'enable_console': True, 'enable_events': False, 'low_resource': True, 'origin': origin, 'listen_host': address, 'tls_certificate': str(certificate), 'tls_key': str(key), 'hosts': [{'id': 'tvbox', 'alias': 'TV Box · Incus local', 'transport': 'unix', 'socket_path': '/var/lib/incus/unix.socket'}], 'users': [{'username': 'admin', 'password_hash': password_hash(password), 'role': 'administrador', 'host_metrics': True, 'scopes': {'tvbox': scopes}}], 'mutable_instances': {}}
         descriptor = os.open(config_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o640)
         with os.fdopen(descriptor, 'w') as stream:
             json.dump(config, stream, ensure_ascii=False, indent=2)
         os.chown(config_path, 0, identity.pw_gid)
+        # Mostre antes do diagnóstico: uma falha posterior não pode perder o login.
+        print(f'Credenciais criadas — guarde agora: admin | {password}', flush=True)
 
     release = base / 'releases' / (time.strftime('%Y%m%d-%H%M%S') + '-' + secrets.token_hex(3))
     release.mkdir(parents=True, mode=0o755)
@@ -193,6 +220,11 @@ def main():
                     raise RuntimeError('A verificação HTTPS não confirmou a inicialização.')
                 time.sleep(1)
         run(['systemctl', 'is-active', '--quiet', 'incus-panel.service'])
+        # Acesso real como o usuário do serviço, usando o mesmo backend do painel.
+        verification = ['runuser', '-u', args.user, '--', '/usr/bin/python3', '-m', 'incus_panel.verify', '--config', str(config_path)]
+        if args.verify_container:
+            verification.append('--container')
+        run(verification, cwd=current)
     except Exception:
         run(['systemctl', 'stop', 'incus-panel.service'])
         if old_release:
