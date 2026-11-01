@@ -1,5 +1,11 @@
 # Changelog
 
+## Diagnóstico após a instalação — 2026-11-01
+
+- Diagnóstico somente leitura inclui rotas, interfaces, firewall e estado/consumo dos serviços Incus, painel, lxcfs e SSH.
+- `--diagnose --boot -1` consulta os journals anteriores, identificando que o consumo e a rede observados ainda pertencem ao boot atual.
+- Guia distingue perda de SSH de travamento confirmado pelo console, sem atribuir a falha à RAM ou à bridge sem evidências.
+
 ## Preparação automática de IDs — 2026-11-01
 
 - `install.sh` e `deploy/install.py` preparam faixas ausentes de UID/GID de root antes da instalação, usando somente IDs já delegados e livres.

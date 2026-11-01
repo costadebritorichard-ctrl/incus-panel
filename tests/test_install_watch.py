@@ -1,12 +1,13 @@
 import io
 import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from deploy.install_watch import run_stage
+from deploy.install_watch import diagnose, run_stage
 from deploy.preflight import check_install_memory, PreflightError
 
 
@@ -28,6 +29,43 @@ class InstallationAdmission(unittest.TestCase):
         with patch('deploy.preflight.memory_status', side_effect=ValueError('limite inválido')):
             with self.assertRaisesRegex(PreflightError, 'verificar os limites'):
                 check_install_memory()
+
+
+class ReadOnlyDiagnostics(unittest.TestCase):
+    def test_collects_network_service_usage_and_previous_journal_without_mutations(self):
+        output = []
+        with patch('deploy.install_watch.memory_status', return_value=status()), \
+             patch('deploy.install_watch.pressure', return_value='fixture'), \
+             patch('deploy.install_watch.subprocess.run', return_value=Mock(stdout='fixture', stderr='')) as run:
+            diagnose(output.append, boot=-1)
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertIn(['ip', 'route', 'show'], commands)
+        self.assertIn(['ip', '-br', 'address'], commands)
+        service = next(command for command in commands if command[0] == 'systemctl')
+        self.assertEqual(service[1], 'show')
+        self.assertIn('incus-panel.service', service)
+        self.assertIn('incus.service', service)
+        journals = [command for command in commands if command[0] == 'journalctl']
+        self.assertTrue(all(command[command.index('-b') + 1] == '-1' for command in journals))
+        self.assertTrue(all(command[:2] in (['ip', 'route'], ['ip', '-br'], ['ip', 'rule'],
+                                             ['systemctl', 'show'], ['df', '-h'], ['journalctl', '-k'],
+                                             ['journalctl', '-b'], ['nft', 'list']) or command == ['systemd-detect-virt']
+                            for command in commands))
+        self.assertTrue(all(call.kwargs['timeout'] == 5 for call in run.call_args_list))
+        self.assertIn('consumo atual não representa', '\n'.join(output))
+
+    def test_missing_tools_and_timeout_do_not_hide_remaining_diagnostics(self):
+        output = []
+        with patch('deploy.install_watch.memory_status', return_value=status()), \
+             patch('deploy.install_watch.pressure', return_value='fixture'), \
+             patch('deploy.install_watch.subprocess.run', side_effect=[
+                 FileNotFoundError('virt'),
+                 subprocess.TimeoutExpired('df', 5),
+                 *[Mock(stdout='remaining diagnostic', stderr='') for _ in range(7)],
+             ]) as run:
+            diagnose(output.append)
+        self.assertEqual(run.call_count, 9)
+        self.assertIn('remaining diagnostic', output)
 
 
 @unittest.skipUnless(os.name == 'posix', 'Monitor de instalação para Linux/POSIX')

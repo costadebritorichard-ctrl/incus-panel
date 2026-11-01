@@ -144,6 +144,42 @@ interrompida. Não apague arquivos de lock para forçar uma segunda instalação
 Uma atualização do instalador exige o checkout completo, incluindo os novos
 arquivos em `deploy/` e `incus_panel/`.
 
+### SSH deixa de responder após a instalação concluída
+
+Se o teste real terminou, a instalação foi confirmada e o prompt voltou, o
+instalador concluiu essas etapas. Isso não comprova estabilidade prolongada.
+Uma conexão SSH sem resposta também não distingue travamento do sistema de
+perda de rede. Abra o console da VM no painel do provedor para verificar se o
+sistema ainda responde. Registre se foi necessário reiniciar a VM.
+
+No console, na pasta do checkout atualizado, colete:
+
+```bash
+sudo python3 deploy/install_watch.py --diagnose
+```
+
+O diagnóstico informa RAM e pressão atuais, interfaces, rotas, regras de rede,
+regras nftables, estado/consumo de Incus, painel, lxcfs e SSH, além dos registros
+de serviços e kernel. Os comandos são somente leitura: não iniciam nem param
+serviços nem alteram a bridge, as rotas ou o firewall. CPUUsageNSec é tempo
+acumulado, não um percentual instantâneo de CPU.
+
+Se houve reboot, consulte também o journal anterior:
+
+```bash
+sudo python3 deploy/install_watch.py --diagnose --boot -1
+```
+
+Nesse caso, RAM, rede e estado dos serviços ainda são do sistema atual; somente
+os journals vêm do boot anterior. RAM livre após reiniciar não descarta pressão
+de memória antes da reinicialização. Registros anteriores podem não estar
+disponíveis se o journal não era persistente.
+
+A criação da bridge/NAT torna rede e firewall parte do diagnóstico, sem provar
+que causaram a queda. Não reinstale para tentar recuperar o SSH nem apague a
+bridge ou as regras do firewall sem identificar a causa: essas mudanças podem
+afetar o acesso e os containers.
+
 ## Instalação
 
 O bootstrap instala Incus, Python 3.11+, OpenSSL e ferramentas de rede/usuários.

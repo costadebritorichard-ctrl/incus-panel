@@ -24,7 +24,10 @@ def pressure():
     return '; '.join(readings)
 
 
-def diagnose(emit=print):
+def diagnose(emit=print, boot=0):
+    emit('Diagnóstico somente leitura. Memória, rede e serviços abaixo são do sistema atual.')
+    if boot != 0:
+        emit(f'Os registros do journal abaixo são do boot {boot}; o consumo atual não representa o consumo antes do reboot.')
     try:
         status = memory_status()
         emit(describe_memory(status))
@@ -32,7 +35,20 @@ def diagnose(emit=print):
     except (OSError, ValueError, KeyError) as exc:
         emit('Memória indisponível: ' + str(exc))
     emit('Pressão de recursos: ' + (pressure() or 'indisponível'))
-    for command in (['df', '-h', '/', '/var'], ['journalctl', '-k', '-b', '--no-pager', '-n', '60']):
+    commands = [
+        ['systemd-detect-virt'],
+        ['df', '-h', '/', '/var'],
+        ['ip', '-br', 'address'],
+        ['ip', 'route', 'show'],
+        ['ip', 'rule', 'show'],
+        ['nft', 'list', 'ruleset'],
+        ['systemctl', 'show', 'incus-panel.service', 'incus.service', 'lxcfs.service', 'ssh.service',
+         '--property=Id,ActiveState,SubState,MainPID,MemoryCurrent,MemoryPeak,MemoryHigh,MemoryMax,CPUUsageNSec,TasksCurrent,NRestarts'],
+        ['journalctl', '-k', '-b', str(boot), '--no-pager', '-n', '60'],
+        ['journalctl', '-b', str(boot), '-u', 'incus-panel.service', '-u', 'incus.service',
+         '-u', 'lxcfs.service', '-u', 'ssh.service', '--no-pager', '-n', '60'],
+    ]
+    for command in commands:
         emit('Diagnóstico: ' + ' '.join(command))
         try:
             result = subprocess.run(command, capture_output=True, text=True, errors='replace', timeout=5)
@@ -116,11 +132,13 @@ def run_stage(command, label, log_path, interval=15, stream=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--diagnose', action='store_true', help='Somente leitura; não instala nem altera pacotes')
+    parser.add_argument('--boot', type=int, choices=(0, -1), default=0,
+                        help='Journal do boot atual (0) ou anterior (-1), usado com --diagnose')
     parser.add_argument('--label', default='Instalação de pacotes')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.diagnose:
-        diagnose()
+        diagnose(boot=args.boot)
         return 0
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
     if not command:
