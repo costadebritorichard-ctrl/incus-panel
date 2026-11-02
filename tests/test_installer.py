@@ -2,6 +2,37 @@ import unittest
 from unittest.mock import Mock, patch
 
 
+class InstallerListener(unittest.TestCase):
+    def setUp(self):
+        self.config = {'origin': 'https://192.168.1.10:8444', 'listen_host': '192.168.1.10',
+                       'read_only': False, 'manage_all_instances': True,
+                       'hosts': [{'transport': 'unix'}], 'users': [{'password_hash': 'preserved'}],
+                       'tls_certificate': '/etc/incus-panel/server.crt'}
+
+    def test_upgrade_and_repeat_preserve_credentials_and_certificate(self):
+        from deploy.install import network_config
+        upgraded = network_config(self.config, '192.168.1.10', 8444)
+        self.assertEqual(upgraded, {**self.config, 'listen_host': '0.0.0.0'})
+        self.assertEqual(network_config(upgraded, '192.168.1.10', 8444), upgraded)
+        self.assertEqual(self.config['listen_host'], '192.168.1.10')
+
+    def test_unrelated_config_is_not_overwritten(self):
+        from deploy.install import network_config
+        for changes in ({'read_only': True}, {'listen_host': '127.0.0.1'},
+                        {'origin': 'https://other.test'}, {'manage_all_instances': False},
+                        {'hosts': [{'transport': 'tls'}]}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                network_config({**self.config, **changes}, '192.168.1.10', 8444)
+
+    def test_new_certificate_covers_all_current_ipv4_interfaces(self):
+        from deploy.install import certificate_addresses
+        response = Mock(stdout=b'''[{"addr_info":[{"family":"inet","local":"127.0.0.1"}]},
+            {"addr_info":[{"family":"inet","local":"192.168.1.10"}]},
+            {"addr_info":[{"family":"inet","local":"10.1.0.2"}]}, {"addr_info":[]}]''')
+        with patch('deploy.install.run', return_value=response):
+            self.assertEqual(certificate_addresses('192.168.1.10'), ['10.1.0.2', '127.0.0.1', '192.168.1.10'])
+
+
 class InstallerNetwork(unittest.TestCase):
     def test_null_storage_collection_creates_dir_pool(self):
         from deploy.install import ensure_default_storage

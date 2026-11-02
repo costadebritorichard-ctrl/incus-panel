@@ -3,6 +3,7 @@ import argparse
 import gzip
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -283,13 +284,32 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.handle_request(True)
 
+    def origin_allowed(self):
+        origin = self.headers.get("Origin", "")
+        if origin == self.app.config["origin"]:
+            return True
+        # A wildcard HTTPS listener also accepts the IP actually reached by this
+        # connection. Never trust Host/Forwarded alone to authorize an origin.
+        if self.app.config.get("listen_host") != "0.0.0.0" or not isinstance(self.connection, ssl.SSLSocket):
+            return False
+        try:
+            parsed = urlsplit(origin)
+            address, port = self.connection.getsockname()[:2]
+            return (parsed.scheme == "https" and not parsed.username and not parsed.password
+                    and not parsed.path and not parsed.query and not parsed.fragment
+                    and parsed.netloc == self.headers.get("Host")
+                    and ipaddress.ip_address(parsed.hostname) == ipaddress.ip_address(address)
+                    and (parsed.port or 443) == port)
+        except (ValueError, TypeError):
+            return False
+
     def handle_request(self, mutation):
         self.connection.settimeout(20)
         try:
             parsed = urlsplit(self.path)
             path = parsed.path
             if mutation:
-                if self.headers.get("Origin") != self.app.config["origin"]:
+                if not self.origin_allowed():
                     raise PanelError(403, "Origem não autorizada.")
                 body = self.body()
                 if path == "/api/login":

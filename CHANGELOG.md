@@ -1,5 +1,12 @@
 # Changelog
 
+## Escuta em todas as interfaces IPv4 — 2026-11-01
+
+- Instalação usa `0.0.0.0` e atualiza a configuração anterior de IP único, preservando credenciais e certificado, com restauração da configuração se a verificação falhar.
+- Login e ações HTTPS aceitam o IP local efetivamente acessado, com validação de origem, Host e token CSRF.
+- Novos certificados incluem os IPv4 atuais das interfaces; documentação explica atualização e limites de certificados existentes.
+- Integração HTTPS verificada em dois endereços locais, incluindo login, logout e rejeição de origens externas.
+
 ## Diagnóstico após a instalação — 2026-11-01
 
 - Diagnóstico somente leitura inclui rotas, interfaces, firewall e estado/consumo dos serviços Incus, painel, lxcfs e SSH.

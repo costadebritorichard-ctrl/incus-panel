@@ -196,6 +196,7 @@ sudo sh install.sh
 
 O comando detecta o IP LAN pela rota principal. Em equipamentos com múltiplas
 interfaces, passe `--address IP_DA_LAN`. A porta padrão é 8444; altere com `--port`.
+`--address` escolhe a URL principal; a escuta usa `0.0.0.0`, em todas as interfaces IPv4.
 O terminal mostra URL, login e senha gerada apenas na primeira instalação.
 Guarde a senha. O serviço inicia automaticamente após reiniciar a TV Box.
 
@@ -252,6 +253,34 @@ ficam em `/opt/incus-panel/releases`, a configuração e os certificados em
 `/etc/incus-panel`. Se a nova versão falhar na verificação HTTPS, o instalador
 tenta restaurar o serviço e a versão anteriores. Uma configuração anterior de
 consulta é recusada para evitar uma mudança de permissões silenciosa.
+
+### Acesso por qualquer IPv4 da TV Box
+
+Com os arquivos atualizados na TV box, execute na pasta do projeto:
+
+```bash
+sudo python3 deploy/install.py
+sudo ss -ltnp 'sport = :8444'
+```
+
+O instalador migra a configuração administrativa anterior de um IP específico
+para `"listen_host": "0.0.0.0"`, mantendo login, senha, porta e certificado.
+O comando `ss` deve mostrar `0.0.0.0:8444`. Também é possível atualizar pelo
+bootstrap completo com `sudo sh install.sh`. Use o mesmo `--address` e `--port`
+da instalação anterior se eles foram definidos manualmente.
+
+Acesse `https://IP_DA_TVBOX:8444` com o IP da interface desejada, por exemplo
+Ethernet ou Wi-Fi. `0.0.0.0` é o endereço de escuta, não a URL do navegador.
+O login e as ações aceitam a origem HTTPS do endereço local efetivamente
+alcançado pela conexão, mantendo a validação CSRF. A origem principal configurada
+continua aceita, inclusive para instalações com proxy.
+
+Certificados novos incluem os IPv4 das interfaces presentes na instalação.
+Na atualização, o certificado anterior é preservado: se ele cobrir somente o IP
+antigo, será necessário reemiti-lo com os outros IPs no `subjectAltName` (SAN)
+para que a validação HTTPS desses endereços funcione. O mesmo vale para IPs
+adicionados depois. Confira o fingerprint do certificado por um canal conhecido.
+A escuta cobre IPv4; regras de firewall existentes continuam controlando o acesso.
 
 Diagnóstico:
 

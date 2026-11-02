@@ -49,9 +49,9 @@ Os pacotes seguem a [documentação oficial do Incus](https://linuxcontainers.or
 
 Permite criar containers com imagens Alpine/Debian compatíveis, iniciar, parar, reiniciar, editar limites e descrição, excluir containers parados, criar snapshots/backups e abrir shell textual `/bin/sh`. O resultado vem do Incus; criação só informa sucesso após confirmar `Running`.
 
-Configuração em `/etc/incus-panel/config.local.json`, versões em `/opt/incus-panel/releases` e serviço `incus-panel`. O usuário do serviço recebe acesso administrativo ao Incus. O navegador usa HTTPS na porta 8444; a API Incus não é publicada na rede. Configure uma reserva DHCP para manter o endereço.
+Configuração em `/etc/incus-panel/config.local.json`, versões em `/opt/incus-panel/releases` e serviço `incus-panel`. O usuário do serviço recebe acesso administrativo ao Incus. O painel escuta em `0.0.0.0:8444`, em todas as interfaces IPv4 da TV box. Acesse `https://IP_DA_TVBOX:8444` por qualquer um desses endereços; login e ações aceitam a origem HTTPS do IP acessado. A API Incus não é publicada na rede.
 
-Reexecute o instalador para atualizar, preservando configuração e senha. Mudanças de IP, identidade ou permissões exigem revisão da configuração. Uma instalação anterior em somente leitura não é promovida silenciosamente.
+Reexecute o instalador com o código atualizado para migrar a escuta de um IP específico para todas as interfaces, preservando senha e certificado. Certificados novos incluem os IPv4 presentes na instalação; certificados antigos ou mudanças posteriores de IP podem exigir reemissão com os endereços adicionais no SAN. Veja o [guia de acesso por múltiplos IPs](docs/instalacao-local.md#acesso-por-qualquer-ipv4-da-tv-box). Mudanças de identidade ou permissões exigem revisão da configuração. Uma instalação anterior em somente leitura não é promovida silenciosamente.
 
 [Instalação e diagnóstico](docs/instalacao-local.md) · [Integração SSH](docs/tvbox.md) · [Operação e segurança](docs/operacao.md).
 

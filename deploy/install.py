@@ -74,6 +74,29 @@ def validate_address(address):
     return str(parsed)
 
 
+def network_config(config, address, port):
+    """Upgrade the installer's previous single-IP listener, keeping credentials."""
+    if (config.get('origin') != f'https://{address}:{port}'
+            or config.get('listen_host') not in (address, '0.0.0.0')
+            or config.get('read_only') or not config.get('manage_all_instances')
+            or config.get('hosts', [{}])[0].get('transport') != 'unix'):
+        raise ValueError('Configuração existente difere da instalação administrativa solicitada; não foi substituída.')
+    return {**config, 'listen_host': '0.0.0.0'}
+
+
+def certificate_addresses(address):
+    """Include all current IPv4 interfaces in a new installation's certificate."""
+    interfaces = json.loads(run(['ip', '-j', '-4', 'address', 'show'], capture_output=True).stdout)
+    addresses = {address}
+    for interface in interfaces:
+        for item in interface.get('addr_info', []):
+            if item.get('family') == 'inet':
+                parsed = ipaddress.IPv4Address(item['local'])
+                if not parsed.is_unspecified and not parsed.is_multicast:
+                    addresses.add(str(parsed))
+    return sorted(addresses, key=ipaddress.IPv4Address)
+
+
 def service_text(username, port):
     if not username or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in username):
         raise ValueError('Usuário de serviço inválido.')
@@ -117,7 +140,7 @@ def main():
     import pwd
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--user', default='incus-panel', help='Usuário do serviço; incus-panel é criado automaticamente')
-    parser.add_argument('--address', help='IPv4 LAN; detectado automaticamente quando omitido')
+    parser.add_argument('--address', help='IPv4 LAN para a URL principal e certificado; a escuta aceita todas as interfaces IPv4')
     parser.add_argument('--port', type=int, default=8444)
     parser.add_argument('--verify-container', action='store_true', help='Valida o ciclo completo de um container Alpine real')
     args = parser.parse_args()
@@ -193,20 +216,24 @@ def main():
     old_unit = service_path.read_bytes() if service_path.exists() else None
     password = None
     origin = f'https://{address}:{args.port}'
+    old_config = config_path.read_bytes() if config_path.exists() else None
     if config_path.exists():
         config = json.loads(config_path.read_text())
-        if config.get('origin') != origin or config.get('listen_host') != address or config.get('read_only') or not config.get('manage_all_instances') or config.get('hosts', [{}])[0].get('transport') != 'unix':
-            parser.error('Configuração existente difere da instalação administrativa solicitada; não foi substituída.')
+        try:
+            config = network_config(config, address, args.port)
+        except ValueError as exc:
+            parser.error(str(exc))
         if old_unit and f'User={args.user}\n' not in old_unit.decode():
             parser.error('Usuário do serviço existente é diferente; nada foi substituído.')
     else:
         certificate, key = settings / 'server.crt', settings / 'server.key'
-        run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '365', '-subj', '/CN=Incus Panel', '-addext', f'subjectAltName=IP:{address}', '-keyout', str(key), '-out', str(certificate)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        san = ','.join('IP:' + value for value in certificate_addresses(address))
+        run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '365', '-subj', '/CN=Incus Panel', '-addext', 'subjectAltName=' + san, '-keyout', str(key), '-out', str(certificate)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for path in (certificate, key):
             os.chown(path, 0, identity.pw_gid)
             os.chmod(path, 0o640)
         password = secrets.token_urlsafe(18)
-        config = {'demo': False, 'read_only': False, 'manage_all_instances': True, 'allow_remote_images': True, 'enable_console': True, 'enable_events': False, 'low_resource': True, 'origin': origin, 'listen_host': address, 'tls_certificate': str(certificate), 'tls_key': str(key), 'hosts': [{'id': 'tvbox', 'alias': 'TV Box · Incus local', 'transport': 'unix', 'socket_path': '/var/lib/incus/unix.socket'}], 'users': [{'username': 'admin', 'password_hash': password_hash(password), 'role': 'administrador', 'host_metrics': True, 'scopes': {'tvbox': scopes}}], 'mutable_instances': {}}
+        config = {'demo': False, 'read_only': False, 'manage_all_instances': True, 'allow_remote_images': True, 'enable_console': True, 'enable_events': False, 'low_resource': True, 'origin': origin, 'listen_host': '0.0.0.0', 'tls_certificate': str(certificate), 'tls_key': str(key), 'hosts': [{'id': 'tvbox', 'alias': 'TV Box · Incus local', 'transport': 'unix', 'socket_path': '/var/lib/incus/unix.socket'}], 'users': [{'username': 'admin', 'password_hash': password_hash(password), 'role': 'administrador', 'host_metrics': True, 'scopes': {'tvbox': scopes}}], 'mutable_instances': {}}
         descriptor = os.open(config_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o640)
         with os.fdopen(descriptor, 'w') as stream:
             json.dump(config, stream, ensure_ascii=False, indent=2)
@@ -225,6 +252,8 @@ def main():
     os.replace(next_link, current)
     service_path.write_text(unit)
     try:
+        if old_config is not None:
+            config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2))
         run(['systemctl', 'daemon-reload'])
         run(['systemctl', 'enable', 'incus-panel.service'])
         run(['systemctl', 'restart', 'incus-panel.service'])
@@ -248,6 +277,8 @@ def main():
         run(verification, cwd=current, timeout=2100 if args.verify_container else 120)
     except Exception:
         run(['systemctl', 'stop', 'incus-panel.service'])
+        if old_config is not None:
+            config_path.write_bytes(old_config)
         if old_release:
             rollback = base / ('rollback-' + secrets.token_hex(4))
             rollback.symlink_to(old_release)
@@ -261,6 +292,7 @@ def main():
         raise
 
     print(f'Instalação confirmada: {origin}')
+    print(f'Escuta: 0.0.0.0:{args.port} — todas as interfaces IPv4; acesse https://IP_DA_TVBOX:{args.port}')
     print('Modo: administração de containers; transporte: socket Unix local; serviço: incus-panel.service')
     if password:
         print(f'Login: admin | senha inicial (guarde agora): {password}')
