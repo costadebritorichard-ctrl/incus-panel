@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import shlex
 import shutil
 import socket
 import ssl
@@ -137,38 +138,124 @@ WantedBy=multi-user.target
 '''
 
 
+def update_service_text(existing):
+    """Preserve a deployed unit while enabling persistent panel accounts."""
+    lines = existing.splitlines()
+    service_start = next((i for i, line in enumerate(lines) if line.strip() == '[Service]'), None)
+    if service_start is None:
+        raise ValueError('O serviço existente não tem uma seção [Service].')
+    service_end = next((i for i in range(service_start + 1, len(lines)) if lines[i].strip().startswith('[')), len(lines))
+    service_lines = lines[service_start + 1:service_end]
+    exec_indexes = [service_start + 1 + i for i, line in enumerate(service_lines) if line.startswith('ExecStart=') and line.strip() != 'ExecStart=']
+    if len(exec_indexes) != 1:
+        raise ValueError('O serviço existente precisa ter exatamente um ExecStart ativo.')
+    exec_index = exec_indexes[0]
+    command = lines[exec_index][len('ExecStart='):]
+    tokens = shlex.split(command)
+    if not tokens:
+        raise ValueError('ExecStart do serviço existente está vazio.')
+    port = 8080
+    if '--port' in tokens:
+        position = tokens.index('--port')
+        if position + 1 >= len(tokens):
+            raise ValueError('A opção --port de ExecStart está incompleta.')
+        port = int(tokens[position + 1])
+    else:
+        for token in tokens:
+            if token.startswith('--port='):
+                port = int(token.split('=', 1)[1])
+                break
+    if not 1024 <= port <= 65535:
+        raise ValueError('A porta configurada no serviço existente é inválida.')
+
+    has_users_file = '--users-file' in tokens or any(token.startswith('--users-file=') for token in tokens)
+    if not has_users_file:
+        lines[exec_index] += ' --users-file /var/lib/incus-panel/users.json'
+        state_dirs = next((i for i in range(service_start + 1, service_end) if lines[i].startswith('StateDirectory=')), None)
+        if state_dirs is None:
+            lines[service_start + 1:service_start + 1] = ['StateDirectory=incus-panel', 'StateDirectoryMode=0750']
+        else:
+            configured = lines[state_dirs].partition('=')[2].split()
+            if 'incus-panel' not in configured:
+                lines[state_dirs] += ' incus-panel'
+            if not any(line.startswith('StateDirectoryMode=') for line in lines[service_start + 1:service_end]):
+                lines.insert(state_dirs + 1, 'StateDirectoryMode=0750')
+    return '\n'.join(lines) + '\n', port
+
+
+def service_user(unit):
+    in_service = False
+    for line in unit.splitlines():
+        if line.strip() == '[Service]':
+            in_service = True
+        elif line.strip().startswith('['):
+            in_service = False
+        elif in_service and line.startswith('User='):
+            return line.partition('=')[2].strip()
+    return 'root'
+
+
 def main():
     import grp
     import pwd
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--user', default='incus-panel', help='Usuário do serviço; incus-panel é criado automaticamente')
+    parser.add_argument('--user', help='Usuário do serviço; incus-panel é criado automaticamente')
     parser.add_argument('--address', help='IPv4 LAN para a URL principal e certificado; a escuta aceita todas as interfaces IPv4')
-    parser.add_argument('--port', type=int, default=8444)
+    parser.add_argument('--port', type=int, help='Porta HTTPS; padrão 8444 na instalação nova')
+    parser.add_argument('--update-only', action='store_true', help='Atualiza uma instalação existente sem substituir sua configuração nem preparar/reiniciar o Incus')
     parser.add_argument('--verify-container', action='store_true', help='Valida o ciclo completo de um container Alpine real')
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error('Execute com sudo para instalar o serviço systemd.')
-    print(describe_memory(run_preflight(prepare=True, restart_incus=True)), flush=True)
-    if not args.address:
-        route = run(['ip', '-j', 'route', 'get', '1.1.1.1'], capture_output=True)
-        args.address = json.loads(route.stdout)[0]['prefsrc']
-    address = validate_address(args.address)
+    base, settings = Path('/opt/incus-panel'), Path('/etc/incus-panel')
+    config_path = settings / 'config.local.json'
+    current = base / 'current'
+    service_path = Path('/etc/systemd/system/incus-panel.service')
+    old_unit_text = None
+    if args.update_only:
+        if not current.is_symlink() or not service_path.is_file() or not config_path.is_file():
+            parser.error('--update-only requer uma instalação existente com serviço, configuração e release atual.')
+        old_unit_text = service_path.read_text(encoding='utf-8')
+        existing_user = service_user(old_unit_text)
+        if args.user and args.user != existing_user:
+            parser.error('O usuário informado difere do serviço existente; nada foi substituído.')
+        args.user = existing_user
+        try:
+            updated_unit, existing_port = update_service_text(old_unit_text)
+        except (ValueError, IndexError) as exc:
+            parser.error(f'Não foi possível atualizar o serviço sem alterar sua estrutura: {exc}')
+        if args.port is not None and args.port != existing_port:
+            parser.error('A porta informada difere da porta do serviço existente; nada foi substituído.')
+        args.port = existing_port
+        print('Etapa: verificar ambiente sem modificar faixas ou reiniciar o Incus.', flush=True)
+        print(describe_memory(run_preflight()), flush=True)
+    else:
+        args.user = args.user or 'incus-panel'
+        args.port = args.port or 8444
+        print(describe_memory(run_preflight(prepare=True, restart_incus=True)), flush=True)
+        if not args.address:
+            route = run(['ip', '-j', 'route', 'get', '1.1.1.1'], capture_output=True)
+            args.address = json.loads(route.stdout)[0]['prefsrc']
+        address = validate_address(args.address)
     if sys.version_info < (3, 11):
         parser.error('Requer Python 3.11 ou superior.')
     if not 1024 <= args.port <= 65535:
         parser.error('Porta inválida.')
     if not shutil.which('incus'):
         parser.error('Instale o Incus nesta TV Box antes de executar o instalador.')
-    print('Etapa: aguardar resposta do serviço Incus.', flush=True)
-    run(['systemctl', 'start', 'incus.service'])
-    for attempt in range(30):
-        try:
-            run(['incus', 'query', '--force-local', '--raw', '/1.0'], capture_output=True)
-            break
-        except subprocess.CalledProcessError:
-            if attempt == 29:
-                raise RuntimeError('Incus não iniciou. Consulte journalctl -u incus.service.')
-            time.sleep(1)
+    if args.update_only:
+        run(['systemctl', 'is-active', '--quiet', 'incus.service'])
+    else:
+        print('Etapa: aguardar resposta do serviço Incus.', flush=True)
+        run(['systemctl', 'start', 'incus.service'])
+        for attempt in range(30):
+            try:
+                run(['incus', 'query', '--force-local', '--raw', '/1.0'], capture_output=True)
+                break
+            except subprocess.CalledProcessError:
+                if attempt == 29:
+                    raise RuntimeError('Incus não iniciou. Consulte journalctl -u incus.service.')
+                time.sleep(1)
     try:
         pwd.getpwnam(args.user)
     except KeyError:
@@ -176,23 +263,26 @@ def main():
             parser.error('Usuário informado não existe.')
         run(['useradd', '--system', '--user-group', '--no-create-home', '--shell', '/usr/sbin/nologin', args.user])
     socket_group = grp.getgrgid(os.stat('/var/lib/incus/unix.socket').st_gid).gr_name
-    run(['usermod', '-aG', socket_group, args.user])
+    if not args.update_only:
+        run(['usermod', '-aG', socket_group, args.user])
     def query(path):
         response = run(['incus', 'query', '--force-local', '--raw', path], capture_output=True)
         data = json.loads(response.stdout)
         return data.get('metadata', data) if isinstance(data, dict) else data
-    print('Etapa: preparar armazenamento dir e rede local.', flush=True)
-    ensure_default_storage(query)
-    ensure_default_network(query)
+    if not args.update_only:
+        print('Etapa: preparar armazenamento dir e rede local.', flush=True)
+        ensure_default_storage(query)
+        ensure_default_network(query)
     identity = pwd.getpwnam(args.user)
     if identity.pw_uid == 0:
         parser.error('Use uma identidade existente diferente de root.')
-    unit = service_text(args.user, args.port)
+    unit = updated_unit if args.update_only else service_text(args.user, args.port)
     for tool in ('openssl', 'systemctl', 'runuser', 'incus'):
         if not shutil.which(tool):
             parser.error(f'Requisito ausente: {tool}; nada foi instalado.')
-    with socket.socket() as probe:
-        probe.bind((address, 0))
+    if not args.update_only:
+        with socket.socket() as probe:
+            probe.bind((address, 0))
     # Preflight uses the service's existing identity, never root's Incus access.
     response = run(['runuser', '-u', args.user, '--', shutil.which('incus'), 'query', '--force-local', '--raw', '/1.0/projects?recursion=1'], capture_output=True)
     payload = json.loads(response.stdout)
@@ -204,29 +294,31 @@ def main():
     # Confirm direct socket permissions too; CLI access alone is insufficient.
     run(['runuser', '-u', args.user, '--', '/usr/bin/python3', '-c', "import socket;s=socket.socket(socket.AF_UNIX);s.connect('/var/lib/incus/unix.socket');s.close()"])
 
-    base, settings = Path('/opt/incus-panel'), Path('/etc/incus-panel')
     base.mkdir(mode=0o755, parents=True, exist_ok=True)
     settings.mkdir(mode=0o750, parents=True, exist_ok=True)
-    os.chown(settings, 0, identity.pw_gid)
-    os.chmod(settings, 0o750)
-    config_path = settings / 'config.local.json'
-    current = base / 'current'
+    if not args.update_only:
+        os.chown(settings, 0, identity.pw_gid)
+        os.chmod(settings, 0o750)
     if current.exists() and not current.is_symlink():
         parser.error('/opt/incus-panel/current já existe e não é um link; instalação interrompida.')
     old_release = os.readlink(current) if current.is_symlink() else None
-    service_path = Path('/etc/systemd/system/incus-panel.service')
     old_unit = service_path.read_bytes() if service_path.exists() else None
     password = None
-    origin = f'https://{address}:{args.port}'
+    origin = None if args.update_only else f'https://{address}:{args.port}'
     old_config = config_path.read_bytes() if config_path.exists() else None
     if config_path.exists():
         config = json.loads(config_path.read_text())
-        try:
-            config = network_config(config, address, args.port)
-        except ValueError as exc:
-            parser.error(str(exc))
-        if old_unit and f'User={args.user}\n' not in old_unit.decode():
-            parser.error('Usuário do serviço existente é diferente; nada foi substituído.')
+        if args.update_only:
+            origin = config.get('origin')
+            if not isinstance(origin, str) or not origin.startswith('https://'):
+                parser.error('A origem HTTPS existente é inválida; a configuração foi preservada.')
+        else:
+            try:
+                config = network_config(config, address, args.port)
+            except ValueError as exc:
+                parser.error(str(exc))
+            if old_unit and f'User={args.user}\n' not in old_unit.decode():
+                parser.error('Usuário do serviço existente é diferente; nada foi substituído.')
     else:
         certificate, key = settings / 'server.crt', settings / 'server.key'
         san = ','.join('IP:' + value for value in certificate_addresses(address))
@@ -254,10 +346,11 @@ def main():
     os.replace(next_link, current)
     service_path.write_text(unit)
     try:
-        if old_config is not None:
+        if old_config is not None and not args.update_only:
             config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2))
         run(['systemctl', 'daemon-reload'])
-        run(['systemctl', 'enable', 'incus-panel.service'])
+        if not args.update_only:
+            run(['systemctl', 'enable', 'incus-panel.service'])
         run(['systemctl', 'restart', 'incus-panel.service'])
         context = ssl.create_default_context(cafile=config['tls_certificate'])
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=context))
@@ -279,7 +372,7 @@ def main():
         run(verification, cwd=current, timeout=2100 if args.verify_container else 120)
     except Exception:
         run(['systemctl', 'stop', 'incus-panel.service'])
-        if old_config is not None:
+        if old_config is not None and not args.update_only:
             config_path.write_bytes(old_config)
         if old_release:
             rollback = base / ('rollback-' + secrets.token_hex(4))
@@ -294,7 +387,10 @@ def main():
         raise
 
     print(f'Instalação confirmada: {origin}')
-    print(f'Escuta: 0.0.0.0:{args.port} — todas as interfaces IPv4; acesse https://IP_DA_TVBOX:{args.port}')
+    if args.update_only:
+        print('Configuração, credenciais e parâmetros do serviço existentes foram preservados.')
+    else:
+        print(f'Escuta: 0.0.0.0:{args.port} — todas as interfaces IPv4; acesse https://IP_DA_TVBOX:{args.port}')
     print('Modo: administração de containers; transporte: socket Unix local; serviço: incus-panel.service')
     if password:
         print(f'Login: admin | senha inicial (guarde agora): {password}')
