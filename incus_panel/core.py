@@ -172,6 +172,8 @@ class Demo:
                 result = [{"name": "default", "config": {}, "devices": {"root": {"type": "disk", "path": "/", "pool": "lab"}, "eth0": {"type": "nic", "network": "labbr0"}}}]
             elif path == "/1.0/networks":
                 result = [{"name": "labbr0", "type": "bridge", "managed": True, "status": "Created", "config": {"ipv4.nat": "true", "ipv4.address": "10.100.0.1/24"}}]
+            elif len(parts) == 4 and parts[1] == "networks" and parts[3] == "leases":
+                result = [{"hostname": "lab-web", "hwaddr": "00:16:3e:12:34:56", "ipv4": "10.100.0.10", "ipv6": ""}]
             elif path == "/1.0/storage-pools":
                 result = [{"name": "lab", "driver": "btrfs", "status": "Created"}]
             elif len(parts) >= 3 and parts[1] == "storage-pools":
@@ -223,10 +225,25 @@ class Demo:
                     return {'type': 'sync', 'metadata': {}}
                 elif len(parts) == 3 and method == "DELETE":
                     del self.instances[key]
+                elif len(parts) == 3 and method == "PUT":
+                    snapshot = body.get("restore")
+                    known = {str(item.get("name", "")).rsplit("/", 1)[-1] for item in instance["snapshots"]}
+                    if snapshot not in known:
+                        raise PanelError(404, "Snapshot não encontrado.")
+                    instance["restored_to"] = snapshot
+                    instance["config"] = copy.deepcopy(body.get("config", instance.get("config", {})))
+                    instance["devices"] = copy.deepcopy(body.get("devices", instance.get("devices", {})))
                 elif parts[-1] == "state":
                     instance["status"] = "Stopped" if body["action"] == "stop" else "Running"
+                elif len(parts) == 5 and parts[3] in ("snapshots", "backups") and method == "DELETE":
+                    collection = instance[parts[3]]
+                    artifact = parts[4]
+                    match = next((item for item in collection if str(item.get("name", "")).rsplit("/", 1)[-1] == artifact), None)
+                    if match is None:
+                        raise PanelError(404, "Snapshot ou backup não encontrado.")
+                    collection.remove(match)
                 elif parts[-1] in ("snapshots", "backups"):
-                    instance[parts[-1]].append({"name": body["name"], "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+                    instance[parts[-1]].append({"name": parts[2] + "/" + body["name"], "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
                 else:
                     raise PanelError(501, "Operação não disponível na demonstração.")
             else:
@@ -312,6 +329,8 @@ class Service:
                 path += "/" + resource
         elif resource in ("pool-resources", "volumes"):
             path = "/1.0/storage-pools/" + name(target) + ("/resources" if resource == "pool-resources" else "/volumes")
+        elif resource == "network-leases":
+            path = "/1.0/networks/" + name(target) + "/leases"
         elif resource == "operation":
             path = "/1.0/operations/" + name(target)
         elif resource in allowed:
@@ -319,7 +338,7 @@ class Service:
         else:
             raise PanelError(404, "Consulta não permitida.")
         # Host-global physical metrics may expose other projects. Explicit opt-in per identity.
-        if resource in ("resources", "host-summary", "pools", "pool-resources", "volumes") and not user.get("host_metrics", False):
+        if resource in ("resources", "host-summary", "pools", "pool-resources", "volumes", "network-leases") and not user.get("host_metrics", False):
             raise PanelError(403, "Métricas globais não autorizadas para esta identidade.")
         data = client.request("GET", path, project)["metadata"]
         if resource == 'instance-list':
@@ -545,6 +564,10 @@ class Service:
         if not self.can_manage(user, host, project, target):
             raise PanelError(403, "Alvo fora da lista explícita de containers de teste.")
         expected = f"{host}/{project}/{target}"
+        if action in ("snapshot-restore", "snapshot-delete"):
+            expected += "/" + name(body.get("snapshot"))
+        elif action == "backup-delete":
+            expected += "/" + name(body.get("backup"))
         if body.get("confirmation") != expected:
             raise PanelError(400, "Confirme o alvo completo: " + expected)
         path = "/1.0/instances/" + target
@@ -598,6 +621,26 @@ class Service:
                 payload = {"name": name(body.get("name"))}
                 if action == "snapshot":
                     payload["stateful"] = False
+            elif action in ("snapshot-restore", "snapshot-delete", "backup-delete"):
+                if user["role"] != "administrador":
+                    raise PanelError(403, "Gerenciar ou restaurar snapshots e backups exige administrador.")
+                artifact = name(body.get("snapshot" if action.startswith("snapshot-") else "backup"))
+                collection = "snapshots" if action.startswith("snapshot-") else "backups"
+                current = client.request("GET", path + "/" + collection, project)["metadata"]
+                known = {str(item.get("name", "") if isinstance(item, dict) else item).rsplit("/", 1)[-1] for item in current}
+                if artifact not in known:
+                    raise PanelError(404, "Snapshot ou backup não encontrado neste container.")
+                if action == "snapshot-restore":
+                    if instance.get("status") != "Stopped":
+                        raise PanelError(409, "Pare o container antes de restaurar um snapshot.")
+                    method = "PUT"
+                    payload = {"architecture": instance.get("architecture", ""), "config": instance.get("config", {}),
+                               "devices": instance.get("devices", {}), "ephemeral": instance.get("ephemeral", False),
+                               "profiles": instance.get("profiles", []), "restore": artifact,
+                               "stateful": False, "description": instance.get("description", "")}
+                else:
+                    path += "/" + collection + "/" + artifact
+                    method = "DELETE"
             elif action == "delete":
                 if user["role"] != "administrador" or instance["status"] != "Stopped" or instance.get("expanded_config", {}).get("security.protection.delete", instance.get("config", {}).get("security.protection.delete")) == "true":
                     raise PanelError(403, "Exclusão exige administrador, container parado e sem proteção.")

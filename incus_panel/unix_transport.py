@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 from .core import PanelError, name
 
-READ_PATH = re.compile(r"/1\.0(?:/(?:resources|projects|instances|images|profiles|networks|storage-pools|operations)(?:/[A-Za-z0-9][A-Za-z0-9_.-]{0,63})?(?:/(?:state|snapshots|backups|resources|volumes))?)?")
+READ_PATH = re.compile(r"/1\.0(?:/(?:resources|projects|instances|images|profiles|networks|storage-pools|operations)(?:/[A-Za-z0-9][A-Za-z0-9_.-]{0,63})?(?:/(?:state|snapshots|backups|resources|volumes|leases))?)?")
 
 
 class UnixHTTPConnection(http.client.HTTPConnection):
@@ -33,8 +33,10 @@ class UnixIncus:
         write = ((method == 'POST' and path in ('/1.0/instances', '/1.0/images')) or
                  (method == 'POST' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}/(?:exec|snapshots|backups)', path)) or
                  (method == 'PUT' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}/state', path)) or
+                 (method == 'PUT' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', path)) or
                  (method == 'PATCH' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', path)) or
-                 (method == 'DELETE' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', path)))
+                 (method == 'DELETE' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', path)) or
+                 (method == 'DELETE' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}/(?:snapshots|backups)/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', path)))
         if method != 'GET' and not write:
             raise PanelError(403, 'Operação local não permitida.')
         name(project)

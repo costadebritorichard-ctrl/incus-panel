@@ -1,5 +1,20 @@
 'use strict';
 const $ = s => document.querySelector(s);
+let theme = 'light';
+try { theme = localStorage.getItem('incus-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch {}
+function applyTheme(value) {
+  theme = value === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem('incus-theme', theme); } catch {}
+  const button = document.querySelector('#theme-toggle');
+  if (button) {
+    button.textContent = theme === 'dark' ? '☼' : '☾';
+    button.setAttribute('aria-pressed', String(theme === 'dark'));
+    button.setAttribute('aria-label', theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro');
+    button.title = theme === 'dark' ? 'Tema claro' : 'Tema escuro';
+  }
+}
+applyTheme(theme);
 const el = (tag, attrs = {}, ...children) => {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
@@ -57,7 +72,7 @@ function trackTask(key,task){
 }
 function watchingRun(run,page){return session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page===page&&!document.hidden;}
 function resumeRun(run,poll){if(run.status_code<200&&!run.connectionError&&!run.polling){clearTimeout(run.timer);run.timer=setTimeout(()=>poll(run),0);}}
-const pages = [ ['overview','◫','Resumo'],['instances','▣','Containers'],['images','◇','Templates'],['storage','▤','Armazenamento'],['networks','⌘','Rede'],['profiles','☷','Perfis'],['projects','▱','Projetos'],['tasks','◷','Tarefas'],['alerts','△','Alertas'],['server','▧','Nó'],['settings','⚙','Permissões e sessão'] ];
+const pages = [ ['overview','◫','Resumo'],['instances','▣','Containers'],['images','◇','Templates'],['storage','▤','Armazenamento'],['volumes','▣','Volumes'],['networks','⌘','Rede'],['profiles','☷','Perfis'],['projects','▱','Projetos'],['tasks','◷','Tarefas'],['alerts','△','Alertas'],['server','▧','Nó'],['settings','⚙','Permissões e sessão'],['users','♙','Usuários'] ];
 const numberFormat = new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1});
 const fmt = n => n === null || n === undefined ? 'n/d' : numberFormat.format(n);
 const bytes = n => n === null || n === undefined ? 'n/d' : n >= 1073741824 ? fmt(n/1073741824)+' GiB' : fmt(n/1048576)+' MiB';
@@ -87,10 +102,10 @@ function notice(text, critical=false) { return el('div',{class:'alert'+(critical
 function errorNode(error) { return notice((error.status===403?'Sem permissão. ':error.status===503?'Desconectado. ':'')+error.message,true); }
 function loadingView(message) { return el('div',{class:'loading-state',role:'status','aria-live':'polite'},el('span',{class:'spinner','aria-hidden':'true'}),el('p',{},message)); }
 async function api(path, body) {
-  if(body&&['/api/action','/api/create','/api/images/download'].includes(path))readCache.clear();
+  if(body&&['/api/action','/api/create','/api/images/download','/api/users'].includes(path))readCache.clear();
   const response = await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':session?.csrf || ''}:{},body:body?JSON.stringify(body):undefined,cache:'no-store'});
   const result = await response.json();
-  if(body&&['/api/action','/api/create','/api/images/download'].includes(path))readCache.clear();
+  if(body&&['/api/action','/api/create','/api/images/download','/api/users'].includes(path))readCache.clear();
   if (!response.ok) {
     if (response.status===401 && path!=='/api/login') logoutLocal();
     throw Object.assign(new Error(result.error || 'Falha na solicitação.'),{status:response.status});
@@ -115,18 +130,20 @@ function actionButton(label, action, target, extra={}) { return el('button',{cla
 function openAction(action,target,extra={}) {
   if(action==='console'){startTerminal(target).catch(showTerminalError);return;}
   pendingAction={host,project,action,target,...extra};
-  $('#action-title').textContent=({start:'Iniciar container',stop:'Parar container',restart:'Reiniciar container',delete:'Excluir container permanentemente',create:'Criar container',snapshot:'Criar snapshot',backup:'Gerar backup',console:'Abrir shell interativo'})[action];
-  $('#action-description').textContent= action==='console'?'Este acesso abre /bin/sh, normalmente como root dentro do container. Comandos podem alterar ou apagar dados.':action==='delete'?'A exclusão remove permanentemente o container e seus snapshots.':action==='snapshot'||action==='backup'?'A operação consome armazenamento. Blocos compartilhados não representam espaço recuperável garantido.':'Revise o destino. O resultado será confirmado pela operação Incus.';
-  $('#action-review').textContent=`Container: ${target}\nServidor: ${session.hosts.find(h=>h.id===host)?.alias || host}\nProjeto: ${project}${extra.profiles ? '\nPerfil: '+extra.profiles.join(', ') : ''}`;
-  const needsConfirmation=action==='delete';
+  $('#action-title').textContent=({start:'Iniciar container',stop:'Parar container',restart:'Reiniciar container',delete:'Excluir container permanentemente',create:'Criar container',snapshot:'Criar snapshot',backup:'Gerar backup','snapshot-restore':'Restaurar snapshot','snapshot-delete':'Excluir snapshot','backup-delete':'Excluir backup',console:'Abrir shell interativo'})[action];
+  $('#action-description').textContent=action==='console'?'Este acesso abre /bin/sh, normalmente como root dentro do container. Comandos podem alterar ou apagar dados.':action==='delete'?'A exclusão remove permanentemente o container e seus snapshots.':action==='snapshot-restore'?'A restauração substitui o estado atual do container pelo snapshot selecionado. O container precisa estar parado.':action==='snapshot-delete'||action==='backup-delete'?'A exclusão remove permanentemente este arquivo de recuperação.':action==='snapshot'||action==='backup'?'A operação consome armazenamento. Blocos compartilhados não representam espaço recuperável garantido.':'Revise o destino. O resultado será confirmado pela operação Incus.';
+  $('#action-review').textContent=`Container: ${target}\nServidor: ${session.hosts.find(h=>h.id===host)?.alias || host}\nProjeto: ${project}${extra.snapshot?`\nSnapshot: ${extra.snapshot}`:''}${extra.backup?`\nBackup: ${extra.backup}`:''}${extra.profiles ? '\nPerfil: '+extra.profiles.join(', ') : ''}`;
+  const needsConfirmation=['delete','snapshot-restore','snapshot-delete','backup-delete'].includes(action);
+  const artifact=extra.snapshot||extra.backup||'';
+  const typedValue=artifact?`${host}/${project}/${target}/${artifact}`:target;
   $('#confirmation').parentElement.hidden=!needsConfirmation;
   $('#confirmation').required=needsConfirmation;
-  $('#confirmation').value=''; $('#confirmation').placeholder=action==='delete'?target:`${host}/${project}/${target}`;
-  $('#confirmation-label').textContent=action==='delete'?`Digite ${target} para excluir`:'Digite o alvo completo para confirmar';
+  $('#confirmation').value=''; $('#confirmation').placeholder=needsConfirmation?typedValue:`${host}/${project}/${target}`;
+  $('#confirmation-label').textContent=needsConfirmation?`Digite ${typedValue} para confirmar`:'Digite o alvo completo para confirmar';
   $('#name-label').hidden=!['snapshot','backup'].includes(action);
   $('#artifact-name').required=!$('#name-label').hidden;
   $('#artifact-name').value=''; $('#action-error').textContent='';
-  $('#submit-action').classList.toggle('danger-primary',action==='delete');
+  $('#submit-action').classList.toggle('danger-primary',['delete','snapshot-delete','backup-delete'].includes(action));
   $('#confirm').showModal(); (needsConfirmation?$('#confirmation'):$('#submit-action')).focus();
 }
 $('#cancel-action').onclick=()=>$('#confirm').close();
@@ -135,12 +152,14 @@ $('#action-form').onsubmit=async event=>{
   event.preventDefault(); $('#cancel-action').disabled=true; $('#submit-action').disabled=true;$('#submit-action').textContent='Processando…';
   try {
     const action={...pendingAction},owner=session;
-    if(action.action==='delete'&&$('#confirmation').value!==action.target)throw new Error('Digite o nome do container exatamente como exibido.');
+    const artifact=action.snapshot||action.backup||'';
+    const typedValue=artifact?`${action.host}/${action.project}/${action.target}/${artifact}`:action.target;
+    if(['delete','snapshot-restore','snapshot-delete','backup-delete'].includes(action.action)&&$('#confirmation').value!==typedValue)throw new Error(`Digite ${typedValue} exatamente como exibido.`);
     if(pendingAction.action==='console'){
       const result=await api('/api/console/start',{...pendingAction,confirmation:$('#confirmation').value});
       consoleId=result.console;$('#confirm').close();pollConsole();return;
     }
-    const data=await api('/api/action',{...action,confirmation:`${action.host}/${action.project}/${action.target}`,name:$('#artifact-name').value});
+    const data=await api('/api/action',{...action,confirmation:`${action.host}/${action.project}/${action.target}${artifact?'/'+artifact:''}`,name:$('#artifact-name').value});
     trackTask(`${action.host}/${action.project}/${data.operation}`,{...action,id:data.operation,status:'Aguardando confirmação',status_code:100});
     $('#submit-action').textContent='Aguardando o Incus…';
     const state=await waitOperation(data.operation,{host:action.host,project:action.project},owner);
@@ -210,6 +229,7 @@ setMenu(false,{restoreFocus:false});
 
 $('#logout').replaceChildren(...iconLabel('logout','Sair'));
 $('#refresh').replaceChildren(...iconLabel('refresh','Atualizar'));
+$('#theme-toggle').onclick=()=>applyTheme(theme==='dark'?'light':'dark');
 $('#logout').onclick=async()=>{try{await api('/api/logout',{});}finally{logoutLocal();}};
 $('#login-form').onsubmit=async event=>{
   event.preventDefault(); $('#login-error').textContent=''; const form=event.target; const button=form.querySelector('button');const label=[...button.childNodes].map(node=>node.cloneNode(true));button.disabled=true;button.textContent='Entrando…';
@@ -284,7 +304,7 @@ async function render() {
   $('#title').textContent=title; $('#breadcrumb').textContent=`${host} / ${project} / ${title}`;
   $('#subtitle').textContent=r.page==='instance'?`Gerencie ${r.target} e acompanhe seus recursos.`:({overview:'Seu laboratório sob controle. Veja o que está acontecendo agora.',instances:'Encontre, acompanhe e gerencie seus containers.',create:'Escolha uma imagem. Nós cuidamos da configuração.',images:'Sistemas disponíveis para o seu próximo container.',storage:'Acompanhe o espaço disponível para seu laboratório.',networks:'Conexões que mantêm seus containers em rede.',projects:'Organize seus ambientes em projetos separados.'})[r.page]||'Gerencie os recursos do seu laboratório.';
   $('#object-actions').replaceChildren();
-  $('#navigation').replaceChildren(...(r.page==='instance'?instanceTabs:pages).map(([key,symbol,label])=>el('a',{href:r.page==='instance'?instanceLink(r.target,key):'#'+key,class:(r.page==='instance'?r.tab===key:r.page===key)?'active':'','aria-current':(r.page==='instance'?r.tab===key:r.page===key)?'page':null},el('span',{},symbol),label)));
+  $('#navigation').replaceChildren(...(r.page==='instance'?instanceTabs:pages.filter(page=>page[0]!=='users'||session.manage_users)).map(([key,symbol,label])=>el('a',{href:r.page==='instance'?instanceLink(r.target,key):'#'+key,class:(r.page==='instance'?r.tab===key:r.page===key)?'active':'','aria-current':(r.page==='instance'?r.tab===key:r.page===key)?'page':null},el('span',{},symbol),label)));
   if(r.page!=='create'&&$('#create-dialog').open)$('#create-dialog').close();
   $('#banner').hidden=!session.demo; $('#banner').textContent='DEMONSTRAÇÃO · Todos os dados e operações são simulados em memória. Nada é enviado a um servidor Incus real.';
   $('#connection').textContent='Consultando Incus…'; $('#content').setAttribute('aria-busy','true');
@@ -310,15 +330,26 @@ async function render() {
     } else if(r.page==='instances') container.append(filteredInstances(instances));
     else if(r.page==='instance') container.append(await detail(r,scope));
     else if(r.page==='storage'||r.page==='alerts') container.append(await storageView(scope,r.page==='alerts'));
+    else if(r.page==='volumes') container.append(await volumesView(scope));
     else if(r.page==='server') container.append(panel('Identidade e capacidades',el('div',{class:'panel-body'},kv([['Servidor',server.environment?.server_name],['Arquitetura',server.environment?.kernel_architecture],['Incus',server.environment?.server_version],['Cluster',server.environment?.server_clustered?'Configurado':'Não configurado'],['VM','Fora do escopo: extensão não comprova KVM'],['Origem','Incus /1.0']]),json(server.api_extensions))));
     else if(r.page==='images') container.append(await imagesView(scope,server));
     else if(['networks','profiles','projects'].includes(r.page)) {
       const result=await read(r.page,undefined,scope); const data=result.data;
-      if(r.page==='networks')container.append(panel('Redes do nó',table(['NOME','TIPO','ATIVA','IPv4 / CIDR','IPv6 / CIDR','NAT','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.type,item.status||'n/d',item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',item.config?.['ipv4.nat']==='true'?'Sim':'Não',inspect(item)]))));
+      if(r.page==='networks'){
+        container.append(panel('Redes do nó',table(['NOME','TIPO','ATIVA','IPv4 / CIDR','IPv6 / CIDR','NAT','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.type,item.status||'n/d',item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',item.config?.['ipv4.nat']==='true'?'Sim':'Não',inspect(item)]))));
+        if(session.host_metrics)for(const network of data.filter(item=>item.managed&&item.type==='bridge')){
+          try{
+            const leases=(await read('network-leases',network.name,scope)).data;
+            container.append(panel('Leases DHCP · '+network.name,table(['HOSTNAME','MAC','IPv4','IPv6'],leases.map(lease=>[lease.hostname||'—',lease.hwaddr||'—',lease.ipv4||'—',lease.ipv6||'—']))));
+          }catch(error){container.append(errorNode(error));}
+        }
+        else container.append(notice('A lista de leases DHCP pode incluir outros Projects e exige a permissão de métricas globais do host.'));
+      }
       else container.append(panel(title,table(['NOME','DESCRIÇÃO','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.description||'—',inspect(item)]))));
       if(r.page==='projects')container.append(notice('A lista contém somente os escopos configurados no servidor do painel. A autorização final permanece no Incus.'));
     } else if(r.page==='tasks') container.append(await taskView(scope));
     else if(r.page==='create') container.append(await createView(scope,server));
+    else if(r.page==='users') container.append(await usersView());
     else if(r.page==='settings') container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only?'Somente leitura':'Mutações limitadas à allowlist'],['Autorização','Escopo no painel + '+transportLabel()],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice(session.low_resource?'Modo leve: inventário manual pelo botão Atualizar. Consulte Armazenamento e Alertas para verificar a capacidade dos pools.':'O inventário é atualizado a cada 15 segundos. Quando habilitados pelo administrador, eventos antecipam a atualização.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',json((await read('audit',undefined,scope)).data)));
     else container.append(empty('Página não encontrada.'));
     if(id!==generation||!session)return;
@@ -358,6 +389,80 @@ async function storageView(scope,alertsOnly=false) {
     return el('div',{},alertsOnly?(alerts.length?alerts:notice('Nenhum alerta de capacidade nas métricas disponíveis.')):panel('Storage pools',table(['POOL','DRIVER','CAPACIDADE','UTILIZADO','USO','ESTADO','COLETA'],rows)),!alertsOnly?alerts:null,el('small',{},'Fonte: Incus pool resources. Capacidade física não é calculada somando du, snapshots ou subvolumes.'));
   } catch(error){return errorNode(error);}
 }
+async function volumesView(scope) {
+  if(!session.host_metrics)return notice('O inventário de volumes usa a API global de armazenamento e exige a permissão de métricas do host.',true);
+  try{
+    const pools=(await read('pools',undefined,scope)).data;
+    const rows=[];
+    for(const pool of pools){
+      try{
+        const volumes=(await read('volumes',pool.name,scope)).data;
+        for(const volume of volumes)rows.push([pool.name,volume.name||'n/d',volume.type||'custom',volume.content_type||'filesystem',volume.project||scope.project,volume.description||'—']);
+      }catch(error){rows.push([pool.name,'—','—','—','—',error.message]);}
+    }
+    return el('div',{},panel('Volumes de armazenamento',table(['POOL','NOME','TIPO','CONTEÚDO','PROJECT','DESCRIÇÃO'],rows)),notice('Inventário somente para leitura. A exclusão ou alteração de volumes não está habilitada no painel.'));
+  }catch(error){return errorNode(error);}
+}
+function userScopesField(initial={}) {
+  const fields=el('fieldset',{class:'user-scopes'},el('legend',{},'Hosts e Projects autorizados'));
+  for(const [host,projects] of Object.entries(session.scopes||{})){
+    const group=el('div',{class:'user-scope-host'},el('strong',{},host));
+    for(const projectName of projects){
+      const selected=(initial[host]||[]).includes(projectName);
+      group.append(el('label',{class:'user-project'},el('input',{type:'checkbox',name:'project',value:projectName,'data-host':host,checked:selected?'':null}),el('span',{},projectName)));
+    }
+    fields.append(group);
+  }
+  return fields;
+}
+function userForm(initial=null) {
+  const creating=!initial;
+  const username=el('input',{name:'username',required:'',maxlength:'64',pattern:'[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}',autocomplete:'username',value:initial?.username||'',readonly:creating?null:''});
+  const role=el('select',{name:'role'},el('option',{value:'observador'},'Observador'),el('option',{value:'operador'},'Operador'),el('option',{value:'administrador'},'Administrador'));
+  role.value=initial?.role||'observador';
+  const password=el('input',{name:'password',type:'password',autocomplete:'new-password',minlength:'12',maxlength:'256',required:creating?'':null,placeholder:creating?'Mínimo 12 caracteres':'Deixe vazio para manter a senha'});
+  const scopes=userScopesField(initial?.scopes||{});
+  const hostMetrics=session.host_metrics?el('label',{class:'user-project'},el('input',{type:'checkbox',name:'host_metrics',checked:initial?.host_metrics?'':null}),el('span',{},'Permitir métricas globais do host')):null;
+  const feedback=el('p',{class:'form-feedback',role:'status','aria-live':'polite'});
+  const save=el('button',{type:'submit',class:'primary'},creating?'Criar usuário':'Salvar permissões');
+  const form=el('form',{class:'panel-body user-form'},
+    el('div',{class:'user-form-fields'},el('label',{},'Usuário',username),el('label',{},'Papel',role),el('label',{class:'user-password'},'Senha',password)),
+    scopes,hostMetrics,el('small',{},'Cada conta fica limitada aos Projects selecionados. A alteração de permissões encerra as sessões existentes dessa conta.'),
+    el('div',{class:'form-actions'},save),feedback);
+  if(initial?.username===session.username){
+    form.querySelectorAll('input,select,button').forEach(control=>control.disabled=true);
+    feedback.textContent='Entre com outra conta administradora para alterar ou remover este usuário.';
+  }
+  form.onsubmit=async event=>{
+    event.preventDefault();if(save.disabled)return;
+    save.disabled=true;feedback.textContent='Salvando…';
+    try{
+      const selected={};
+      for(const checkbox of form.querySelectorAll('input[name="project"]'))if(checkbox.checked)(selected[checkbox.dataset.host]??=[]).push(checkbox.value);
+      const result=await api('/api/users',{action:creating?'create':'update',username:username.value,role:role.value,scopes:selected,host_metrics:hostMetrics?.querySelector('input').checked||false,password:password.value});
+      notify(creating?'Usuário criado.':`Permissões de ${result.username} atualizadas.`);
+      await render();
+    }catch(error){feedback.textContent=error.message;save.disabled=false;}
+  };
+  return form;
+}
+async function usersView() {
+  if(!session.manage_users)return notice('A gestão de usuários exige uma conta administradora e configuração persistente do painel.',true);
+  try{
+    const result=await api('/api/users');
+    const users=result.users||[];
+    const rows=users.map(user=>[user.username,user.role,Object.entries(user.scopes||{}).map(([host,projects])=>`${host}: ${projects.join(', ')}`).join(' · '),user.host_metrics?'Sim':'Não']);
+    const container=el('div',{},panel('Contas visíveis neste escopo',table(['USUÁRIO','PAPEL','PROJECTS','MÉTRICAS DO HOST'],rows)));
+    for(const user of users)container.append(panel('Permissões · '+user.username,userForm(user),user.username===session.username?null:el('button',{type:'button',class:'danger-button',onclick:async()=>{
+      if(!window.confirm(`Remover a conta ${user.username}? As sessões abertas serão encerradas.`))return;
+      try{await api('/api/users',{action:'delete',username:user.username});notify(`Conta ${user.username} removida.`);await render();}
+      catch(error){notify(error.message);}
+    }},'Remover conta')));
+    container.append(panel('Criar conta',userForm()));
+    container.append(notice('As permissões são aplicadas no servidor em cada requisição. Administradores só podem conceder Projects que já estejam em seu próprio escopo.'));
+    return container;
+  }catch(error){return errorNode(error);}
+}
 async function detail(r,scope) {
   const [instanceResult,stateResult]=await Promise.all([read('instance',r.target,scope),['summary','resources','network'].includes(r.tab)?read('state',r.target,scope):Promise.resolve(null)]);
   const item=instanceResult.data,state=stateResult?.data||{status:item.status};
@@ -391,8 +496,25 @@ async function detail(r,scope) {
   else if(r.tab==='options')wrapper.append(editView(item,scope));
   else if(['snapshots','backups'].includes(r.tab)){
     const result=await read(r.tab,r.target,scope);
-    wrapper.append(panel(r.tab==='snapshots'?'Snapshots':'Backups',table(['NOME','CRIADO EM','EXPIRA EM'],result.data.map(i=>[typeof i==='string'?i:i.name,date(i.created_at),date(i.expires_at)])),actionButton('Criar',r.tab==='snapshots'?'snapshot':'backup',r.target)));
-    wrapper.append(notice('Criação disponível. Restauração, download de backup e exclusão de snapshots ainda não são implementados pelo painel.'));
+    const artifacts=result.data.map(item=>{
+      const rawName=typeof item==='string'?item:item.name;
+      const artifact=String(rawName||'').split('/').pop();
+      const controls=el('div',{class:'row-actions'});
+      if(r.tab==='snapshots'){
+        const restore=actionButton('Restaurar','snapshot-restore',r.target,{snapshot:artifact});
+        restore.disabled=!(session.role==='administrador'&&canMutate(r.target)&&state.status==='Stopped');
+        const remove=actionButton('Excluir','snapshot-delete',r.target,{snapshot:artifact});
+        remove.disabled=!(session.role==='administrador'&&canMutate(r.target));
+        controls.append(restore,remove);
+      }else{
+        const remove=actionButton('Excluir','backup-delete',r.target,{backup:artifact});
+        remove.disabled=!(session.role==='administrador'&&canMutate(r.target));
+        controls.append(remove);
+      }
+      return [artifact,date(item.created_at),date(item.expires_at),controls];
+    });
+    wrapper.append(panel(r.tab==='snapshots'?'Snapshots':'Backups',table(['NOME','CRIADO EM','EXPIRA EM','AÇÕES'],artifacts),actionButton('Criar',r.tab==='snapshots'?'snapshot':'backup',r.target)));
+    wrapper.append(notice(r.tab==='snapshots'?'Você pode restaurar ou excluir snapshots. A restauração substitui o estado atual e só está disponível com o container parado.':'Backups podem ser criados e excluídos. O download e a importação de arquivos ainda não estão disponíveis.'));
   } else if(r.tab==='console'){
     const allowed=session.enable_console&&canMutate(r.target)&&state.status==='Running'&&!session.demo;
     const controls=el('div',{class:'toolbar'},el('span',{id:'terminal-status',class:'terminal-status',role:'status'},allowed?'Conectando…':'Console indisponível'),el('button',{type:'button',disabled:allowed?null:'',onclick:()=>startTerminal(r.target).catch(showTerminalError)},'Reconectar'),el('button',{type:'button',onclick:()=>{closeConsole();const statusNode=$('#terminal-status');if(statusNode)statusNode.textContent='Desconectado';}},'Desconectar'));

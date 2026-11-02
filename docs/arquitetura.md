@@ -4,7 +4,7 @@
 
 O navegador consome uma API de mesma origem. Um serviço Python local acessa endpoints Incus fixos por HTTPS e certificado de cliente. O certificado e a chave não são transmitidos ao navegador. Sessões independentes usam cookie HttpOnly/SameSite Strict, hash scrypt, expiração absoluta e token CSRF por sessão. Mutações e login exigem Origin exata; a API não habilita CORS.
 
-A conta web não determina sua própria função: o administrador configura papéis e escopos no servidor. O serviço verifica host, Project, alvo descartável e confirmação antes de qualquer mutação. O Incus continua responsável pela autorização da identidade TLS. A versão usa uma identidade TLS por host, compartilhada pelas contas web desse host: é uma fronteira de confiança relevante, não uma identidade Incus individual por usuário. Para isolamento forte entre turmas, use certificados restritos e instâncias de serviço separadas. O painel não substitui OpenFGA/OIDC nem oferece provisionamento de identidades.
+O administrador pode gerenciar contas locais do painel, papéis, Projects e acesso a métricas do host; o backend aplica esses escopos em cada requisição e grava as contas atomicamente em `/var/lib/incus-panel/users.json`. O serviço verifica host, Project, alvo descartável e confirmação antes de qualquer mutação. O Incus continua responsável pela autorização da identidade TLS. A versão usa uma identidade TLS por host, compartilhada pelas contas web desse host: as contas do painel não são identidades Incus individuais. Para isolamento forte entre turmas, use certificados restritos e instâncias de serviço separadas. O painel não substitui OpenFGA/OIDC nem provisiona identidades no Incus.
 
 Essa é uma escolha de implementação, **ainda sem aprovação experimental R4**: os custos CPU/RAM/latência não foram medidos no H3. O caminho direto browser/Incus não foi experimentalmente comparado. Evitou-se depender de APIs de certificados de cliente no JavaScript e manter chaves de administração no frontend.
 
@@ -39,7 +39,7 @@ HTML/CSS/JS públicos são lidos e comprimidos no início do processo, com ETags
 
 ## Limites da infraestrutura
 
-O serviço HTTP padrão Python é destinado aqui a rede privada/laboratório, atrás de proxy HTTPS com limites de conexão e de taxa. Não houve auditoria de implantação pública multiusuário. Não há banco: sessões, auditoria de 200 mutações e fixtures somem ao reiniciar. Tasks concluídas dependem do ciclo de retenção do Incus e da aba atual. Preferências locais contêm apenas seleção de host/Project. Nenhum experimento ou mudança em produção foi executado.
+O serviço HTTP padrão Python é destinado aqui a rede privada/laboratório, atrás de proxy HTTPS com limites de conexão e de taxa. Não houve auditoria de implantação pública multiusuário. Não há banco: sessões, auditoria de 200 mutações e fixtures somem ao reiniciar; contas locais persistem no arquivo JSON separado. Tasks concluídas dependem do ciclo de retenção do Incus e da aba atual. Preferências locais guardam tema e seleção de host/Project no navegador. Nenhum experimento ou mudança em produção foi executado.
 
 Consultas globais de pools/recursos exigem permissão separada; o inventário de Projects vem dos escopos do painel. Projects/profiles compartilhados podem exigir restrições adicionais na política Incus. Certificados precisam ter SAN compatível com o hostname usado; não se desliga a verificação para contornar certificado incompatível.
 

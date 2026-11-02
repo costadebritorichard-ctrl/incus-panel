@@ -1,5 +1,14 @@
 # Changelog
 
+## Tema, contas locais e recuperação de snapshots — 2026-11-02
+
+- Tema escuro com alternância acessível, respeito à preferência do sistema e escolha persistida no navegador.
+- Administração de contas do painel: criar, editar papel/Projects/acesso às métricas do host, trocar senha e revogar sessão; gravação atômica em `/var/lib/incus-panel/users.json`.
+- Restaurar e excluir snapshots, além de excluir backups, com confirmação de escopo, verificação do artefato, permissões administrativas e exigência de container parado para restaurar.
+- Inventário de volumes de armazenamento e leases DHCP de bridges gerenciadas, com acesso global de leases condicionado à permissão de métricas do host.
+- A identidade TLS/Unix do serviço continua sendo compartilhada; as contas locais não criam usuários nem ACLs no Incus.
+- Exportação/importação de backups, volumes, configuração de redes/pools/profiles e gestão de cluster continuam fora desta entrega.
+
 ## Interface de gerenciamento e terminal — 2026-11-02
 
 - Organização visual baseada no Proxmox VE, implementada para Incus: árvore à esquerda, navegação contextual, ações no topo, tabelas compactas e painel inferior de tarefas/auditoria recolhível e redimensionável.

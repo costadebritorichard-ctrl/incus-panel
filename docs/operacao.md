@@ -35,10 +35,10 @@ Para eventos e atualização periódica, configure `low_resource: false` e habil
 | Operação incerta | Consulte UUID/estado no Incus antes de repetir; não há retry automático mutante. |
 | Storage crítico | Revise capacidade com administrador. O painel não executa limpeza. |
 
-O histórico de auditoria do painel é temporário e não substitui o log Incus. Reiniciar invalida todas as sessões. Para revogar usuário web, remova-o da configuração e reinicie o serviço; revogue também o certificado no Incus quando necessário. A versão não recarrega configuração em tempo real.
+O histórico de auditoria do painel é temporário e não substitui o log Incus. Reiniciar invalida todas as sessões. Administradores podem criar, editar ou remover contas em **Usuários**; alterações e hashes são salvos atomicamente em `/var/lib/incus-panel/users.json`, e alterações/revogação encerram as sessões afetadas. Esse controle administra contas do painel, não cria identidades ou ACLs no Incus. Certificados da identidade de serviço ainda precisam ser revogados no Incus quando necessário.
 
 ## Backup, rollback e desinstalação
 
-Faça backup protegido de `config.local.json`, CA/certificados e chave fora do repositório, de acordo com a política da instituição. Preferências visuais podem ser descartadas sem afetar containers. Mantenha backups de workloads pelos procedimentos Incus, não pelo backup da configuração do painel.
+Faça backup protegido de `config.local.json`, `users.json`, CA/certificados e chave fora do repositório, de acordo com a política da instituição. A preferência do tema fica no navegador e pode ser descartada sem afetar containers. Mantenha backups de workloads pelos procedimentos Incus, não pelo backup da configuração do painel.
 
 Para atualizar, pare o serviço, preserve a configuração, selecione um commit/tag aprovado, rode os testes e reinicie. Para rollback, pare o serviço e restaure o código da versão anterior e sua configuração compatível. Não use reset destrutivo sobre uma árvore com alterações não salvas. Desinstalar significa parar/desabilitar o serviço e remover apenas seus arquivos; não exclua containers, redes, volumes ou snapshots. Revogue a identidade TLS que não for mais necessária.

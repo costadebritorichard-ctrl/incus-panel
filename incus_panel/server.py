@@ -1,5 +1,6 @@
 """Servidor HTTP local; TLS do navegador deve terminar em proxy reverso confiável."""
 import argparse
+import copy
 import gzip
 import hashlib
 import hmac
@@ -7,9 +8,11 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import ssl
 import threading
+import tempfile
 import time
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -39,9 +42,10 @@ def demo_config():
 
 
 class Application:
-    def __init__(self, config, clients=None):
+    def __init__(self, config, clients=None, config_path=None):
         self.validate(config)
         self.config = config
+        self.config_path = Path(config_path).resolve() if config_path else None
         self.service = Service(config, clients)
         self.sessions = {}
         self.consoles = {}
@@ -63,7 +67,8 @@ class Application:
             raise ValueError("Configure hosts com IDs únicos.")
         names = set()
         for user in config["users"]:
-            if user["username"] in names or user["role"] not in ("observador", "operador", "administrador"):
+            if (not isinstance(user.get("username"), str) or not user["username"] or len(user["username"]) > 128
+                    or user["username"] in names or user["role"] not in ("observador", "operador", "administrador")):
                 raise ValueError("Identidade duplicada ou papel inválido.")
             names.add(user["username"])
             if not isinstance(user.get("scopes"), dict):
@@ -78,6 +83,128 @@ class Application:
         if any(h.get("transport") == "ssh" for h in config["hosts"]):
             if not config.get("read_only", True) or config.get("enable_console") or config.get("enable_events"):
                 raise ValueError("Transportes SSH/socket exigem somente leitura, sem console e sem eventos.")
+
+    @staticmethod
+    def _scope_is_within(scopes, allowed):
+        return isinstance(scopes, dict) and all(
+            host in allowed and isinstance(projects, list)
+            and all(isinstance(project, str) for project in projects)
+            and set(projects).issubset(set(allowed[host]))
+            for host, projects in scopes.items())
+
+    def _managed_user(self, actor, username):
+        target = next((item for item in self.config["users"] if item["username"] == username), None)
+        if (target is None or not self._scope_is_within(target.get("scopes", {}), actor.get("scopes", {}))
+                or (target.get("host_metrics", False) and not actor.get("host_metrics", False))):
+            raise PanelError(404, "Conta não encontrada neste escopo administrativo.")
+        return target
+
+    def _save_users(self, users):
+        candidate = copy.deepcopy(self.config)
+        candidate["users"] = users
+        self.validate(candidate)
+        if self.config_path:
+            fd, temporary = tempfile.mkstemp(prefix=self.config_path.name + ".", suffix=".tmp", dir=self.config_path.parent)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
+                    json.dump(users, output, ensure_ascii=False, indent=2)
+                    output.write("\n")
+                    output.flush()
+                    os.fsync(output.fileno())
+                try:
+                    os.chmod(temporary, 0o600)
+                except OSError:
+                    pass
+                os.replace(temporary, self.config_path)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
+        self.config["users"] = users
+
+    def users(self, actor):
+        if actor.get("role") != "administrador":
+            raise PanelError(403, "A gestão de contas exige administrador.")
+        if self.config_path is None or self.config.get("demo"):
+            raise PanelError(403, "A gestão de contas exige configuração persistente fora do modo demonstração.")
+        visible = [
+            {"username": item["username"], "role": item["role"], "scopes": item.get("scopes", {}),
+             "host_metrics": item.get("host_metrics", False)}
+            for item in self.config["users"]
+            if self._scope_is_within(item.get("scopes", {}), actor.get("scopes", {}))
+            and (not item.get("host_metrics", False) or actor.get("host_metrics", False))
+        ]
+        return {"users": visible, "persisted": True}
+
+    def change_user(self, actor, body):
+        with self.lock:
+            return self._change_user_locked(actor, body)
+
+    def _change_user_locked(self, actor, body):
+        if actor.get("role") != "administrador":
+            raise PanelError(403, "A gestão de contas exige administrador.")
+        if self.config_path is None or self.config.get("demo"):
+            raise PanelError(403, "A gestão de contas exige configuração persistente fora do modo demonstração.")
+        action, username = body.get("action"), body.get("username")
+        if not isinstance(username, str) or not username or len(username) > 128:
+            raise PanelError(400, "Nome de usuário inválido.")
+        if action == "delete":
+            if username == actor["username"]:
+                raise PanelError(409, "Não é possível remover a própria conta.")
+            target = self._managed_user(actor, username)
+            updated = [item for item in self.config["users"] if item is not target]
+        elif action in ("create", "update"):
+            if action == "create" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}", username):
+                raise PanelError(400, "Use até 64 letras, números, ponto, hífen, sublinhado ou @ para um novo usuário.")
+            if action == "update" and username == actor["username"]:
+                raise PanelError(409, "Use outra conta administradora para alterar a própria conta.")
+            role = body.get("role")
+            if role not in ("observador", "operador", "administrador"):
+                raise PanelError(400, "Papel inválido.")
+            scopes = body.get("scopes")
+            if not isinstance(scopes, dict) or not scopes or not self._scope_is_within(scopes, actor.get("scopes", {})):
+                raise PanelError(403, "Selecione Projects dentro do escopo deste administrador.")
+            for projects in scopes.values():
+                if not isinstance(projects, list) or not projects:
+                    raise PanelError(400, "Cada host selecionado precisa ter ao menos um Project.")
+                for project in projects:
+                    name(project)
+            host_metrics = body.get("host_metrics", False)
+            if not isinstance(host_metrics, bool) or (host_metrics and not actor.get("host_metrics", False)):
+                raise PanelError(403, "Este administrador não pode conceder métricas globais do host.")
+            password = body.get("password", "")
+            if not isinstance(password, str) or len(password) > 256:
+                raise PanelError(400, "Senha inválida.")
+            old = None
+            if action == "update":
+                old = self._managed_user(actor, username)
+                if password and len(password) < 12:
+                    raise PanelError(400, "A nova senha deve ter pelo menos 12 caracteres.")
+            elif any(item["username"] == username for item in self.config["users"]):
+                raise PanelError(409, "Este nome de usuário já existe.")
+            elif len(password) < 12:
+                raise PanelError(400, "A senha deve ter pelo menos 12 caracteres.")
+            replacement = {"username": username,
+                           "password_hash": old["password_hash"] if old and not password else password_hash(password),
+                           "role": role, "host_metrics": host_metrics, "scopes": scopes}
+            updated = [replacement if item is old else item for item in self.config["users"]]
+            if old is None:
+                updated.append(replacement)
+        else:
+            raise PanelError(400, "Ação de conta inválida.")
+        if not any(item["role"] == "administrador" for item in updated):
+            raise PanelError(409, "Mantenha ao menos uma conta administradora.")
+        self._save_users(updated)
+        if action in ("update", "delete"):
+            with self.lock:
+                for token, session in list(self.sessions.items()):
+                    if session["user"]["username"] == username:
+                        self.close_consoles(token)
+                        del self.sessions[token]
+        self.service.audit.append({"identity": actor["username"], "host": "panel", "project": "local", "target": username,
+                                   "action": "user-" + action, "timestamp": time.time(),
+                                   "result": "conta removida" if action == "delete" else "conta atualizada"})
+        self.service.audit[:] = self.service.audit[-200:]
+        return {"ok": True, "action": action, "username": username}
 
     def login(self, username, password, address):
         now = time.time()
@@ -202,7 +329,7 @@ class Application:
 
     def public_session(self, session):
         user = session["user"]
-        return {"username": user["username"], "role": user["role"], "scopes": user["scopes"], "host_metrics": user.get("host_metrics", False), "csrf": session["csrf"], "expires": session["expires"], "demo": self.config.get("demo", False), "read_only": self.config.get("read_only", True), "enable_console": self.config.get("enable_console", False), "low_resource": self.service.low_resource, "manage_all_instances": self.config.get("manage_all_instances", False) and user["role"] == "administrador", "allow_remote_images": self.config.get("allow_remote_images", False), "hosts": [{"id": h["id"], "alias": h["alias"], "transport": h.get("transport", "tls")} for h in self.config["hosts"] if h["id"] in user["scopes"]], "mutable_instances": {h: {p: values for p, values in projects.items() if p in user["scopes"].get(h, [])} for h, projects in self.config.get("mutable_instances", {}).items() if h in user["scopes"]}}
+        return {"username": user["username"], "role": user["role"], "scopes": user["scopes"], "host_metrics": user.get("host_metrics", False), "csrf": session["csrf"], "expires": session["expires"], "demo": self.config.get("demo", False), "read_only": self.config.get("read_only", True), "enable_console": self.config.get("enable_console", False), "low_resource": self.service.low_resource, "manage_all_instances": self.config.get("manage_all_instances", False) and user["role"] == "administrador", "manage_users": self.config_path is not None and not self.config.get("demo") and user["role"] == "administrador", "allow_remote_images": self.config.get("allow_remote_images", False), "hosts": [{"id": h["id"], "alias": h["alias"], "transport": h.get("transport", "tls")} for h in self.config["hosts"] if h["id"] in user["scopes"]], "mutable_instances": {h: {p: values for p, values in projects.items() if p in user["scopes"].get(h, [])} for h, projects in self.config.get("mutable_instances", {}).items() if h in user["scopes"]}}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -333,6 +460,9 @@ class Handler(BaseHTTPRequestHandler):
                             self.app.sessions.pop(token, None)
                         self.send(200, {"ok": True}, cookie="panel_session=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/")
                         return
+                    if path == "/api/users":
+                        self.send(200, self.app.change_user(session["user"], body))
+                        return
                     if path == "/api/console/start":
                         self.send(201, self.app.open_console(token, session, body))
                         return
@@ -361,6 +491,8 @@ class Handler(BaseHTTPRequestHandler):
                         raise PanelError(404, "Rota não encontrada.")
                     data = self.app.service.mutate(session["user"], body.get("host"), body.get("project"), body.get("action"), body.get("target"), body)
                     self.send(202, data)
+                elif path == "/api/users":
+                    self.send(200, self.app.users(session["user"]))
                 elif path == "/api/session":
                     self.send(200, self.app.public_session(session))
                 elif path == "/api/console/read":
@@ -393,6 +525,7 @@ def main():
     parser = argparse.ArgumentParser(description="Incus Panel")
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--config", default="config.local.json")
+    parser.add_argument("--users-file")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--hash-password", action="store_true")
     args = parser.parse_args()
@@ -411,9 +544,15 @@ def main():
         config = json.loads(Path(args.config).read_text(encoding="utf-8"))
         if config.get("demo"):
             raise SystemExit("Use --demo para simulação.")
+        users_path = Path(args.users_file) if args.users_file else Path(args.config).with_name(Path(args.config).stem + ".users.json")
+        if users_path.exists():
+            stored_users = json.loads(users_path.read_text(encoding="utf-8"))
+            if not isinstance(stored_users, list):
+                raise SystemExit("O arquivo de usuários precisa conter uma lista JSON.")
+            config["users"] = stored_users
         if not config.get("users") or not valid_origin(config, args.port):
             raise SystemExit("Configure usuários e origem HTTPS via proxy reverso.")
-    serve(config, args.port)
+    serve(config, args.port, config_path=None if args.demo else users_path)
 
 
 def valid_origin(config, port):
@@ -488,9 +627,9 @@ class PanelHTTPServer(ThreadingHTTPServer):
             self.workers.release()
 
 
-def serve(config, port, clients=None):
+def serve(config, port, clients=None, config_path=None):
     host, tls = listener(config, port)
-    app = Application(config, clients)
+    app = Application(config, clients, config_path)
     server = PanelHTTPServer((host, port), Handler, tls, max_workers=4 if app.service.low_resource else 8)
     server.app = app
     print(f"Incus Panel disponível em {'https' if tls else 'http'}://{host}:{port}", flush=True)

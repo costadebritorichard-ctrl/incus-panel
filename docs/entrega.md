@@ -16,7 +16,7 @@ TEL-05/06/10/19/22: Start/Stop/Restart com autorização e confirmação; UUID e
 
 ## LOTE-03 / F3
 
-TEL-08/09/11–18/20: devices com origem, configurações redigidas, leitura de imagens/profiles/redes/Projects/pools; assistente de oito etapas com imagem compatível, limites, pool, bridge e início opcional; criação/listagem de snapshot/backup; exclusão de container com proteções; alertas de storage. O perfil default fornece a base, com overrides administrativos validados; não há formulário de devices arbitrários. Download/restauração de backup, restauração/exclusão de snapshot, importação/remoção de imagens e UI de volumes/leases permanecem pendentes. Pools, redes e profiles não são alterados. Não há limpeza de armazenamento.
+TEL-08/09/11–18/20: devices com origem, configurações redigidas, leitura de imagens/profiles/redes/Projects/pools; assistente de oito etapas com imagem compatível, limites, pool, bridge e início opcional; criação/listagem de snapshot/backup; restauração/exclusão de snapshot e exclusão de backup; contas locais com papel e Projects; tema escuro; inventário de volumes e leases DHCP; exclusão de container com proteções; alertas de storage. O perfil default fornece a base, com overrides administrativos validados; não há formulário de devices arbitrários. Download/importação de backup, importação/remoção de imagens, alteração de volumes, configuração de redes/pools/profiles e cluster permanecem pendentes. Não há limpeza de armazenamento.
 
 ## LOTE-04 / F4
 

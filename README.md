@@ -51,9 +51,9 @@ Os pacotes seguem a [documentação oficial do Incus](https://linuxcontainers.or
 
 ## Operação
 
-Permite criar containers com imagens Alpine/Debian compatíveis, iniciar, parar, reiniciar, editar limites e descrição, excluir containers parados, criar snapshots/backups e abrir shell textual `/bin/sh`. O resultado vem do Incus; criação só informa sucesso após confirmar `Running`.
+Permite criar containers com imagens Alpine/Debian compatíveis, iniciar, parar, reiniciar, editar limites e descrição, excluir containers parados, criar snapshots/backups, restaurar ou excluir snapshots, excluir backups e abrir shell textual `/bin/sh`. Administradores podem criar contas locais, definir papel, Projects e acesso a métricas do host. O tema escuro fica salvo no navegador. O resultado vem do Incus; criação só informa sucesso após confirmar `Running`.
 
-Configuração em `/etc/incus-panel/config.local.json`, versões em `/opt/incus-panel/releases` e serviço `incus-panel`. O usuário do serviço recebe acesso administrativo ao Incus. O painel escuta em `0.0.0.0:8444`, em todas as interfaces IPv4 da TV box. Acesse `https://IP_DA_TVBOX:8444` por qualquer um desses endereços; login e ações aceitam a origem HTTPS do IP acessado. A API Incus não é publicada na rede.
+Configuração em `/etc/incus-panel/config.local.json`, contas do painel em `/var/lib/incus-panel/users.json`, versões em `/opt/incus-panel/releases` e serviço `incus-panel`. A tela **Usuários** permite gerenciar as contas locais; os papéis e Projects são aplicados no servidor. Isso não cria identidades no Incus nem substitui a autorização da identidade de serviço. O usuário do serviço recebe acesso administrativo ao Incus. O painel escuta em `0.0.0.0:8444`, em todas as interfaces IPv4 da TV box. Acesse `https://IP_DA_TVBOX:8444` por qualquer um desses endereços; login e ações aceitam a origem HTTPS do IP acessado. A API Incus não é publicada na rede.
 
 Reexecute o instalador com o código atualizado para migrar a escuta de um IP específico para todas as interfaces, preservando senha e certificado. Certificados novos incluem os IPv4 presentes na instalação; certificados antigos ou mudanças posteriores de IP podem exigir reemissão com os endereços adicionais no SAN. Veja o [guia de acesso por múltiplos IPs](docs/instalacao-local.md#acesso-por-qualquer-ipv4-da-tv-box). Mudanças de identidade ou permissões exigem revisão da configuração. Uma instalação anterior em somente leitura não é promovida silenciosamente.
 
@@ -71,7 +71,7 @@ Node só é necessário para desenvolvimento. A CI `incus-real.yml` instala Ubun
 
 O console abre pela aba **Console**, pelo botão **Console ↗** ou por duplo clique no container em execução. Usa xterm.js local, teclado direto, sequências ANSI/VT e redimensionamento automático; `/bin/sh` roda no container via exec interativo do Incus, com a autorização da sessão. Não exige digitar novamente o alvo. Em demonstração, o shell permanece indisponível. A integração com um Incus real precisa ser validada no equipamento; os testes locais de protocolo e DOM não comprovam esse aceite.
 
-Histórico de tarefas/auditoria fica em memória; containers pertencem ao Incus e sobrevivem ao reinício do painel. Restauração de backups/snapshots e gestão de clusters pela interface ainda não estão implementadas. A [rastreabilidade](docs/rastreabilidade.md) registra as demais funcionalidades da especificação.
+Histórico de tarefas/auditoria fica em memória; contas locais persistem em `/var/lib/incus-panel/users.json`; containers pertencem ao Incus e sobrevivem ao reinício do painel. O painel ainda não oferece exportação/importação de backups, configuração de rede/armazenamento, VMs nem gestão de clusters. A [rastreabilidade](docs/rastreabilidade.md) registra o escopo e as lacunas restantes.
 
 Para desenvolver com dados simulados: `python -m incus_panel.server --demo`. Esse modo não é usado na instalação.
 

@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 config.local.json
+*.users.json
+users.json
 *.pem
 *.key
 *.crt

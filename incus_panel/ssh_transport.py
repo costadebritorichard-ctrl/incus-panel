@@ -17,7 +17,7 @@ from .core import PanelError, name
 REMOTE_HELPER = r'''
 import json, re, subprocess, sys
 from urllib.parse import urlencode
-pattern = r"/1\.0(?:/(?:resources|projects|instances|images|profiles|networks|storage-pools|operations)(?:/[A-Za-z0-9][A-Za-z0-9_.-]{0,62})?(?:/(?:state|snapshots|backups|resources|volumes))?)?"
+pattern = r"/1\.0(?:/(?:resources|projects|instances|images|profiles|networks|storage-pools|operations)(?:/[A-Za-z0-9][A-Za-z0-9_.-]{0,62})?(?:/(?:state|snapshots|backups|resources|volumes|leases))?)?"
 print(json.dumps({"ready": True}), flush=True)
 for line in sys.stdin:
     try:
