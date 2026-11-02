@@ -12,11 +12,11 @@ WBS-03 e telas TEL-01–07/21: navegação, login e sessão, dashboard, árvore 
 
 ## LOTE-02 / F2
 
-TEL-05/06/10/19/22: Start/Stop/Restart com allowlist e confirmação; UUID e estado terminal; console textual, limite de canais, expiração, encerramento por logout e abandono; lifecycle/operation via WebSocket TLS com backoff e resync. Os testes cobrem protocolo, isolamento e ciclos de sessão com dublês; não comprovam que `/bin/sh` abriu no Incus 6.0.4. Console não suporta VT completo e o redimensionamento é exposto na API, sem ajuste automático da UI. Eventos e console são opt-in, desligados no exemplo. A auditoria é temporária.
+TEL-05/06/10/19/22: Start/Stop/Restart com autorização e confirmação; UUID e estado terminal; console xterm.js com teclado direto, ANSI/VT, ajuste automático de tamanho e janela dedicada; limite de canais, expiração, encerramento por logout e abandono; lifecycle/operation via WebSocket TLS com backoff e resync. Os testes cobrem protocolo, isolamento, entrada/resize e ciclos de sessão com dublês; não comprovam que `/bin/sh` abriu no Incus real. Eventos e console são opt-in no exemplo; o instalador local habilita console. A auditoria é temporária.
 
 ## LOTE-03 / F3
 
-TEL-08/09/11–18/20: devices com origem, configurações redigidas, leitura de imagens/profiles/redes/Projects/pools; criação por imagem compatível e profile; criação/listagem de snapshot/backup; exclusão de container com proteções; alertas de storage. Perfil selecionado fornece rede/pool/limites; não há formulário avançado de devices. Download/restauração de backup, restauração/exclusão de snapshot, importação/remoção de imagens e UI de volumes/leases permanecem pendentes. Pools, redes e profiles não são alterados. Não há limpeza de armazenamento.
+TEL-08/09/11–18/20: devices com origem, configurações redigidas, leitura de imagens/profiles/redes/Projects/pools; assistente de oito etapas com imagem compatível, limites, pool, bridge e início opcional; criação/listagem de snapshot/backup; exclusão de container com proteções; alertas de storage. O perfil default fornece a base, com overrides administrativos validados; não há formulário de devices arbitrários. Download/restauração de backup, restauração/exclusão de snapshot, importação/remoção de imagens e UI de volumes/leases permanecem pendentes. Pools, redes e profiles não são alterados. Não há limpeza de armazenamento.
 
 ## LOTE-04 / F4
 

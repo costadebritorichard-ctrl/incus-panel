@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import http.client
+import ipaddress
 import json
 import re
 import ssl
@@ -202,7 +203,7 @@ class Demo:
                 key = (project, body["name"])
                 if key in self.instances:
                     raise PanelError(409, "Nome já existe neste Project.")
-                self.instances[key] = {"name": body["name"], "type": "container", "architecture": "armv7l", "status": "Stopped", "profiles": body["profiles"], "description": "", "config": copy.deepcopy(body.get("config", {})), "expanded_config": copy.deepcopy(body.get("config", {})), "devices": copy.deepcopy(body.get("devices", {})), "expanded_devices": copy.deepcopy(body.get("devices", {})), "snapshots": [], "backups": []}
+                self.instances[key] = {"name": body["name"], "type": "container", "architecture": "armv7l", "status": "Stopped", "profiles": body["profiles"], "description": body.get("description", ""), "config": copy.deepcopy(body.get("config", {})), "expanded_config": copy.deepcopy(body.get("config", {})), "devices": copy.deepcopy(body.get("devices", {})), "expanded_devices": copy.deepcopy(body.get("devices", {})), "snapshots": [], "backups": []}
             elif len(parts) >= 3 and parts[1] == "instances":
                 key = (project, parts[2])
                 if key not in self.instances:
@@ -418,14 +419,78 @@ class Service:
             if not network:
                 raise PanelError(409, 'O Incus não tem rede de containers disponível. Execute novamente o instalador na TV box.')
             overrides['eth0'] = {'type': 'nic', 'name': 'eth0', 'network': network['name']}
+        launch_config = None
+        options = body.get('options')
+        if options is not None:
+            if not isinstance(options, dict) or set(options) - {'memory_mib', 'cpu_cores', 'cpu_allowance', 'autostart', 'start', 'pool', 'disk_gib', 'network', 'ipv4', 'description'}:
+                raise PanelError(400, 'Opções de criação inválidas.')
+            for key in ('pool', 'network', 'ipv4'):
+                if key in options and not isinstance(options[key], str):
+                    raise PanelError(400, 'Valor inválido para ' + key + '.')
+            def integer(key, default, minimum, maximum):
+                value = options.get(key, default)
+                if type(value) is not int or not minimum <= value <= maximum:
+                    raise PanelError(400, 'Valor inválido para ' + key + '.')
+                return value
+            for key in ('autostart', 'start'):
+                if key in options and type(options[key]) is not bool:
+                    raise PanelError(400, 'Valor inválido para ' + key + '.')
+            launch_config = {'limits.memory': str(integer('memory_mib', 128, 32, 1048576)) + 'MiB',
+                             'limits.cpu': str(integer('cpu_cores', 1, 1, 1024)),
+                             'limits.cpu.allowance': str(integer('cpu_allowance', 50 if self.low_resource else 100, 1, 100)) + '%',
+                             'boot.autostart': str(options.get('autostart', False)).lower(),
+                             'security.privileged': 'false'}
+            description = options.get('description', '')
+            if not isinstance(description, str) or len(description) > 2048:
+                raise PanelError(400, 'Descrição inválida (máximo de 2048 caracteres).')
+            if options.get('pool') or 'disk_gib' in options:
+                pools = client.request('GET', '/1.0/storage-pools', project)['metadata']
+                root_name = next((k for k, d in devices.items() if d.get('type') == 'disk' and d.get('path') == '/'), 'root')
+                root = copy.deepcopy(overrides.get(root_name, devices.get(root_name, {'type': 'disk', 'path': '/'})))
+                selected_pool = options.get('pool', root.get('pool'))
+                pool = next((p for p in pools if p['name'] == selected_pool and p.get('status') == 'Created'), None)
+                if not pool:
+                    raise PanelError(400, 'Armazenamento indisponível neste projeto.')
+                root['pool'] = pool['name']
+                if 'disk_gib' in options:
+                    if pool.get('driver') not in ('btrfs', 'zfs', 'lvm', 'ceph'):
+                        raise PanelError(400, 'Este driver não oferece cota de disco pelo assistente. Use a capacidade do pool.')
+                    root['size'] = str(integer('disk_gib', 8, 1, 65536)) + 'GiB'
+                overrides[root_name] = root
+            if options.get('network') or options.get('ipv4'):
+                networks = client.request('GET', '/1.0/networks', project)['metadata']
+                nic_name = next((k for k, d in devices.items() if d.get('type') == 'nic'), 'eth0')
+                nic = copy.deepcopy(overrides.get(nic_name, devices.get(nic_name, {})))
+                selected_network = options.get('network', nic.get('network'))
+                network = next((n for n in networks if n['name'] == selected_network and n.get('managed') and n.get('type') == 'bridge' and n.get('status') == 'Created'), None)
+                if not network:
+                    raise PanelError(400, 'Selecione uma bridge gerenciada disponível neste projeto.')
+                # A managed NIC has a network instead of nictype/parent.
+                nic = {'type': 'nic', 'name': nic.get('name', nic_name), 'network': network['name']}
+                if options.get('ipv4'):
+                    try:
+                        address = ipaddress.IPv4Address(options['ipv4'])
+                        subnet = ipaddress.IPv4Interface(network.get('config', {}).get('ipv4.address', ''))
+                        if address not in subnet.network or address in (subnet.ip, subnet.network.network_address, subnet.network.broadcast_address):
+                            raise ValueError()
+                        if network.get('config', {}).get('ipv4.dhcp') == 'false':
+                            raise ValueError()
+                    except (ValueError, TypeError, ipaddress.AddressValueError):
+                        raise PanelError(400, 'IPv4 deve ser um endereço livre na sub-rede da bridge, com DHCP habilitado.')
+                    nic['ipv4.address'] = str(address)
+                overrides[nic_name] = nic
         request = {k: body[k] for k in ('image', 'remote_image') if k in body}
         request.update(confirmation=f'{host}/{project}/{target}', profiles=['default'] if profile else [])
+        if options is not None:
+            request['description'] = description
         # Internal defaults only; arbitrary devices are never accepted from HTTP.
-        result = self.mutate(user, host, project, 'create', target, request, launch_devices=overrides)
+        result = self.mutate(user, host, project, 'create', target, request, launch_devices=overrides, launch_config=launch_config)
         job_id = str(uuid.uuid4())
         job = {'id': job_id, 'host': host, 'project': project, 'identity': user['username'], 'target': target,
                'description': 'Criar e iniciar ' + target, 'status': 'Baixando imagem e criando container', 'status_code': 100,
-               'metadata': {}, 'phase': 'create', 'err': '', 'incus_operation': result['operation']}
+               'metadata': {}, 'phase': 'create', 'err': '', 'incus_operation': result['operation'], 'start_after_create': (options or {}).get('start', True)}
+        if not job['start_after_create']:
+            job['description'] = 'Criar ' + target
         with self.lock:
             self.launches[job_id] = job
         threading.Thread(target=self._finish_launch, args=(client, project, target, job), daemon=True).start()
@@ -448,6 +513,8 @@ class Service:
                 else:
                     raise PanelError(504, 'Tempo de espera excedido. Confira o estado no Incus antes de repetir.')
                 if phase == 'create':
+                    if not job.get('start_after_create', True):
+                        break
                     with self.lock:
                         job.update(status='Iniciando container', phase='start', metadata={})
                     result = client.request('PUT', f'/1.0/instances/{target}/state', project, {'action': 'start', 'timeout': 30, 'force': False})
@@ -458,8 +525,9 @@ class Service:
             with self.lock:
                 job.update(status='Verificando container', phase='verify', metadata={})
             instance = client.request('GET', f'/1.0/instances/{target}', project)['metadata']
-            if instance.get('status') != 'Running':
-                raise PanelError(409, 'Container criado, mas não está em execução. Confira o estado no Incus.')
+            expected_status = 'Running' if job.get('start_after_create', True) else 'Stopped'
+            if instance.get('status') != expected_status:
+                raise PanelError(409, 'Container criado, mas o estado difere do solicitado. Confira o estado no Incus.')
             with self.lock:
                 job.update(status='Success', status_code=200, phase='done')
         except Exception as exc:
@@ -468,7 +536,7 @@ class Service:
         finally:
             self.creation_lock.release()
 
-    def mutate(self, user, host, project, action, target, body, launch_devices=None):
+    def mutate(self, user, host, project, action, target, body, launch_devices=None, launch_config=None):
         client = self.context(user, host, project)
         if self.config.get("read_only", True) or user["role"] == "observador":
             raise PanelError(403, "Modo somente leitura ou papel sem permissão.")
@@ -503,6 +571,9 @@ class Service:
                 payload['devices'] = launch_devices
                 if self.low_resource:
                     payload['config'] = {'limits.memory': '128MiB', 'limits.cpu.allowance': '50ms/100ms', 'boot.autostart': 'false'}
+                if launch_config is not None:
+                    payload['config'] = launch_config
+                    payload['description'] = body.get('description', '')
             path = "/1.0/instances"
         else:
             instance_response = client.request("GET", path, project)

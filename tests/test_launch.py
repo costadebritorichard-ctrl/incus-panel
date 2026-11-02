@@ -21,7 +21,7 @@ class LaunchContracts(unittest.TestCase):
     def setUp(self):
         self.config = demo_config()
         self.config.update(manage_all_instances=True, allow_remote_images=True)
-        self.user = {'username': 'admin', 'role': 'administrador', 'scopes': {'demo': ['laboratorio']}}
+        self.user = {'username': 'admin', 'role': 'administrador', 'scopes': {'demo': ['laboratorio']}, 'host_metrics': True}
         self.client = Demo()
         self.service = Service(self.config, {'demo': self.client})
 
@@ -53,6 +53,53 @@ class LaunchContracts(unittest.TestCase):
         with self.assertRaises(PanelError):
             self.launch(target='meu-container')
         self.assertEqual(self.client.instances['laboratorio', 'meu-container']['status'], 'Running')
+
+    def test_wizard_options_are_applied_to_the_incus_payload(self):
+        result, job = self.launch(target='wizard-test', options={
+            'memory_mib': 256, 'cpu_cores': 2, 'cpu_allowance': 75,
+            'autostart': True, 'start': True, 'pool': 'lab', 'disk_gib': 8,
+            'network': 'labbr0', 'ipv4': '10.100.0.20', 'description': 'Servidor web'})
+        instance = self.client.instances['laboratorio', result['target']]
+        self.assertEqual(job['status_code'], 200)
+        self.assertEqual(instance['config'], {'limits.memory': '256MiB', 'limits.cpu': '2',
+            'limits.cpu.allowance': '75%', 'boot.autostart': 'true', 'security.privileged': 'false'})
+        self.assertEqual(instance['devices']['root'], {'type': 'disk', 'path': '/', 'pool': 'lab', 'size': '8GiB'})
+        self.assertEqual(instance['devices']['eth0']['ipv4.address'], '10.100.0.20')
+        self.assertEqual(instance['description'], 'Servidor web')
+
+    def test_wizard_can_create_without_starting(self):
+        result, job = self.launch(options={'start': False})
+        self.assertEqual(job['status_code'], 200)
+        self.assertEqual(self.client.instances['laboratorio', result['target']]['status'], 'Stopped')
+
+    def test_wizard_rejects_invalid_options_before_any_mutation(self):
+        invalid = [[], {'unknown': 'value'}, {'memory_mib': 0}, {'memory_mib': True},
+                   {'cpu_cores': 0}, {'cpu_allowance': 101}, {'start': 'false'},
+                   {'autostart': 1}, {'pool': 'missing'}, {'network': 'missing'},
+                   {'ipv4': '192.168.1.10'}, {'ipv4': '10.100.0.1'},
+                   {'ipv4': '10.100.0.0'}, {'ipv4': '10.100.0.255'},
+                   {'ipv4': '::1'}, {'ipv4': 0}, {'pool': []}, {'network': False},
+                   {'disk_gib': -1}, {'description': 'x' * 2049}]
+        for options in invalid:
+            with self.subTest(options=options):
+                original = self.client.request
+                with patch.object(self.client, 'request', side_effect=original) as requests:
+                    with self.assertRaises(PanelError):
+                        self.launch(options=options)
+                self.assertFalse(any(c.args[0] != 'GET' for c in requests.call_args_list))
+        # Validation failures must release the single-creation lock.
+        self.assertEqual(self.launch(options={})[1]['status_code'], 200)
+
+    def test_directory_pool_does_not_accept_unsupported_quota(self):
+        original = self.client.request
+        def request(method, path, project, body=None, etag=None):
+            if path == '/1.0/storage-pools':
+                return {'metadata': [{'name': 'lab', 'status': 'Created', 'driver': 'dir'}]}
+            return original(method, path, project, body, etag)
+        with patch.object(self.client, 'request', side_effect=request):
+            with self.assertRaisesRegex(PanelError, 'cota'):
+                self.launch(options={'pool': 'lab', 'disk_gib': 8})
+            self.assertEqual(self.launch(options={'pool': 'lab'})[1]['status_code'], 200)
 
     def test_missing_profile_uses_automatic_disk_and_network(self):
         original = self.client.request

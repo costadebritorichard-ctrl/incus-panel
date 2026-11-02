@@ -30,9 +30,9 @@ Gerada por `python scripts/traceability.py`. Implementação local não signific
 | RF-008 / F2 | Acompanhar UUID e estado de operacoes assincronas | UUID validado e acompanhamento terminal; teste de resultado incerto. |
 | RF-009 / F2 | Acionar Start/Stop/Restart conforme estado e permissao | Lifecycle na allowlist e com precondições; test_state_precondition. |
 | RF-010 / F2 | Atualizar a interface com lifecycle e operation events | Eventos TLS, backoff e resync; tests/test_events.py; não testado com Incus real. |
-| RF-011 / F2 | Disponibilizar shell interativo autorizado em container teste | Console textual e encerramento; tests/test_console.py; não testado com Incus real. |
+| RF-011 / F2 | Disponibilizar shell interativo autorizado em container teste | Console xterm.js, teclado direto/ANSI, resize e encerramento; tests/test_console.py e scripts/dom-smoke.mjs com dublês; não testado com Incus real. |
 | RF-012 / F3 | Filtrar imagens compativeis com destino | Normalização de arquitetura e bloqueio frontend/backend. |
-| RF-013 / F3 | Criar container com Project e profile selecionados | Criação container por imagem local/profile; recursos manuais adicionais pendentes. |
+| RF-013 / F3 | Criar container com Project e profile selecionados | Assistente por etapas, imagem local/remota compatível e perfil default; CPU/RAM/pool/bridge e início opcional validados. Seleção de outros perfis pelo assistente pendente. |
 | RF-014 / F3 | Listar e criar snapshots controlados | Listagem/criação; restauração/exclusão pendentes. |
 | RF-015 / F3 | Exibir e gerar backup autorizado | Listagem/geração; download/restauração pendentes. |
 | RF-016 / F3 | Exibir uso real de pools e alertas | Pool resources e 93% por fixture; sem soma lógica Btrfs. |
@@ -52,19 +52,19 @@ Gerada por `python scripts/traceability.py`. Implementação local não signific
 | TEL-04 / WBS-04.04 — Explorador de recursos | Parcial | Árvore do escopo atual e seleção persistida; agrupamento global completo pendente. |
 | TEL-05 / WBS-04.05 — Catalogo de instancias | Parcial | Tabela, busca, ordenação e filtro de estado; seleção múltipla não disponível. |
 | TEL-06 / WBS-04.06 — Resumo da instancia | Implementado; aceite real pendente | Identidade composta, estado e ações condicionais. |
-| TEL-07 / WBS-04.07 — Recursos da instancia | Parcial | RAM, CPU acumulada, rede/disco JSON; sem gráficos históricos nem taxas. |
+| TEL-07 / WBS-04.07 — Recursos da instancia | Parcial | Tabela de RAM, CPU acumulada/limites e discos; rede em aba dedicada. Sem gráficos históricos nem taxas. |
 | TEL-08 / WBS-04.08 — Rede e dispositivos da instancia | Implementado; aceite real pendente | Dispositivos expandidos e distinção local/herdado. |
 | TEL-09 / WBS-04.09 — Opcoes e configuracao | Parcial | Edição parcial de descrição/limites/autostart/proteção, revisão/ETag e confirmação do Incus; tests/test_edit.py; aceite real pendente. |
-| TEL-10 / WBS-04.10 — Console interativo | Parcial | Shell textual por linha, canais TLS, fechamento e resize na API; VT completo e validação Incus pendentes. |
+| TEL-10 / WBS-04.10 — Console interativo | Parcial; aceite real pendente | xterm.js local, exec interativo, teclado/ANSI, resize automático, janela dedicada e encerramento por sessão/navegação; testes de protocolo e DOM com dublês. Validação com Incus real pendente. |
 | TEL-11 / WBS-04.11 — Snapshots | Parcial | Listar/criar snapshots; restaurar/excluir pendentes. |
 | TEL-12 / WBS-04.12 — Backups | Parcial | Listar/gerar backups; download/restauração pendentes. |
-| TEL-13 / WBS-04.13 — Assistente de criacao de container | Parcial | Imagem local compatível e um profile; recursos/rede/pool definidos pelo profile. |
+| TEL-13 / WBS-04.13 — Assistente de criacao de container | Parcial; aceite real pendente | Oito etapas, imagem por arquitetura, CPU/RAM, pool/cota suportada, bridge/reserva IPv4, DNS herdado e início opcional. Opções validadas no backend; modalidade restrita usa default. |
 | TEL-14 / WBS-04.14 — Imagens | Parcial | Listagem local e download de Alpine/Debian do catálogo por arquitetura, progresso e confirmação no Incus; tests/test_images.py; importação de arquivos/remoção e aceite real pendentes. |
 | TEL-15 / WBS-04.15 — Storage pools e volumes | Parcial | Pools, recursos físicos e alertas 80/90%; API de volumes existe, UI pendente. |
 | TEL-16 / WBS-04.16 — Redes | Parcial | Redes e detalhes JSON; leases e associações dedicadas pendentes. |
 | TEL-17 / WBS-04.17 — Profiles | Parcial | Profiles e devices; edição/impacto e filtros aprofundados pendentes. |
 | TEL-18 / WBS-04.18 — Projects | Parcial | Escopos autorizados e seleção; resumo nativo completo de limites pendente. |
-| TEL-19 / WBS-04.19 — Tasks e operacoes | Parcial | UUIDs, estado e erro; persistência histórica e cancelamento pendentes. |
+| TEL-19 / WBS-04.19 — Tasks e operacoes | Parcial | Painel inferior recolhível/redimensionável, UUIDs, estado, detalhes e erro; persistência histórica e cancelamento pendentes. |
 | TEL-20 / WBS-04.20 — Alertas e avisos | Parcial | Alertas de capacidade e falhas; reconhecimento e histórico persistente pendentes. |
 | TEL-21 / WBS-04.21 — Servidores e detalhes do host | Parcial | Identidade, arquitetura, extensões e cluster; métricas por membro pendentes. |
 | TEL-22 / WBS-04.22 — Configuracoes, preferencias e seguranca | Parcial | Sessão, segurança, auditoria temporária; limiares configuráveis pendentes. |
@@ -154,12 +154,12 @@ O inventário abaixo inclui todos os grupos, pacotes e submódulos. O estado das
 | WBS-04.09.03 | Protecao contra exclusao | F3 | Parcial |
 | WBS-04.09.04 | Comparacao de alteracoes | F3 | Parcial |
 | WBS-04.09.05 | Controle de concorrencia | F3 | Parcial |
-| WBS-04.10 | Console interativo | F2 | Parcial |
-| WBS-04.10.01 | Abertura autorizada | F2 | Parcial |
-| WBS-04.10.02 | Sessao interativa | F2 | Parcial |
-| WBS-04.10.03 | Redimensionamento | F2 | Parcial |
-| WBS-04.10.04 | Encerramento | F2 | Parcial |
-| WBS-04.10.05 | Sinalizacao de risco | F2 | Parcial |
+| WBS-04.10 | Console interativo | F2 | Parcial; aceite real pendente |
+| WBS-04.10.01 | Abertura autorizada | F2 | Parcial; aceite real pendente |
+| WBS-04.10.02 | Sessao interativa | F2 | Parcial; aceite real pendente |
+| WBS-04.10.03 | Redimensionamento | F2 | Parcial; aceite real pendente |
+| WBS-04.10.04 | Encerramento | F2 | Parcial; aceite real pendente |
+| WBS-04.10.05 | Sinalizacao de risco | F2 | Parcial; aceite real pendente |
 | WBS-04.11 | Snapshots | F3 | Parcial |
 | WBS-04.11.01 | Lista | F3 | Parcial |
 | WBS-04.11.02 | Criar snapshot | F3 | Parcial |
@@ -172,13 +172,13 @@ O inventário abaixo inclui todos os grupos, pacotes e submódulos. O estado das
 | WBS-04.12.03 | Baixar backup | F3 | Parcial |
 | WBS-04.12.04 | Restauracao | F3 | Parcial |
 | WBS-04.12.05 | Politica de retencao | F3 | Parcial |
-| WBS-04.13 | Assistente de criacao de container | F3 | Parcial |
-| WBS-04.13.01 | Escolher Project e host | F3 | Parcial |
-| WBS-04.13.02 | Escolher imagem | F3 | Parcial |
-| WBS-04.13.03 | Identificacao e perfis | F3 | Parcial |
-| WBS-04.13.04 | Recursos e rede | F3 | Parcial |
-| WBS-04.13.05 | Revisao final | F3 | Parcial |
-| WBS-04.13.06 | Progresso da criacao | F3 | Parcial |
+| WBS-04.13 | Assistente de criacao de container | F3 | Parcial; aceite real pendente |
+| WBS-04.13.01 | Escolher Project e host | F3 | Parcial; aceite real pendente |
+| WBS-04.13.02 | Escolher imagem | F3 | Parcial; aceite real pendente |
+| WBS-04.13.03 | Identificacao e perfis | F3 | Parcial; aceite real pendente |
+| WBS-04.13.04 | Recursos e rede | F3 | Parcial; aceite real pendente |
+| WBS-04.13.05 | Revisao final | F3 | Parcial; aceite real pendente |
+| WBS-04.13.06 | Progresso da criacao | F3 | Parcial; aceite real pendente |
 | WBS-04.14 | Imagens | F3 | Parcial |
 | WBS-04.14.01 | Inventario | F3 | Parcial |
 | WBS-04.14.02 | Compatibilidade | F3 | Parcial |

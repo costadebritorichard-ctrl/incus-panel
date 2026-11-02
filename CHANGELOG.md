@@ -1,5 +1,12 @@
 # Changelog
 
+## Interface de gerenciamento e terminal — 2026-11-02
+
+- Organização visual baseada no Proxmox VE, implementada para Incus: árvore à esquerda, navegação contextual, ações no topo, tabelas compactas e painel inferior de tarefas/auditoria recolhível e redimensionável.
+- Criar CT abre assistente de oito etapas com memória, CPU, pool, cota de disco nos drivers suportados, bridge, reserva IPv4, DNS herdado, descrição, autostart e início opcional. Validação de tipos, limites e recursos no servidor.
+- Console com xterm.js local e carregamento sob demanda, teclado direto, ANSI/VT, resize automático, aba e janela dedicada; preserva autenticação, CSRF, escopos, limites de canais e fechamento por sessão/navegação.
+- Testes de opções de criação e protocolo do terminal, além de teste DOM opcional com 20 rotas, assistente e dublês explícitos de console. Aceite visual e conexão a Incus real permanecem pendentes nesta sessão.
+
 ## Escuta em todas as interfaces IPv4 — 2026-11-01
 
 - Instalação usa `0.0.0.0` e atualiza a configuração anterior de IP único, preservando credenciais e certificado, com restauração da configuração se a verificação falhar.

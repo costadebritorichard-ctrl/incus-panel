@@ -76,7 +76,7 @@ class HttpContracts(unittest.TestCase):
             self.assertEqual(self.request(path)[0],404)
 
     def test_static_assets_exist(self):
-        for path in ('/','/app.js','/style.css'):
+        for path in ('/','/app.js','/style.css','/vendor/xterm.js','/vendor/addon-fit.js','/vendor/xterm.css'):
             self.assertEqual(self.request(path)[0],200)
 
     def test_static_compression_and_conditional_cache_avoid_repeat_transfers(self):

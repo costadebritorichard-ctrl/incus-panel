@@ -2,6 +2,10 @@
 
 Painel em português para administrar containers Incus reais em TV boxes Linux. Python e HTML/CSS/JavaScript nativos, sem npm, pip, banco externo ou compilação no equipamento. A instalação usa o socket Unix do Incus. A simulação só é ativada explicitamente com `--demo`.
 
+A interface segue a organização do Proxmox VE: árvore de recursos à esquerda, abas do recurso selecionado, ações no topo e painel de tarefas no rodapé, recolhível e redimensionável. **Criar CT** abre um assistente com Geral, Template, Discos, CPU, Memória, Rede, DNS e Confirmar. A identidade e as operações continuam sendo do Incus; não há dependência do Proxmox.
+
+No assistente administrativo, escolha memória, núcleos, limite de CPU, pool, bridge, reserva IPv4 e inicialização automática. A cota de disco só é oferecida nos drivers suportados pelo assistente; `dir` utiliza a capacidade do pool. DNS é herdado da bridge. É possível criar e manter parado ou iniciar após a criação. Instalações restritas à allowlist usam a configuração do perfil `default`.
+
 ## Instalar com um comando
 
 Na pasta do projeto, em Linux compatível:
@@ -65,9 +69,13 @@ python scripts/traceability.py --check
 
 Node só é necessário para desenvolvimento. A CI `incus-real.yml` instala Ubuntu/Incus reais, testa o serviço, o ciclo do container e a reinstalação. Sua execução e a compatibilidade de cada TV box precisam ser confirmadas no ambiente correspondente; os testes locais no Windows não comprovam isso.
 
-O console é por linha, sem emulação completa de terminal. Histórico de tarefas/auditoria fica em memória; containers pertencem ao Incus e sobrevivem ao reinício do painel. Restauração de backups/snapshots e gestão de clusters pela interface ainda não estão implementadas. A [rastreabilidade](docs/rastreabilidade.md) registra as demais funcionalidades da especificação.
+O console abre pela aba **Console**, pelo botão **Console ↗** ou por duplo clique no container em execução. Usa xterm.js local, teclado direto, sequências ANSI/VT e redimensionamento automático; `/bin/sh` roda no container via exec interativo do Incus, com a autorização da sessão. Não exige digitar novamente o alvo. Em demonstração, o shell permanece indisponível. A integração com um Incus real precisa ser validada no equipamento; os testes locais de protocolo e DOM não comprovam esse aceite.
+
+Histórico de tarefas/auditoria fica em memória; containers pertencem ao Incus e sobrevivem ao reinício do painel. Restauração de backups/snapshots e gestão de clusters pela interface ainda não estão implementadas. A [rastreabilidade](docs/rastreabilidade.md) registra as demais funcionalidades da especificação.
 
 Para desenvolver com dados simulados: `python -m incus_panel.server --demo`. Esse modo não é usado na instalação.
+
+Teste opcional da interface sem navegador: instale `npm install --prefix artifacts/qa jsdom --no-audit --no-fund`, execute `python tests/create_fixture.py` em um terminal e `node scripts/dom-smoke.mjs` em outro. A fixture deve estar nova a cada execução. O teste cobre 20 rotas, as oito etapas, limites, criação, erro assíncrono, tarefas e console com dublês explícitos. Não verifica a aparência nem executa um shell real. xterm.js 6.0.0 e addon-fit 0.11.0 são distribuídos em `web/vendor`, com licenças MIT; o JavaScript do terminal só é carregado ao abrir um console autorizado.
 
 Para medir tráfego e RSS/CPU com uma fixture local de 200 containers: `python3 scripts/benchmark.py --output artifacts/performance.json`. O ensaio usa as variáveis do alocador presentes no arquivo de serviço e requer Linux; não mede o daemon Incus nem comprova consumo em ARM/TV boxes. Procedimento e resultados locais em [desempenho](docs/desempenho.md).
 

@@ -49,7 +49,7 @@ class Application:
         self.failures = {}
         self.lock = threading.RLock()
         self.assets = {}
-        for path, filename, mime in (('/', 'index.html', 'text/html'), ('/app.js', 'app.js', 'text/javascript'), ('/style.css', 'style.css', 'text/css')):
+        for path, filename, mime in (('/', 'index.html', 'text/html'), ('/app.js', 'app.js', 'text/javascript'), ('/style.css', 'style.css', 'text/css'), ('/vendor/xterm.js', 'vendor/xterm.js', 'text/javascript'), ('/vendor/xterm.css', 'vendor/xterm.css', 'text/css'), ('/vendor/addon-fit.js', 'vendor/addon-fit.js', 'text/javascript')):
             raw = (ROOT / 'web' / filename).read_bytes()
             compressed = gzip.compress(raw, compresslevel=6, mtime=0)
             self.assets[path] = (mime + '; charset=utf-8', {
@@ -130,7 +130,7 @@ class Application:
             self.failures = {key: value for key, value in self.failures.items() if now - value[1] < 300}
             for console_id, item in list(self.consoles.items()):
                 console = item["console"]
-                if console.closed or now >= console.deadline or now - console.last_access > 30:
+                if now >= console.deadline or now - console.last_access > 30:
                     console.close()
                     del self.consoles[console_id]
             for event_id, item in list(self.events.items()):
@@ -162,14 +162,18 @@ class Application:
         client = self.service.context(user, host, project)
         if not self.config.get("enable_console", False) or self.config.get("read_only", True) or user["role"] not in ("operador", "administrador"):
             raise PanelError(403, "Console não habilitado ou papel sem permissão.")
-        allowed = self.config.get("mutable_instances", {}).get(host, {}).get(project, [])
         if not self.service.can_manage(user, host, project, target) or body.get("confirmation") != f"{host}/{project}/{target}":
-            raise PanelError(403, "Console exige confirmação e container de teste autorizado.")
+            raise PanelError(403, "Console exige alvo exato e permissão para administrar o container.")
         instance = client.request("GET", f"/1.0/instances/{target}", project)["metadata"]
         if instance.get("type") != "container" or instance.get("status") != "Running":
             raise PanelError(409, "Console exige container em execução.")
         with self.lock:
             self.reap()
+            # Preserve final output until read/idle cleanup, but release closed
+            # channels before allocating another interactive session.
+            for console_id, item in list(self.consoles.items()):
+                if item['console'].closed:
+                    del self.consoles[console_id]
             if len(self.consoles) >= 4 or any(item["token"] == token for item in self.consoles.values()):
                 raise PanelError(429, "Limite de um console por sessão e quatro por serviço.")
             console = Console(client, project, target, session["expires"])
@@ -223,7 +227,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(key, value)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
         if cookie:
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
@@ -347,8 +351,10 @@ class Handler(BaseHTTPRequestHandler):
                         self.send(200, {"ok": True})
                         return
                     if path == "/api/console/close":
-                        self.app.console(token, body.get("console")).close()
-                        self.app.reap()
+                        console_id = body.get("console")
+                        self.app.console(token, console_id).close()
+                        with self.app.lock:
+                            self.app.consoles.pop(console_id, None)
                         self.send(200, {"ok": True})
                         return
                     if path != "/api/action":
@@ -396,6 +402,7 @@ def main():
         return
     if args.demo:
         config = demo_config()
+        config.update(manage_all_instances=True, allow_remote_images=True)
         password = secrets.token_urlsafe(12)
         config["users"] = [{"username": "demo", "password_hash": password_hash(password), "role": "administrador", "host_metrics": True, "scopes": {"demo": ["laboratorio", "redes"]}}]
         config["origin"] = f"http://127.0.0.1:{args.port}"

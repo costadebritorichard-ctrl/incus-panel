@@ -20,11 +20,12 @@ try{
   assert.equal(await evaluate('timer===undefined'),true);
   await evaluate("location.hash='create'");
   await wait("!!document.querySelector('#content .loading-state')");
-  await wait("!!document.querySelector('#content .image-choice')");
-  assert.equal(await evaluate("document.querySelectorAll('#content form select').length"),0);
-  assert.equal(await evaluate("document.querySelectorAll('#content form input:not([type=hidden])').length"),1);
+  await wait("document.querySelector('#create-dialog').open&&!!document.querySelector('.wizard-form')");
+  assert.equal(await evaluate("document.querySelectorAll('.wizard-tabs button').length"),8);
+  await fs.mkdir('artifacts',{recursive:true});
+  await fs.writeFile('artifacts/wizard-desktop.png',Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
   await evaluate("document.querySelector('[name=container-name]').value='web-tvbox'");
-  await evaluate("document.querySelector('#content form').requestSubmit()");
+  await evaluate("document.querySelector('[name=memory-mib]').value='256';document.querySelector('#wizard-tab-7').click();document.querySelector('.wizard-form').requestSubmit()");
   await wait("!!document.querySelector('.creation-screen progress')");
   await wait("document.querySelector('.creation-screen').textContent.includes('25%')");
   assert.equal(await evaluate("document.querySelector('.creation-screen progress').value"),25);
@@ -50,7 +51,7 @@ try{
   assert.equal(instances.find(i=>i.name===target)?.status,'Running');
   await evaluate("document.querySelector('.creation-screen button').click()");
   await wait("!!document.querySelector('[name=container-name]')");
-  await evaluate("document.querySelector('[name=container-name]').value='falha-tvbox';document.querySelector('#content form').requestSubmit()");
+  await evaluate("document.querySelector('[name=container-name]').value='falha-tvbox';document.querySelector('#wizard-tab-7').click();document.querySelector('.wizard-form').requestSubmit()");
   await wait("document.querySelector('#content').textContent.includes('Imagem indisponível: erro de teste')");
   assert.equal(await evaluate("document.querySelector('.creation-screen progress')"),null);
   assert.deepEqual(errors,[]);

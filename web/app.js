@@ -48,13 +48,16 @@ const tasks = new Map();
 const creationRuns = new Map();
 const imageDownloads = new Map();
 const readCache = new Map();
+let inventory=[], serverInfo={}, taskLogScope='', taskLogItems=[], taskLogMode='tasks';
+const instanceTabs=[['summary','◫','Resumo'],['console','>_','Console'],['resources','▤','Recursos'],['network','⌘','Rede'],['dns','☷','DNS'],['devices','▧','Dispositivos'],['options','⚙','Opções'],['backups','▣','Backup'],['snapshots','◷','Snapshots']];
 function trackTask(key,task){
   tasks.set(key,task);
   if(tasks.size>100){const completed=[...tasks].find(([id,item])=>id!==key&&item.status_code>=200);tasks.delete(completed?.[0]||tasks.keys().next().value);}
+  renderTaskLog();
 }
 function watchingRun(run,page){return session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page===page&&!document.hidden;}
 function resumeRun(run,poll){if(run.status_code<200&&!run.connectionError&&!run.polling){clearTimeout(run.timer);run.timer=setTimeout(()=>poll(run),0);}}
-const pages = [ ['overview','◫','Visão geral'],['instances','▣','Containers'],['images','◇','Imagens'],['storage','▤','Armazenamento'],['networks','⌘','Redes'],['profiles','☷','Profiles'],['projects','▱','Projetos'],['tasks','◷','Tarefas'],['alerts','△','Alertas'],['server','▧','Servidor'],['settings','⚙','Configurações'] ];
+const pages = [ ['overview','◫','Resumo'],['instances','▣','Containers'],['images','◇','Templates'],['storage','▤','Armazenamento'],['networks','⌘','Rede'],['profiles','☷','Perfis'],['projects','▱','Projetos'],['tasks','◷','Tarefas'],['alerts','△','Alertas'],['server','▧','Nó'],['settings','⚙','Permissões e sessão'] ];
 const numberFormat = new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1});
 const fmt = n => n === null || n === undefined ? 'n/d' : numberFormat.format(n);
 const bytes = n => n === null || n === undefined ? 'n/d' : n >= 1073741824 ? fmt(n/1073741824)+' GiB' : fmt(n/1048576)+' MiB';
@@ -110,11 +113,12 @@ function instanceLink(name, tab='summary') { return '#instance/'+encodeURICompon
 function canMutate(target) { return !session.read_only && session.role!=='observador' && (session.manage_all_instances || (session.mutable_instances?.[host]?.[project] || []).includes(target)); }
 function actionButton(label, action, target, extra={}) { return el('button',{class:'action-button'+(action==='delete'?' danger-button':''),disabled:canMutate(target)?null:'',onclick:()=>openAction(action,target,extra)},...iconLabel(iconPaths[action]?action:'plus',label)); }
 function openAction(action,target,extra={}) {
+  if(action==='console'){startTerminal(target).catch(showTerminalError);return;}
   pendingAction={host,project,action,target,...extra};
   $('#action-title').textContent=({start:'Iniciar container',stop:'Parar container',restart:'Reiniciar container',delete:'Excluir container permanentemente',create:'Criar container',snapshot:'Criar snapshot',backup:'Gerar backup',console:'Abrir shell interativo'})[action];
   $('#action-description').textContent= action==='console'?'Este acesso abre /bin/sh, normalmente como root dentro do container. Comandos podem alterar ou apagar dados.':action==='delete'?'A exclusão remove permanentemente o container e seus snapshots.':action==='snapshot'||action==='backup'?'A operação consome armazenamento. Blocos compartilhados não representam espaço recuperável garantido.':'Revise o destino. O resultado será confirmado pela operação Incus.';
   $('#action-review').textContent=`Container: ${target}\nServidor: ${session.hosts.find(h=>h.id===host)?.alias || host}\nProjeto: ${project}${extra.profiles ? '\nPerfil: '+extra.profiles.join(', ') : ''}`;
-  const needsConfirmation=['delete','console'].includes(action);
+  const needsConfirmation=action==='delete';
   $('#confirmation').parentElement.hidden=!needsConfirmation;
   $('#confirmation').required=needsConfirmation;
   $('#confirmation').value=''; $('#confirmation').placeholder=action==='delete'?target:`${host}/${project}/${target}`;
@@ -160,6 +164,9 @@ function logoutLocal() {
   $('#feedback').hidden=true;
   session=null; generation++; clearTimeout(timer); clearTimeout(expiryTimer); clearTimeout(eventTimer); tasks.clear(); $('#content').replaceChildren(); $('#tree').replaceChildren(); $('#shell').hidden=true; $('#login').hidden=false;
   if($('#confirm').open) $('#confirm').close();
+  if($('#create-dialog').open)$('#create-dialog').close();
+  if($('#task-detail').open)$('#task-detail').close();
+  taskLogScope='';taskLogItems=[];inventory=[];
 }
 // Menu móvel: painel sobreposto com foco contido e fechamento por Escape.
 const menuBreakpoint=window.matchMedia('(max-width: 1100px)');
@@ -217,6 +224,8 @@ function enter() {
   $('#mode').textContent=session.demo?'DEMONSTRAÇÃO':session.read_only?'SOMENTE LEITURA':session.manage_all_instances?'ADMINISTRAÇÃO':'LABORATÓRIO';
   $('#host').replaceChildren(...session.hosts.map(h=>el('option',{value:h.id},h.alias)));
   let remembered;try{remembered=JSON.parse(localStorage.getItem('incus-scope')||'null');}catch{remembered=null;}
+  const params=new URLSearchParams(location.search);
+  if(params.has('console')){document.body.classList.add('console-window');remembered={host:params.get('host'),project:params.get('project')};}
   host=session.hosts.some(h=>h.id===remembered?.host)?remembered.host:session.hosts[0]?.id;
   if(!host){$('#content').replaceChildren(empty('Nenhum host autorizado.'));return;}
   $('#host').value=host; fillProjects(remembered?.project); render();
@@ -271,10 +280,12 @@ function filteredInstances(items) {
 async function render() {
   if(!session)return;
   clearTimeout(timer); const id=++generation; const scope={host,project}; const r=route(); busy=true;
-  const title=pages.find(p=>p[0]===r.page)?.[2] || (r.page==='instance'?r.target:r.page==='create'?'Criar container':'Página não encontrada');
+  const title=r.page==='overview'?'Datacenter':pages.find(p=>p[0]===r.page)?.[2] || (r.page==='instance'?'Container '+r.target:r.page==='create'?'Criar CT':'Página não encontrada');
   $('#title').textContent=title; $('#breadcrumb').textContent=`${host} / ${project} / ${title}`;
   $('#subtitle').textContent=r.page==='instance'?`Gerencie ${r.target} e acompanhe seus recursos.`:({overview:'Seu laboratório sob controle. Veja o que está acontecendo agora.',instances:'Encontre, acompanhe e gerencie seus containers.',create:'Escolha uma imagem. Nós cuidamos da configuração.',images:'Sistemas disponíveis para o seu próximo container.',storage:'Acompanhe o espaço disponível para seu laboratório.',networks:'Conexões que mantêm seus containers em rede.',projects:'Organize seus ambientes em projetos separados.'})[r.page]||'Gerencie os recursos do seu laboratório.';
-  $('#navigation').replaceChildren(...pages.map(([key,icon,label])=>el('a',{href:'#'+key,class:r.page===key?'active':''},el('span',{},icon),label)));
+  $('#object-actions').replaceChildren();
+  $('#navigation').replaceChildren(...(r.page==='instance'?instanceTabs:pages).map(([key,symbol,label])=>el('a',{href:r.page==='instance'?instanceLink(r.target,key):'#'+key,class:(r.page==='instance'?r.tab===key:r.page===key)?'active':'','aria-current':(r.page==='instance'?r.tab===key:r.page===key)?'page':null},el('span',{},symbol),label)));
+  if(r.page!=='create'&&$('#create-dialog').open)$('#create-dialog').close();
   $('#banner').hidden=!session.demo; $('#banner').textContent='DEMONSTRAÇÃO · Todos os dados e operações são simulados em memória. Nada é enviado a um servidor Incus real.';
   $('#connection').textContent='Consultando Incus…'; $('#content').setAttribute('aria-busy','true');
   $('#content').replaceChildren(loadingView(route().page==='create'?'Carregando imagens disponíveis…':'Carregando '+title+'…'));
@@ -285,10 +296,9 @@ async function render() {
     if(serverResult.status==='rejected')throw serverResult.reason;
     if(instancesResult.status==='rejected')throw instancesResult.reason;
     const server=serverResult.value.data, instances=instancesResult.value.data;
-    $('#tree').replaceChildren(el('a',{href:'#server'},'▧ '+(server.environment?.server_name||host)),el('a',{href:'#projects'},'▱ '+project),...instances.slice(0,25).map(i=>el('a',{class:'leaf',href:instanceLink(i.name)},(i.status==='Running'?'● ':'○ ')+i.name)),...(instances.length>25?[el('a',{href:'#instances'},`Ver todos os ${instances.length} containers →`)]:[]));
-    if($('#tree-view').value==='project')$('#tree').prepend(el('small',{},'Agrupamento: '+project+' → '+host));
+    inventory=instances;serverInfo=server;renderResourceTree();
+    $('#create-ct').setAttribute('aria-disabled',String(session.read_only||session.role==='observador'));
     if(r.page==='overview') {
-      container.append(el('section',{class:'welcome-panel'},el('div',{},el('span',{class:'eyebrow'},'SEU PRÓXIMO EXPERIMENTO COMEÇA AQUI'),el('h2',{},'Uma ideia. Um novo container.'),el('p',{},'Escolha um sistema e prepare seu ambiente em poucos passos.')),el('a',{href:'#create',class:'primary creation-link'},...iconLabel('plus','Criar container'))));
       const running=instances.filter(i=>i.status==='Running').length;
       const resources=session.host_metrics?await read('host-summary',undefined,scope).catch(error=>({error})):{};
       const memory=resources.data?.memory;
@@ -304,7 +314,8 @@ async function render() {
     else if(r.page==='images') container.append(await imagesView(scope,server));
     else if(['networks','profiles','projects'].includes(r.page)) {
       const result=await read(r.page,undefined,scope); const data=result.data;
-      container.append(panel(title,table(['NOME','DETALHES'],data.map(item=>()=>[item.name,inspect(item)]))));
+      if(r.page==='networks')container.append(panel('Redes do nó',table(['NOME','TIPO','ATIVA','IPv4 / CIDR','IPv6 / CIDR','NAT','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.type,item.status||'n/d',item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',item.config?.['ipv4.nat']==='true'?'Sim':'Não',inspect(item)]))));
+      else container.append(panel(title,table(['NOME','DESCRIÇÃO','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.description||'—',inspect(item)]))));
       if(r.page==='projects')container.append(notice('A lista contém somente os escopos configurados no servidor do painel. A autorização final permanece no Incus.'));
     } else if(r.page==='tasks') container.append(await taskView(scope));
     else if(r.page==='create') container.append(await createView(scope,server));
@@ -315,6 +326,8 @@ async function render() {
     $('#task-summary').textContent=tracked.length?tracked.map(t=>`${t.target}: ${t.status}`).join(' · '):'Operações rastreadas pelo Incus';
     $('#content').replaceChildren(container); $('#connection').textContent=(session.demo?'● Simulação conectada':'● Conectado · '+transportLabel())+' · '+host+' / '+project;
     $('#updated').textContent='Inventário '+new Date(instancesResult.value.timestamp*1000).toLocaleTimeString('pt-BR');
+    if(taskLogScope!==host+'/'+project){taskLogScope=host+'/'+project;taskLogItems=[];refreshTaskLog();}else renderTaskLog();
+    if(r.page==='instance'&&r.tab==='console')mountTerminal(r.target,scope,id);
   } catch(error) {
     if(id===generation&&session){$('#content').replaceChildren(errorNode(error),notice('Não foi possível atualizar este escopo. A falha de conexão não indica que os containers estejam parados.'));$('#connection').textContent=error.status===403?'Sem permissão':'Conexão degradada';}
   } finally {
@@ -346,34 +359,47 @@ async function storageView(scope,alertsOnly=false) {
   } catch(error){return errorNode(error);}
 }
 async function detail(r,scope) {
-  const [instanceResult,stateResult]=await Promise.all([read('instance',r.target,scope),['summary','resources'].includes(r.tab)?read('state',r.target,scope):Promise.resolve(null)]);
+  const [instanceResult,stateResult]=await Promise.all([read('instance',r.target,scope),['summary','resources','network'].includes(r.tab)?read('state',r.target,scope):Promise.resolve(null)]);
   const item=instanceResult.data,state=stateResult?.data||{status:item.status};
-  const tabs=[['summary','Resumo'],['resources','Recursos'],['devices','Dispositivos'],['options','Editar'],['snapshots','Snapshots'],['backups','Backups'],['console','Console']];
-  const wrapper=el('div',{},el('div',{class:'tabs'},tabs.map(([tab,label])=>el('a',{href:instanceLink(r.target,tab),class:r.tab===tab?'active':''},label))));
+  const wrapper=el('div',{class:'instance-content'});
+  const actions=el('div',{class:'toolbar object-toolbar'},status(state.status));
+  for(const [action,label] of [['start','Iniciar'],['stop','Desligar'],['restart','Reiniciar']]){
+    const button=actionButton(label,action,r.target);
+    if((action==='start'&&state.status!=='Stopped')||(action!=='start'&&state.status!=='Running'))button.disabled=true;
+    actions.append(button);
+  }
+  actions.append(el('a',{class:'button-link',href:instanceLink(r.target,'console')},'>_ Console'),el('button',{type:'button',title:'Abrir console em nova janela',disabled:!session.enable_console||!canMutate(r.target)||state.status!=='Running'?'':null,onclick:()=>openConsoleWindow(r.target)},'Console ↗'));
+  if(session.role==='administrador'){
+    const remove=actionButton('Remover','delete',r.target);
+    if(item.status!=='Stopped'||(item.expanded_config?.['security.protection.delete']??item.config?.['security.protection.delete'])==='true')remove.disabled=true;
+    actions.append(remove);
+  }
+  $('#object-actions').replaceChildren(...actions.childNodes);
   if(r.tab==='summary') {
-    wrapper.append(el('div',{class:'toolbar'},status(state.status),...['start','stop','restart'].map((action,i)=>{
-      const button=actionButton(['Iniciar','Parar','Reiniciar'][i],action,r.target);
-      if((action==='start'&&state.status!=='Stopped')||(action!=='start'&&state.status!=='Running'))button.disabled=true;return button;
-    }),session.role==='administrador'?el('a',{class:'button-link',href:instanceLink(r.target,'options')},...iconLabel('edit','Editar')):null));
-    wrapper.append(el('p',{class:'muted action-help'},'Parar desliga o container sem apagar os dados. Para mantê-lo desligado após reiniciar o servidor, desative a inicialização automática em Editar.'));
-    wrapper.append(panel('Resumo do container',el('div',{class:'panel-body'},kv([['Identidade',`${scope.host}/${scope.project}/${item.name}`],['Arquitetura',item.architecture],['Estado',({'Running':'Em execução','Stopped':'Parado'})[state.status]||state.status],['Descrição',item.description||'Sem descrição'],['Inicialização automática',(item.expanded_config?.['boot.autostart']??item.config?.['boot.autostart'])==='true'?'Ativada':'Desativada'],['Profiles',(item.profiles||[]).join(', ')],['Memória',bytes(state.memory?.usage)],['Coleta',date(stateResult.timestamp)]]))));
-    if(!canMutate(r.target))wrapper.append(notice('Ações bloqueadas pelo modo de leitura, papel ou lista de containers de teste.'));
-  } else if(r.tab==='resources')wrapper.append(panel('Recursos • fonte: instance state',el('div',{class:'panel-body'},kv([['RAM em uso',bytes(state.memory?.usage)],['Limite RAM',item.expanded_config?.['limits.memory']||'Não informado'],['CPU acumulada',state.cpu?.usage==null?'n/d':fmt(state.cpu.usage/1e9)+' segundos (não é percentual)'],['Coleta',date(stateResult.timestamp)]]),json({network:state.network,disk:state.disk}))));
-  else if(r.tab==='devices')wrapper.append(panel('Dispositivos efetivos e origem',table(['DISPOSITIVO','ORIGEM','CONFIGURAÇÃO'],Object.entries(item.expanded_devices||{}).map(([key,value])=>[key,Object.hasOwn(item.devices||{},key)?'Local':'Herdado de profile',json(value)]))));
+    wrapper.append(el('div',{class:'grid resource-summary'},panel('Estado',el('div',{class:'panel-body'},kv([['Nome',item.name],['Nó',scope.host],['Projeto',scope.project],['Estado',status(state.status)],['Arquitetura',item.architecture],['Sistema',item.expanded_config?.['image.description']||item.config?.['image.description']||'n/d'],['Perfis',(item.profiles||[]).join(', ')],['Inicializar no boot',(item.expanded_config?.['boot.autostart']??item.config?.['boot.autostart'])==='true'?'Sim':'Não']]))),panel('Uso de recursos',el('div',{class:'panel-body'},kv([['Memória em uso',bytes(state.memory?.usage)],['Limite de memória',item.expanded_config?.['limits.memory']||'Sem limite explícito'],['CPU acumulada',state.cpu?.usage==null?'n/d':fmt(state.cpu.usage/1e9)+' s'],['Limite de CPU',item.expanded_config?.['limits.cpu']||'Herdado'],['Uso de disco',bytes(state.disk?.root?.usage)],['Última coleta',date(stateResult.timestamp)]])))));
+    wrapper.append(panel('Notas',el('div',{class:'panel-body'},el('p',{},item.description||'Nenhuma descrição definida.'),el('a',{class:'button-link',href:instanceLink(r.target,'options')},...iconLabel('edit','Editar notas e opções')))));
+    if(!canMutate(r.target))wrapper.append(notice('Ações bloqueadas pelo modo de leitura, papel ou autorização deste container.'));
+  } else if(r.tab==='resources'){
+    wrapper.append(panel('Recursos',table(['RECURSO','CONFIGURAÇÃO','USO ATUAL'],[['Memória',item.expanded_config?.['limits.memory']||'Herdado',bytes(state.memory?.usage)],['Núcleos',item.expanded_config?.['limits.cpu']||'Herdado','—'],['Limite de CPU',item.expanded_config?.['limits.cpu.allowance']||'Herdado',state.cpu?.usage==null?'n/d':fmt(state.cpu.usage/1e9)+' s acumulados'],...Object.entries(item.expanded_devices||{}).filter(([,d])=>d.type==='disk').map(([key,d])=>['Disco ('+key+')',(d.pool||'')+' · '+(d.size||'Capacidade do pool'),bytes(state.disk?.[key]?.usage)])]),el('a',{class:'button-link',href:instanceLink(r.target,'options')},'Editar')));
+  } else if(r.tab==='network'){
+    wrapper.append(panel('Interfaces de rede',table(['NOME','TIPO','BRIDGE / REDE','MAC','ENDEREÇOS'],Object.entries(item.expanded_devices||{}).filter(([,d])=>d.type==='nic').map(([key,d])=>{const nic=state.network?.[d.name||key];return [d.name||key,d.nictype||'Gerenciada',d.network||d.parent||'n/d',nic?.hwaddr||d.hwaddr||'n/d',(nic?.addresses||[]).map(a=>a.address+(a.netmask?'/'+a.netmask:'')).join(', ')||d['ipv4.address']||'DHCP / não informado'];}))));
+  } else if(r.tab==='dns'){
+    const networks=(await read('networks',undefined,scope)).data;
+    const used=new Set(Object.values(item.expanded_devices||{}).filter(d=>d.type==='nic').map(d=>d.network));
+    wrapper.append(panel('DNS herdado da rede',table(['REDE','DOMÍNIO','MODO','GATEWAY IPv4'],networks.filter(n=>used.has(n.name)).map(n=>[n.name,n.config?.['dns.domain']||'Padrão do Incus',n.config?.['dns.mode']||'Padrão do Incus',n.config?.['ipv4.address']||'n/d']))),notice('O container recebe DNS pelo DHCP da bridge. Alterações feitas dentro do sistema convidado não são consultadas por esta tela.'));
+  } else if(r.tab==='devices')wrapper.append(panel('Dispositivos',table(['DISPOSITIVO','ORIGEM','CONFIGURAÇÃO'],Object.entries(item.expanded_devices||{}).map(([key,value])=>[key,Object.hasOwn(item.devices||{},key)?'Local':'Herdado de perfil',json(value)]))));
   else if(r.tab==='options')wrapper.append(editView(item,scope));
   else if(['snapshots','backups'].includes(r.tab)){
     const result=await read(r.tab,r.target,scope);
     wrapper.append(panel(r.tab==='snapshots'?'Snapshots':'Backups',table(['NOME','CRIADO EM','EXPIRA EM'],result.data.map(i=>[typeof i==='string'?i:i.name,date(i.created_at),date(i.expires_at)])),actionButton('Criar',r.tab==='snapshots'?'snapshot':'backup',r.target)));
-    wrapper.append(notice('Snapshots podem compartilhar blocos. Download e restauração de backups, restauração e exclusão de snapshots estão pendentes. Não há limpeza automática.'));
-  } else {
-    const open=actionButton('Abrir shell /bin/sh','console',r.target);if(!session.enable_console||state.status!=='Running')open.disabled=true;
-    const output=el('pre',{id:'console-output',class:'terminal',tabindex:'0','aria-label':'Saída do terminal'},'Console desconectado.\n');
-    const input=el('input',{'aria-label':'Comando para o shell',placeholder:'Digite um comando e pressione Enter',autocomplete:'off',spellcheck:'false'});
-    const form=el('form',{class:'toolbar'},input,el('button',{},'Enviar'),el('button',{type:'button',onclick:()=>api('/api/console/input',{console:consoleId,text:'\u0003'}).catch(error=>output.append(error.message))},'Ctrl+C'),el('button',{type:'button',onclick:closeConsole},'Encerrar'));
-    form.onsubmit=async event=>{event.preventDefault();if(!consoleId)return;try{await api('/api/console/input',{console:consoleId,text:input.value+'\n'});input.value='';}catch(error){output.append('\n'+error.message);}};
-    wrapper.append(notice('Shell privilegiado em container de teste. Terminal textual com entrada por linha; editores de tela inteira não são suportados. Ao sair desta tela o canal é encerrado.'),panel('Console interativo',el('div',{class:'panel-body'},output,form),open));
-    if(!session.enable_console)wrapper.append(notice('O administrador precisa habilitar enable_console na configuração. O modo demonstração não simula um shell.'));
-  }
+    wrapper.append(notice('Criação disponível. Restauração, download de backup e exclusão de snapshots ainda não são implementados pelo painel.'));
+  } else if(r.tab==='console'){
+    const allowed=session.enable_console&&canMutate(r.target)&&state.status==='Running'&&!session.demo;
+    const controls=el('div',{class:'toolbar'},el('span',{id:'terminal-status',class:'terminal-status',role:'status'},allowed?'Conectando…':'Console indisponível'),el('button',{type:'button',disabled:allowed?null:'',onclick:()=>startTerminal(r.target).catch(showTerminalError)},'Reconectar'),el('button',{type:'button',onclick:()=>{closeConsole();const statusNode=$('#terminal-status');if(statusNode)statusNode.textContent='Desconectado';}},'Desconectar'));
+    wrapper.append(el('section',{class:'panel terminal-panel'},el('div',{class:'panel-head'},el('h2',{},'Console · '+r.target),controls),el('div',{class:'panel-body'},el('div',{id:'console-output',class:'terminal-host','aria-label':'Terminal interativo do container'})),el('div',{class:'terminal-help'},'Shell /bin/sh · teclado direto · Ctrl+C interrompe · Tab completa · Ctrl+Shift+C copia a seleção')));
+    if(!allowed)wrapper.prepend(notice(session.demo?'O modo demonstração não emula um shell. O console interativo exige um container Incus real.':!session.enable_console?'Habilite enable_console na configuração do painel.':state.status!=='Running'?'Inicie o container para acessar o console.':'Seu usuário não tem permissão para abrir o console.'));
+    wrapper.dataset.connectConsole=String(allowed);
+  } else wrapper.append(empty('Página não encontrada.'));
   return wrapper;
 }
 function editView(item,scope){
@@ -423,12 +449,77 @@ function editView(item,scope){
   return output;
 }
 
-async function closeConsole(){clearTimeout(consoleTimer);const id=consoleId;consoleId=null;if(id&&session)try{await api('/api/console/close',{console:id});}catch{} }
-async function pollConsole(){
-  const id=consoleId;if(!id)return;
-  try{const result=await api('/api/console/read?'+new URLSearchParams({console:id}));if(consoleId!==id)return;const output=$('#console-output');if(!output){closeConsole();return;}if(result.output){output.textContent=(output.textContent+result.output).slice(-65536);output.scrollTop=output.scrollHeight;}if(result.closed){output.append('\n[Console encerrado]');consoleId=null;return;}consoleTimer=setTimeout(pollConsole,document.hidden?5000:session.low_resource?(result.output?1000:3000):500);}
-  catch(error){const output=$('#console-output');if(output)output.append('\n'+error.message);closeConsole();}
+let terminalState=null,terminalLibrary,consoleClosing=Promise.resolve();
+function loadTerminalLibrary(){
+  if(!terminalLibrary)terminalLibrary=(async()=>{
+    for(const src of ['/vendor/xterm.js','/vendor/addon-fit.js'])await new Promise((resolve,reject)=>{const script=el('script',{src});script.onload=resolve;script.onerror=()=>reject(new Error('Não foi possível carregar o terminal local.'));document.head.append(script);});
+  })().catch(error=>{terminalLibrary=null;throw error;});
+  return terminalLibrary;
 }
+function showTerminalError(error){const node=$('#terminal-status');if(node)node.textContent=error.message;}
+async function mountTerminal(target,scope,renderId){
+  if(!$('#console-output')||$('#content [data-connect-console]')?.dataset.connectConsole!=='true')return;
+  try{await loadTerminalLibrary();if(generation!==renderId||!session||host!==scope.host||project!==scope.project)return;await startTerminal(target);}catch(error){showTerminalError(error);}
+}
+async function closeConsole(){
+  clearTimeout(consoleTimer);
+  const state=terminalState,id=consoleId;terminalState=null;consoleId=null;
+  if(state){state.cancelled=true;clearTimeout(state.inputTimer);state.observer?.disconnect();state.input?.dispose();state.term?.dispose();}
+  if(id&&session){const owner=session;consoleClosing=consoleClosing.catch(()=>{}).then(()=>session===owner?api('/api/console/close',{console:id}):null).catch(()=>{});}
+  await consoleClosing;
+}
+async function startTerminal(target){
+  const owner=session,scope={host,project};
+  await closeConsole();
+  const output=$('#console-output');if(!output||!session||session!==owner||host!==scope.host||project!==scope.project||route().page!=='instance'||route().target!==target||route().tab!=='console')return;
+  const state={cancelled:false,pending:'',inputChain:Promise.resolve()};
+  terminalState=state;
+  await loadTerminalLibrary();if(state.cancelled||session!==owner)return;
+  state.term=new Terminal({cursorBlink:false,scrollback:1500,fontFamily:'Consolas, "Courier New", monospace',fontSize:13,theme:{background:'#171717',foreground:'#eeeeee'},allowProposedApi:false,screenReaderMode:true});
+  state.term.open(output);state.fit=new FitAddon.FitAddon();state.term.loadAddon(state.fit);state.fit.fit();
+  state.term.writeln('Conectando ao container '+target+'…');
+  let result;
+  try{result=await api('/api/console/start',{...scope,target,confirmation:`${scope.host}/${scope.project}/${target}`});}
+  catch(error){if(!state.cancelled){state.term.writeln('\r\n'+error.message);showTerminalError(error);}return;}
+  if(state.cancelled||session!==owner){if(session===owner)api('/api/console/close',{console:result.console}).catch(()=>{});return;}
+  consoleId=result.console;state.id=result.console;state.term.clear();
+  const statusNode=$('#terminal-status');if(statusNode)statusNode.textContent='Conectado · '+target;
+  const flush=()=>{
+    if(state.cancelled||!state.pending)return;
+    const text=state.pending.slice(0,4096);state.pending=state.pending.slice(4096);
+    state.inputChain=state.inputChain.then(()=>state.cancelled?null:api('/api/console/input',{console:state.id,text})).catch(error=>{showTerminalError(error);closeConsole();});
+    if(state.pending)state.inputTimer=setTimeout(flush,16);
+  };
+  state.input=state.term.onData(data=>{state.pending+=data;clearTimeout(state.inputTimer);state.inputTimer=setTimeout(flush,16);});
+  state.term.attachCustomKeyEventHandler(event=>{
+    if(event.ctrlKey&&event.shiftKey&&event.code==='KeyC'&&state.term.hasSelection()){if(event.type==='keydown')navigator.clipboard?.writeText(state.term.getSelection()).catch(()=>{});return false;}
+    return true;
+  });
+  const resize=()=>{
+    if(state.cancelled||!output.isConnected)return;
+    state.fit.fit();const width=Math.max(20,Math.min(300,state.term.cols)),height=Math.max(5,Math.min(100,state.term.rows));
+    if(state.term.cols!==width||state.term.rows!==height)state.term.resize(width,height);
+    if(state.lastSize===width+'x'+height)return;state.lastSize=width+'x'+height;
+    api('/api/console/resize',{console:state.id,width,height}).catch(showTerminalError);
+  };
+  state.observer=new ResizeObserver(resize);state.observer.observe(output);resize();state.term.focus();pollConsole();
+}
+async function pollConsole(){
+  const id=consoleId,state=terminalState;if(!id||!state||state.cancelled)return;
+  try{
+    const result=await api('/api/console/read?'+new URLSearchParams({console:id}));if(consoleId!==id||state.cancelled)return;
+    if(result.output)state.term.write(result.output);
+    if(result.closed){state.term.writeln('\r\n[Console encerrado]');state.input?.dispose();state.observer?.disconnect();consoleId=null;showTerminalError(new Error('Desconectado'));api('/api/console/close',{console:id}).catch(()=>{});return;}
+    consoleTimer=setTimeout(pollConsole,document.hidden?2000:result.output?100:400);
+  }catch(error){if(consoleId===id){showTerminalError(error);closeConsole();}}
+}
+async function openConsoleWindow(target){
+  const params=new URLSearchParams({console:target,host,project});
+  const popup=window.open('about:blank','incus-console-'+host+'-'+project+'-'+target,'popup,width=1000,height=650');
+  if(!popup){notify('O navegador bloqueou a janela. Permita pop-ups ou use a aba Console.');return;}
+  await closeConsole();popup.location.href='/?'+params+instanceLink(target,'console');
+}
+window.addEventListener('pagehide',()=>{if(consoleId&&session)fetch('/api/console/close',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrf},body:JSON.stringify({console:consoleId}),keepalive:true}).catch(()=>{});});
 async function taskView(scope) {
   const result=await read('operations',undefined,scope);
   const remote=Array.isArray(result.data)?result.data:Object.values(result.data).flat();
@@ -524,42 +615,96 @@ async function pollImageDownload(run){
   }catch(error){if(session===run.owner){run.connectionError=error.message;updateImageDownload(run);}}
   finally{run.polling=false;}
 }
+let createReturnHash='#instances';
+document.addEventListener('click',event=>{if(event.target.closest('a[href="#create"]')&&route().page!=='create')createReturnHash=location.hash||'#overview';});
+function closeCreateWizard(){if($('#create-dialog').open)$('#create-dialog').close();if(route().page==='create')location.hash=createReturnHash;}
+$('#close-create').onclick=closeCreateWizard;
+$('#create-dialog').addEventListener('cancel',event=>{event.preventDefault();closeCreateWizard();});
 async function createView(scope,server) {
-  if(!session.manage_all_instances)return advancedCreateView(scope,server);
   const key=scope.host+'/'+scope.project;
   if(creationRuns.has(key)){const run=creationRuns.get(key);resumeRun(run,pollCreation);return creationScreen(run);}
-  const result=(await read('creation-images',undefined,scope)).data;
-  const form=el('form',{class:'panel-body create-form'});
-  const target=el('input',{name:'container-name',maxlength:'63',pattern:'[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?',placeholder:'Ex.: meu-servidor (opcional)',autocomplete:'off','aria-describedby':'container-name-help'});
-  const image=el('input',{type:'hidden',value:result.images[0]?.id||''});
-  const choices=el('div',{class:'image-choices',role:'group','aria-label':'Sistema operacional'});
-  for(const item of result.images){
-    const choice=el('button',{type:'button',class:'image-choice','aria-pressed':String(item.id===image.value)},el('span',{class:'os-icon','aria-hidden':'true'},item.label.slice(0,1).toUpperCase()),el('span',{},el('strong',{},item.label),el('small',{},item.remote_image?'Download automático':'Disponível neste servidor')),el('span',{class:'choice-check','aria-hidden':'true'},'✓'));
-    choice.onclick=()=>{image.value=item.id;for(const button of choices.children)button.setAttribute('aria-pressed',String(button===choice));};
-    choices.append(choice);
+  const owner=session;
+  const [catalog,poolsResult,networksResult,profilesResult]=await Promise.all([read('creation-images',undefined,scope),session.host_metrics?read('pools',undefined,scope):Promise.resolve({data:[]}),read('networks',undefined,scope),read('profiles',undefined,scope)]);
+  if(session!==owner||route().page!=='create'||host!==scope.host||project!==scope.project)return el('div');
+  const images=catalog.data.images,pools=poolsResult.data.filter(p=>p.status==='Created'),networks=networksResult.data.filter(n=>n.managed&&n.type==='bridge'&&n.status==='Created');
+  const profile=profilesResult.data.find(p=>p.name==='default');
+  const target=el('input',{name:'container-name',maxlength:'63',pattern:'[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?',placeholder:'Gerar automaticamente',autocomplete:'off',required:session.manage_all_instances?null:''});
+  const description=el('textarea',{name:'description',rows:'2',maxlength:'2048'});
+  const image=el('select',{name:'image',required:''},images.map(i=>el('option',{value:i.id},i.label+(i.remote_image?' · download':' · local'))));
+  const pool=el('select',{name:'pool',required:session.host_metrics?'':null},pools.map(p=>el('option',{value:p.name},p.name+' ('+p.driver+')')));
+  if(!session.host_metrics)pool.append(el('option',{value:''},'Automático / perfil default'));
+  const defaultRoot=Object.values(profile?.devices||{}).find(d=>d.type==='disk'&&d.path==='/');if(pools.some(p=>p.name===defaultRoot?.pool))pool.value=defaultRoot.pool;
+  const disk=el('input',{name:'disk-gib',type:'number',min:'1',max:'65536',placeholder:'Capacidade do pool'});
+  const diskHelp=el('small');
+  const cores=el('input',{name:'cpu-cores',type:'number',min:'1',max:'1024',value:'1',required:''});
+  const allowance=el('input',{name:'cpu-allowance',type:'number',min:'1',max:'100',value:session.low_resource?'50':'100',required:''});
+  const memory=el('input',{name:'memory-mib',type:'number',min:'32',max:'1048576',value:'128',required:''});
+  const network=el('select',{name:'network',required:''},networks.map(n=>el('option',{value:n.name},n.name)));
+  const defaultNicEntry=Object.entries(profile?.devices||{}).find(([,d])=>d.type==='nic'),defaultNic=defaultNicEntry?.[1];if(networks.some(n=>n.name===defaultNic?.network))network.value=defaultNic.network;
+  const ipv4Mode=el('select',{name:'ipv4-mode'},el('option',{value:'dhcp'},'DHCP'),el('option',{value:'static'},'Reserva IPv4 no DHCP'));
+  const ipv4=el('input',{name:'ipv4',placeholder:'Ex.: 10.100.0.10',disabled:''});
+  const subnet=el('input',{readonly:'','aria-label':'Sub-rede IPv4'}),domain=el('input',{readonly:''}),dnsMode=el('input',{readonly:''});
+  const autostart=el('input',{name:'autostart',type:'checkbox'}),start=el('input',{name:'start-after-create',type:'checkbox',checked:''});
+  const field=(label,input,cls)=>el('label',{class:cls},label,input);
+  const fields=(...nodes)=>el('div',{class:'wizard-fields'},nodes);
+  const page=(...nodes)=>el('section',{class:'wizard-page',role:'tabpanel'},nodes);
+  const unprivileged=el('input',{type:'checkbox',checked:session.manage_all_instances||profile?.config?.['security.privileged']!=='true'?'':null,disabled:''});
+  const review=el('div');
+  const sections=[
+    page(fields(field('Nó',el('input',{value:scope.host,readonly:''})),field('Projeto',el('input',{value:scope.project,readonly:''})),field('Nome / hostname',target),field('Sem privilégios',unprivileged),field('Iniciar no boot',autostart),field('Descrição',description,'full')),notice('O Incus usa o nome como identificador do container. O console abre um shell autenticado pelo painel, sem exigir senha de root do convidado.')),
+    page(fields(field('Template',image,'full'),el('small',{},'Arquitetura: '+(server.environment?.kernel_architecture||'n/d')+'. Imagens remotas são baixadas pelo Incus.')),catalog.data.warning?notice(catalog.data.warning):null),
+    page(fields(field('Armazenamento',pool),field('Disco (GiB)',disk),diskHelp),notice('O disco raiz usa o pool selecionado. Sem cota explícita, utiliza a capacidade disponível do pool.')),
+    page(fields(field('Núcleos',cores),field('Limite CPU (%)',allowance)),notice('No modo leve, o padrão é um núcleo com 50% de tempo de CPU.')),
+    page(fields(field('Memória (MiB)',memory)),notice('O limite é aplicado ao container. Download e extração de imagens também usam memória no host.')),
+    page(fields(field('Interface',el('input',{readonly:'',value:defaultNic?.name||defaultNicEntry?.[0]||'eth0'})),field('Bridge',network),field('IPv4',ipv4Mode),field('Endereço IPv4',ipv4),field('Sub-rede',subnet,'full')),notice('A reserva IPv4 precisa pertencer à sub-rede e estar livre. Gateway, DNS e IPv6 são recebidos da bridge.')),
+    page(fields(field('Domínio DNS',domain,'full'),field('Modo DNS',dnsMode,'full')),notice('Configuração herdada da bridge do Incus. O assistente preserva o DNS entregue por DHCP.')),
+    page(review,fields(field('Iniciar após criar',start,'full')))
+  ];
+  const titles=['Geral','Template','Discos','CPU','Memória','Rede','DNS','Confirmar'];
+  const tabs=el('div',{class:'wizard-tabs',role:'tablist','aria-label':'Etapas de criação'}),error=el('p',{class:'wizard-error',role:'alert'});
+  let step=0;
+  const back=el('button',{type:'button',onclick:()=>show(step-1)},'Anterior'),next=el('button',{type:'button',onclick:()=>{if(validate(step))show(step+1);}},'Próximo'),submit=el('button',{type:'submit',class:'primary'},'Concluir');
+  const form=el('form',{class:'wizard-form',novalidate:''},tabs,...sections,error,el('div',{class:'wizard-footer'},el('small',{},'Container Incus · '+scope.host+' / '+scope.project),el('button',{type:'button',onclick:closeCreateWizard},'Cancelar'),back,next,submit));
+  const tabButtons=titles.map((title,index)=>{const button=el('button',{type:'button',role:'tab',id:'wizard-tab-'+index,'aria-controls':'wizard-page-'+index,onclick:()=>{if(index<=step||validateThrough(index))show(index);}},title);sections[index].id='wizard-page-'+index;sections[index].setAttribute('aria-labelledby',button.id);return button;});tabs.append(...tabButtons);
+  function validate(index){
+    error.textContent='';
+    for(const input of sections[index].querySelectorAll('input,select,textarea'))if(!input.checkValidity()){input.reportValidity();return false;}
+    if(index===1&&!images.length){error.textContent='Nenhuma imagem compatível. Baixe um template e tente novamente.';return false;}
+    if(index===2&&session.manage_all_instances&&session.host_metrics&&!pool.value){error.textContent='Nenhum pool disponível. Configure o armazenamento no Incus.';return false;}
+    if(index===5&&session.manage_all_instances&&!network.value){error.textContent='Nenhuma bridge gerenciada disponível. Configure a rede no Incus.';return false;}
+    return true;
   }
-  const button=el('button',{class:'primary',disabled:!result.images.length||session.read_only?'':null},...iconLabel('plus','Criar container'));
-  const progress=el('div',{'aria-live':'polite',role:'status'});
-  if(result.warning)form.append(notice(result.warning,true));
-  form.append(el('label',{},'Nome do container · opcional',target),el('small',{id:'container-name-help'},'Deixe em branco para gerar um nome. Ou use letras, números e hífens.'),el('div',{class:'field-heading'},'Sistema operacional'),image,choices,notice('O armazenamento e a rede são configurados automaticamente. O container será criado e iniciado. ' + (session.low_resource?'Modo leve: limite de 128 MiB por container.':'')),button,progress);
-  if(!result.images.length)form.append(notice('Nenhuma imagem compatível disponível. Confira a conexão da TV box com a Internet e tente novamente.',true),el('button',{type:'button',onclick:()=>render()},'Tentar novamente'));
-  form.onsubmit=async event=>{
-    event.preventDefault();if(button.disabled)return;button.disabled=true;image.disabled=true;target.disabled=true;
-    for(const choice of choices.children)choice.disabled=true;
-    const requestedName=target.value.trim();
-    const run={key,scope,owner:session,target:requestedName||'Novo container',phase:'prepare',status_code:100,metadata:{}};
-    creationRuns.set(key,run);$('#content').replaceChildren(creationScreen(run));
-    const selected=result.images.find(i=>i.id===image.value);
-    try{
-      const created=await api('/api/create',{...scope,...(requestedName?{target:requestedName}:{}),...(selected.remote_image?{remote_image:selected.remote_image}:{image:selected.image})});
-      if(session!==run.owner)return;
-      Object.assign(run,created,{phase:'create'});updateCreationScreen(run);pollCreation(run);
-    }catch(error){
-      if(session!==run.owner)return;
-      Object.assign(run,{status_code:400,err:error.message,uncertain:!error.status||error.status>=500});updateCreationScreen(run);
+  function validateThrough(index){for(let i=0;i<index;i++)if(!validate(i)){const message=error.textContent;show(i);error.textContent=message;return false;}return true;}
+  function show(index){
+    step=Math.max(0,Math.min(7,index));error.textContent='';
+    sections.forEach((section,i)=>section.hidden=i!==step);
+    tabButtons.forEach((button,i)=>{button.classList.toggle('active',i===step);button.setAttribute('aria-selected',String(i===step));button.tabIndex=i===step?0:-1;});
+    back.disabled=step===0;next.hidden=step===7;submit.hidden=step!==7;submit.disabled=session.read_only||session.role==='observador'||!images.length;
+    if(step===7){
+      const inherited=!session.manage_all_instances,config=profile?.config||{};
+      review.replaceChildren(table(['PARÂMETRO','VALOR'],[['Nó',scope.host],['Projeto',scope.project],['Nome',target.value.trim()||'Gerado automaticamente'],['Template',images.find(i=>i.id===image.value)?.label||'—'],['Disco raiz',(pool.value||defaultRoot?.pool||'Automático')+(disk.value&&!disk.disabled?' · '+disk.value+' GiB':' · capacidade do pool')],['CPU',inherited?(config['limits.cpu']||'Herdado do perfil default'):cores.value+' núcleo(s) · '+allowance.value+'%'],['Memória',inherited?(config['limits.memory']||'Herdada do perfil default'):memory.value+' MiB'],['Rede',inherited?(defaultNic?.network||defaultNic?.parent||'Herdada do perfil default'):network.value+' · '+(ipv4Mode.value==='static'?ipv4.value:'DHCP')],['DNS',domain.value],['Inicializar no boot',inherited?(config['boot.autostart']||'Herdado do perfil default'):autostart.checked?'Sim':'Não'],['Descrição',inherited?'Herdada do perfil default':description.value||'—']]));
     }
+    if(index>0)tabButtons[step].focus({preventScroll:true});
+  }
+  tabs.onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const index=event.key==='Home'?0:event.key==='End'?7:step+(event.key==='ArrowRight'?1:-1);if(index<=step||validateThrough(index))show(index);}};
+  function updatePool(){const supportsQuota=['btrfs','zfs','lvm','ceph'].includes(pools.find(p=>p.name===pool.value)?.driver);disk.disabled=!supportsQuota||!session.manage_all_instances;diskHelp.textContent=supportsQuota?'Cota opcional de disco raiz em GiB.':'Este driver utiliza a capacidade do pool. Cota de disco indisponível neste assistente.';}
+  function updateNetwork(){const config=networks.find(n=>n.name===network.value)?.config||{};subnet.value=config['ipv4.address']||'Não informado';domain.value=config['dns.domain']||'Padrão do Incus';dnsMode.value=config['dns.mode']||'Padrão do Incus';ipv4.disabled=ipv4Mode.value!=='static';ipv4.required=!ipv4.disabled;}
+  pool.onchange=updatePool;network.onchange=updateNetwork;ipv4Mode.onchange=updateNetwork;updatePool();updateNetwork();
+  if(!session.manage_all_instances){for(const input of [description,pool,disk,cores,allowance,memory,network,ipv4Mode,ipv4,autostart,start])input.disabled=true;sections[0].append(notice('Neste escopo, a criação usa a configuração do perfil default e exige um nome autorizado. Ajustes de recursos ficam disponíveis após criar.'));}
+  form.onsubmit=async event=>{
+    event.preventDefault();if(step!==7){if(validate(step))show(step+1);return;}if(!validateThrough(7)||submit.disabled)return;
+    const selected=images.find(i=>i.id===image.value),requestedName=target.value.trim();if(!selected)return;
+    const options={memory_mib:Number(memory.value),cpu_cores:Number(cores.value),cpu_allowance:Number(allowance.value),autostart:autostart.checked,start:start.checked,pool:pool.value,network:network.value,description:description.value};
+    if(disk.value&&!disk.disabled)options.disk_gib=Number(disk.value);if(ipv4Mode.value==='static'&&ipv4.value)options.ipv4=ipv4.value.trim();
+    const body={...scope,...(requestedName?{target:requestedName}:{}),...(selected.remote_image?{remote_image:selected.remote_image}:{image:selected.image})};
+    if(!session.manage_all_instances){$('#create-dialog').close();openAction('create',requestedName,{...body,profiles:profile?['default']:[]});return;}
+    const run={key,scope,owner:session,target:requestedName||'Novo container',phase:'prepare',status_code:100,metadata:{},start_after_create:start.checked};
+    creationRuns.set(key,run);$('#create-dialog').close();$('#content').replaceChildren(creationScreen(run));
+    try{const created=await api('/api/create',{...body,options});if(session!==run.owner)return;Object.assign(run,created,{phase:'create'});updateCreationScreen(run);pollCreation(run);}
+    catch(error){if(session!==run.owner)return;Object.assign(run,{status_code:400,err:error.message,uncertain:!error.status||error.status>=500});updateCreationScreen(run);}
   };
-  return creationLayout(form,scope);
+  show(0);$('#create-dialog-content').replaceChildren(form);if(!$('#create-dialog').open)$('#create-dialog').showModal();
+  return panel('Criar container',el('div',{class:'panel-body create-launcher'},el('p',{},'Configure o container no assistente: Geral, Template, Discos, CPU, Memória, Rede, DNS e Confirmar.'),el('button',{type:'button',onclick:()=>$('#create-dialog').showModal()},'Abrir assistente')));
 }
 function updateCreationScreen(run){
   if(session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page==='create')$('#content').replaceChildren(creationScreen(run));
@@ -580,7 +725,7 @@ async function pollCreation(run){
 }
 function creationScreen(run){
   const success=run.status_code===200,failed=run.status_code>=400;
-  const phases=[['prepare','Preparar configuração'],['create','Baixar imagem e criar container'],['start','Iniciar container'],['verify','Confirmar funcionamento']];
+  const phases=[['prepare','Preparar configuração'],['create','Baixar imagem e criar container'],...(run.start_after_create===false?[]:[['start','Iniciar container']]),['verify','Confirmar funcionamento']];
   const current=success?phases.length:Math.max(0,phases.findIndex(([key])=>key===run.phase));
   const screen=el('section',{class:'panel creation-screen','aria-labelledby':'creation-heading'});
   const body=el('div',{class:'panel-body'});
@@ -589,9 +734,9 @@ function creationScreen(run){
   const percentage=Object.entries(run.metadata||{}).filter(([key,value])=>/progress/i.test(key)&&typeof value==='string').sort(([a],[b])=>Number(/download/i.test(a))-Number(/download/i.test(b))).map(([,value])=>value.match(/(\d+(?:\.\d+)?)%/)).find(Boolean);
   const numeric=percentage?Math.min(100,Math.max(0,Number(percentage[1]))):null;
   const bar=el('progress',{max:'100','aria-label':'Progresso da etapa atual',...(success?{value:'100'}:numeric!==null?{value:String(numeric)}:{})});
-  if(!failed&&!run.connectionError)body.append(bar,el('p',{class:'muted',role:'status'},success?'Container criado e em execução.':numeric!==null?`Progresso informado pelo Incus: ${numeric}% nesta etapa.`:'Etapa em andamento. Aguardando o progresso informado pelo Incus…'));
+  if(!failed&&!run.connectionError)body.append(bar,el('p',{class:'muted',role:'status'},success?(run.start_after_create===false?'Container criado e parado, conforme solicitado.':'Container criado e em execução.'):numeric!==null?`Progresso informado pelo Incus: ${numeric}% nesta etapa.`:'Etapa em andamento. Aguardando o progresso informado pelo Incus…'));
   body.append(el('ol',{class:'creation-steps'},...phases.map(([key,title],index)=>el('li',{class:index<current?'complete':index===current?'current':'','aria-current':index===current?'step':null},el('span',{'aria-hidden':'true'},index<current?'✓':String(index+1)),title))));
-  if(success)body.append(el('a',{class:'primary creation-link',href:instanceLink(run.target)},'Abrir container →'));
+  if(success)body.append(el('a',{class:'primary creation-link',href:instanceLink(run.target)},'Abrir container →'),run.start_after_create!==false?el('a',{class:'button-link creation-link',href:instanceLink(run.target,'console')},'>_ Console'):null);
   else if(failed)body.append(notice(run.err||'O Incus não concluiu a operação.',true));
   else if(!run.connectionError)body.append(el('p',{class:'muted'},'Você pode navegar pelo painel. A criação continua em segundo plano; volte a esta tela para acompanhar.'));
   if(run.connectionError)body.append(notice(run.connectionError,true),el('button',{type:'button',onclick:()=>pollCreation(run)},'Consultar novamente'));
@@ -599,25 +744,70 @@ function creationScreen(run){
   if(success||failed)body.append(el('button',{type:'button',onclick:()=>{creationRuns.delete(run.key);render();}},success?'Criar outro container':'Voltar ao formulário'));
   screen.append(body);return screen;
 }
-async function advancedCreateView(scope,server) {
-  const [images,profiles]=await Promise.all([read('images',undefined,scope),read('profiles',undefined,scope)]);
-  const normalize=a=>({'armv7l':'armv7','armhf':'armv7','aarch64':'arm64','x86_64':'amd64','x86-64':'amd64'})[a]||a;
-  const compatible=images.data.filter(i=>(i.type||'container')==='container'&&normalize(i.architecture)===normalize(server.environment?.kernel_architecture));
-  const form=el('form',{class:'panel-body create-form'});
-  const target=el('input',{required:'',pattern:'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}',placeholder:'lab-novo'});
-  const image=el('select',{},...compatible.map(i=>el('option',{value:i.fingerprint},i.properties?.description||i.aliases?.[0]?.name||i.fingerprint)));
-  const remote=el('input',{placeholder:'debian/12',value:''});
-  const profile=el('select',{required:''},...profiles.data.map(p=>el('option',{value:p.name},p.name)));
-  const advanced=el('details',{class:'advanced-options'},el('summary',{},'Opções avançadas'),el('label',{},'Perfil de configuração',profile),...(session.allow_remote_images?[el('label',{},'Outra imagem do catálogo · opcional',remote),el('small',{},'Exemplo: debian/12. Deixe em branco para usar a imagem selecionada acima.')]:[]));
-  if(profiles.data.some(p=>p.name==='default'))profile.value='default';
-  form.append(el('label',{},'1. Dê um nome ao container',target),el('small',{},'Use um nome curto para identificar seu ambiente.'),el('label',{},'2. Escolha o sistema operacional',image),advanced,el('div',{class:'setup-note'},el('span',{'aria-hidden':'true'},'✓'),el('div',{},el('strong',{},'Configuração pronta para usar'),el('p',{},'Rede e armazenamento seguem o perfil selecionado. Você não precisa informar nenhum caminho.'))),el('button',{class:'primary',disabled:session.read_only||session.role==='observador'||(!compatible.length&&!session.allow_remote_images)||!profiles.data.length?'':null},'Continuar →'));
-  if(!profiles.data.length)form.prepend(notice('Nenhum perfil de configuração disponível. Peça ao administrador para configurar a rede e o armazenamento.',true));
-  if(!compatible.length)form.prepend(notice(session.allow_remote_images?'Não há imagens locais. Abra Opções avançadas e informe uma imagem do catálogo.':'Nenhuma imagem compatível disponível neste servidor.',!session.allow_remote_images));
-  form.onsubmit=event=>{event.preventDefault();openAction('create',target.value,{...(session.allow_remote_images&&remote.value.trim()?{remote_image:remote.value.trim()}:{image:image.value}),profiles:[profile.value]});};
-  return creationLayout(form,scope);
+function renderResourceTree(){
+  if(!session)return;
+  const r=route(),term=$('#global-search').value.trim().toLowerCase();
+  const root=el('a',{href:'#overview',role:'treeitem',class:r.page==='overview'?'active':''},'▾ ▦ Datacenter');
+  const hostLink=el('a',{href:'#server',role:'treeitem',class:'tree-node'+(r.page==='server'?' active':'')},'▾ ▧ '+(serverInfo.environment?.server_name||host));
+  const projectLink=el('a',{href:'#projects',role:'treeitem',class:'tree-project'+(r.page==='projects'?' active':'')},'▾ ▱ '+project);
+  const items=inventory.filter(i=>!term||[i.name,i.status,i.architecture].join(' ').toLowerCase().includes(term)).sort((a,b)=>a.name.localeCompare(b.name));
+  const leaves=items.slice(0,100).map(item=>{
+    const link=el('a',{href:instanceLink(item.name),role:'treeitem','aria-selected':String(r.page==='instance'&&r.target===item.name),class:'leaf '+item.status.toLowerCase()+(r.page==='instance'&&r.target===item.name?' active':''),title:item.name+' · '+item.status},el('span',{class:'tree-state','aria-hidden':'true'},'●'),icon('box'),item.name);
+    link.oncontextmenu=event=>{event.preventDefault();showResourceMenu(event,item);};
+    link.ondblclick=event=>{event.preventDefault();if(session.enable_console&&canMutate(item.name)&&item.status==='Running')openConsoleWindow(item.name);};
+    return link;
+  });
+  $('#tree').replaceChildren(root,...($('#tree-view').value==='project'?[projectLink,hostLink]:[hostLink,projectLink]),...leaves,...(items.length>100?[el('a',{href:'#instances',class:'leaf'},'Ver '+items.length+' containers…')]:[]),...(term&&!items.length?[el('div',{class:'empty'},'Nenhum resultado')]:[]),el('a',{href:'#storage',class:'tree-storage'+(r.page==='storage'?' active':'')},'▤ Armazenamento ('+host+')'),el('a',{href:'#images',class:'tree-storage'+(r.page==='images'?' active':'')},'◇ Templates ('+project+')'));
 }
-
-function creationLayout(form,scope){
-  return el('div',{class:'create-layout'},panel('Configure seu container',form),el('section',{class:'creation-guide'},el('div',{class:'guide-icon','aria-hidden':'true'},icon('box')),el('p',{class:'eyebrow'},'DO SEU JEITO, SEM COMPLICAÇÃO'),el('h2',{},'Um ambiente só para suas ideias.'),el('p',{},'Teste serviços, aprenda Linux e organize seus experimentos em containers.'),el('ol',{},el('li',{},'Escolha um nome e um sistema.'),el('li',{},'Confirme a criação no painel.'),el('li',{},'Acompanhe o resultado em Containers.')),el('div',{class:'destination'},el('small',{},'DESTINO SELECIONADO'),el('strong',{},session.hosts.find(h=>h.id===scope.host)?.alias||scope.host),el('span',{},'Projeto '+scope.project))));
+let resourceMenu;
+function showResourceMenu(event,item){
+  resourceMenu?.remove();
+  const menu=el('div',{class:'context-menu',role:'menu','aria-label':'Ações de '+item.name});resourceMenu=menu;
+  menu.append(el('button',{type:'button',role:'menuitem',onclick:()=>{location.hash=instanceLink(item.name);menu.remove();}},'Resumo'));
+  const console=el('button',{type:'button',role:'menuitem',disabled:!session.enable_console||!canMutate(item.name)||item.status!=='Running'?'':null,onclick:()=>{openConsoleWindow(item.name);menu.remove();}},'>_ Console');menu.append(console);
+  for(const [action,label] of item.status==='Running'?[['stop','Desligar'],['restart','Reiniciar']]:[['start','Iniciar']]){const button=actionButton(label,action,item.name);button.setAttribute('role','menuitem');button.addEventListener('click',()=>menu.remove());menu.append(button);}
+  menu.append(el('button',{type:'button',role:'menuitem',onclick:()=>{location.hash=instanceLink(item.name,'options');menu.remove();}},'Opções'));
+  document.body.append(menu);menu.style.left=Math.max(4,Math.min(event.clientX,innerWidth-menu.offsetWidth-5))+'px';menu.style.top=Math.max(4,Math.min(event.clientY,innerHeight-menu.offsetHeight-5))+'px';menu.querySelector('button').focus();
 }
+document.addEventListener('pointerdown',event=>{if(resourceMenu&&!resourceMenu.contains(event.target)){resourceMenu.remove();resourceMenu=null;}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')resourceMenu?.remove();});
+$('#global-search').oninput=()=>renderResourceTree();
+$('#tree-view').onchange=()=>renderResourceTree();
+function mergedTaskLog(){
+  const merged=new Map(taskLogItems.filter(i=>i&&typeof i==='object').map(i=>[i.id,i]));
+  for(const task of tasks.values())if(task.host===host&&task.project===project)merged.set(task.id,{...merged.get(task.id),...task});
+  return [...merged.values()].reverse();
+}
+function renderTaskLog(){
+  if(!session||taskLogMode!=='tasks')return;
+  const items=mergedTaskLog();
+  const rows=items.map(task=>()=>[date(task.created_at||task.timestamp),host,task.identity||session.username,task.target||'—',task.description||task.action||'Operação Incus',status(task.status||String(task.status_code)),el('button',{type:'button',class:'task-details-link',onclick:()=>openTaskDetail(task)},'Detalhes')]);
+  const content=table(['INÍCIO','Nó','USUÁRIO','ALVO','DESCRIÇÃO','ESTADO',''],rows);
+  content.querySelectorAll('tbody tr').forEach((row,i)=>{row.ondblclick=()=>openTaskDetail(items[i]);});
+  $('#task-log-content').replaceChildren(content);$('#task-summary').textContent=items.length+' tarefas · '+host+' / '+project;
+}
+async function refreshTaskLog(){
+  if(!session)return;const owner=session,scope={host,project},mode=taskLogMode;
+  try{
+    const result=(await read(mode==='audit'?'audit':'operations',undefined,scope)).data;
+    if(session!==owner||host!==scope.host||project!==scope.project||taskLogMode!==mode)return;
+    if(mode==='audit')$('#task-log-content').replaceChildren(table(['HORA','USUÁRIO','ALVO','AÇÃO','RESULTADO'],result.slice().reverse().map(item=>[date(item.timestamp),item.identity,item.target,item.action,item.result])));
+    else{taskLogItems=Array.isArray(result)?result:Object.values(result).flat();renderTaskLog();}
+  }catch(error){if(session===owner&&host===scope.host&&project===scope.project&&taskLogMode===mode)$('#task-log-content').replaceChildren(errorNode(error));}
+}
+async function openTaskDetail(task){
+  const dialog=$('#task-detail');$('#task-detail-title').textContent='Tarefa: '+(task.description||task.action||task.id);
+  $('#task-detail-content').replaceChildren(kv([['Operação',task.id],['Estado',task.status||'Em andamento'],['Alvo',task.target||'—']]),el('pre',{},task.err||JSON.stringify(task.metadata||{},null,2)));
+  if(!dialog.open)dialog.showModal();
+  if(task.status_code<200&&task.id){const scope={host,project},owner=session;try{const result=(await read('operation',task.id,scope)).data;if(session!==owner||!dialog.open)return;$('#task-detail-content').replaceChildren(kv([['Operação',task.id],['Estado',result.status]]),el('pre',{},result.err||JSON.stringify(result.metadata||{},null,2)));}catch(error){if(dialog.open)$('#task-detail-content').append(errorNode(error));}}
+}
+$('#close-task-detail').onclick=()=>$('#task-detail').close();
+$('#task-log-refresh').onclick=refreshTaskLog;
+for(const [id,mode] of [['task-tab','tasks'],['audit-tab','audit']])$('#'+id).onclick=()=>{taskLogMode=mode;$('#task-tab').classList.toggle('active',mode==='tasks');$('#audit-tab').classList.toggle('active',mode==='audit');refreshTaskLog();};
+$('#task-log-toggle').onclick=()=>{const collapsed=document.body.classList.toggle('tasks-collapsed');$('#task-log-toggle').textContent=collapsed?'⌃':'⌄';$('#task-log-toggle').setAttribute('aria-expanded',String(!collapsed));$('#task-log-toggle').setAttribute('aria-label',collapsed?'Expandir painel de tarefas':'Recolher painel de tarefas');};
+const taskSplitter=el('div',{class:'task-splitter',role:'separator',tabindex:'0','aria-label':'Altura do painel de tarefas','aria-orientation':'horizontal','aria-valuemin':'70','aria-valuemax':'450','aria-valuenow':'178'});
+$('#task-log').prepend(taskSplitter);
+function setTaskHeight(height){const value=Math.round(Math.max(70,Math.min(Math.min(450,innerHeight*.55),height)));document.body.classList.remove('tasks-collapsed');document.documentElement.style.setProperty('--task-height',value+'px');taskSplitter.setAttribute('aria-valuenow',String(value));$('#task-log-toggle').setAttribute('aria-expanded','true');$('#task-log-toggle').textContent='⌄';}
+taskSplitter.onkeydown=event=>{if(['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();setTaskHeight($('#task-log').offsetHeight+(event.key==='ArrowUp'?20:-20));}};
+taskSplitter.onpointerdown=event=>{event.preventDefault();taskSplitter.setPointerCapture(event.pointerId);taskSplitter.onpointermove=move=>setTaskHeight(innerHeight-move.clientY-23);taskSplitter.onpointerup=()=>{taskSplitter.onpointermove=null;};};
 api('/api/session').then(data=>{session=data;enter();}).catch(()=>{});

@@ -1,6 +1,7 @@
 import json
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from incus_panel.catalog import remote_images
@@ -101,7 +102,7 @@ class LowResourceContracts(unittest.TestCase):
     def test_memavailable_used_instead_of_memfree(self):
         def memory_text(text):
             def read(path, *args, **kwargs):
-                if str(path) == '/proc/meminfo':
+                if path == Path('/proc/meminfo'):
                     return 'MemTotal: 1048576 kB\n' + text
                 raise FileNotFoundError(str(path))
             return read

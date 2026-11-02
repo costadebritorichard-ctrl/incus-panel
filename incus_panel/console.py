@@ -120,7 +120,7 @@ class Console:
         self.channels = []
         if not hasattr(client, "context") and not hasattr(client, "path"):
             raise PanelError(501, "A demonstração não emula shell. Use um container Incus de teste.")
-        response = client.request("POST", f"/1.0/instances/{target}/exec", project, {"command": ["/bin/sh"], "interactive": True, "wait-for-websocket": True, "environment": {"TERM": "dumb", "LANG": "C.UTF-8"}, "width": 100, "height": 30})
+        response = client.request("POST", f"/1.0/instances/{target}/exec", project, {"command": ["/bin/sh"], "interactive": True, "wait-for-websocket": True, "environment": {"TERM": "xterm-256color", "LANG": "C.UTF-8"}, "width": 100, "height": 30})
         operation = response.get("operation", "")
         if not re.fullmatch(r"/1.0/operations/[a-f0-9-]{36}", operation):
             raise PanelError(502, "Exec sem operação válida.")
@@ -143,8 +143,8 @@ class Console:
         try:
             while not self.closed:
                 chunk = decoder.decode(self.data.receive())
-                # Text-only terminal: never inject HTML or execute OSC sequences.
-                chunk = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", chunk)
+                # Preserve terminal escape sequences for the local xterm renderer.
+                # Output is JSON data and is never inserted as HTML.
                 with self.lock:
                     self.output = (self.output + chunk)[-65536:]
         except Exception:
@@ -167,9 +167,11 @@ class Console:
         self.data.send(text)
 
     def resize(self, width, height):
-        width, height = int(width), int(height)
-        if not 20 <= width <= 300 or not 5 <= height <= 100:
+        if type(width) is not int or type(height) is not int or not 20 <= width <= 300 or not 5 <= height <= 100:
             raise PanelError(400, "Dimensões do terminal inválidas.")
+        if self.closed:
+            raise PanelError(409, "Console encerrado.")
+        self.last_access = time.time()
         self.control.send(json.dumps({"command": "window-resize", "args": {"width": str(width), "height": str(height)}}), 1)
 
     def close(self):

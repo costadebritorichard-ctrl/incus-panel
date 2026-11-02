@@ -32,7 +32,7 @@ try{
   assert.equal(count('instance-list'),initialInventories);
   assert.equal(count('server'),initialServers);
   assert.equal(await evaluate("document.querySelectorAll('#content tbody tr').length"),25);
-  assert.equal(await evaluate("document.querySelectorAll('#tree .leaf').length"),25);
+  assert.equal(await evaluate("document.querySelectorAll('#tree .leaf').length"),100);
   const firstRow=await evaluate("document.querySelector('#content tbody tr').textContent");
   await evaluate("[...document.querySelectorAll('.pagination button')].find(button=>button.textContent==='Próxima').click()");
   assert.notEqual(await evaluate("document.querySelector('#content tbody tr').textContent"),firstRow);
@@ -70,5 +70,5 @@ try{
   await evaluate("for(let i=0;i<200;i++)trackTask('fixture-'+i,{status_code:200})");
   assert.equal(await evaluate('tasks.size'),100);
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({fixture:true,inventoryQueriesAcrossFivePages:0,visibleTableRows:25,treeLimit:25,pagination:true,search:true,manualRefresh:true,mutationInvalidation:true,projectIsolation:true,idleApiRequests:0,offPagePollingRequests:0,lazyDetails:true,jsErrors:0}));
+  console.log(JSON.stringify({fixture:true,inventoryQueriesAcrossFivePages:0,visibleTableRows:25,treeLimit:100,pagination:true,search:true,manualRefresh:true,mutationInvalidation:true,projectIsolation:true,idleApiRequests:0,offPagePollingRequests:0,lazyDetails:true,jsErrors:0}));
 }finally{socket.close();}
