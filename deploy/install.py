@@ -1,5 +1,6 @@
 """Instalador Linux: serviço local de administração Incus com HTTPS e login próprio."""
 import argparse
+import http.client
 import ipaddress
 import json
 import os
@@ -12,6 +13,7 @@ import ssl
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -195,6 +197,26 @@ def service_user(unit):
     return 'root'
 
 
+def local_https_status(origin, port, certificate, timeout=2):
+    """Check the local service using its configured certificate, without public DNS."""
+    parsed = urllib.parse.urlsplit(origin)
+    if parsed.scheme != 'https' or not parsed.netloc:
+        raise ValueError('A origem HTTPS existente é inválida.')
+    context = ssl.create_default_context(cafile=certificate)
+    # Trust only the certificate explicitly configured for this service. Its
+    # public hostname may be routed through an external proxy, so connect to
+    # loopback while keeping hostname validation disabled for this local probe.
+    context.check_hostname = False
+    connection = http.client.HTTPSConnection('127.0.0.1', port, context=context, timeout=timeout)
+    try:
+        connection.request('GET', '/', headers={'Host': parsed.netloc})
+        response = connection.getresponse()
+        response.read()
+        return response.status
+    finally:
+        connection.close()
+
+
 def main():
     import grp
     import pwd
@@ -352,17 +374,30 @@ def main():
         if not args.update_only:
             run(['systemctl', 'enable', 'incus-panel.service'])
         run(['systemctl', 'restart', 'incus-panel.service'])
-        context = ssl.create_default_context(cafile=config['tls_certificate'])
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=context))
-        for attempt in range(20):
-            try:
-                with opener.open(origin + '/', timeout=2) as result:
-                    if result.status == 200:
+        if args.update_only:
+            for attempt in range(20):
+                try:
+                    if local_https_status(origin, args.port, config['tls_certificate']) == 200:
                         break
-            except OSError:
-                if attempt == 19:
-                    raise RuntimeError('A verificação HTTPS não confirmou a inicialização.')
+                except OSError:
+                    if attempt == 19:
+                        raise RuntimeError('A verificação HTTPS local não confirmou a inicialização.')
+                else:
+                    if attempt == 19:
+                        raise RuntimeError('O painel não retornou HTTP 200 na verificação HTTPS local.')
                 time.sleep(1)
+        else:
+            context = ssl.create_default_context(cafile=config['tls_certificate'])
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=context))
+            for attempt in range(20):
+                try:
+                    with opener.open(origin + '/', timeout=2) as result:
+                        if result.status == 200:
+                            break
+                except OSError:
+                    if attempt == 19:
+                        raise RuntimeError('A verificação HTTPS não confirmou a inicialização.')
+                    time.sleep(1)
         run(['systemctl', 'is-active', '--quiet', 'incus-panel.service'])
         # Acesso real como o usuário do serviço, usando o mesmo backend do painel.
         verification = ['runuser', '-u', args.user, '--', '/usr/bin/python3', '-m', 'incus_panel.verify', '--config', str(config_path)]
