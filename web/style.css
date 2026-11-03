@@ -75,3 +75,8 @@ html[data-theme="dark"] .property-table code{color:#aab7c3}
 html[data-theme="dark"] .resource-inspector>summary{color:#8cc7f4}
 html[data-theme="dark"] .badge.good{background:#233b30;color:#c7ecd4;border-color:#3d7658}
 @media(max-width:650px){.inspector-body{min-width:min(300px,75vw);max-width:80vw}.property-table tbody th[scope="row"]{min-width:100px;width:38%}.property-table tbody td{max-width:55vw}}
+.tree-group{padding:0 0 5px;margin:0 0 3px;border-bottom:1px solid #e1e5e8}.tree-group-title{padding:5px 8px 3px;color:#667582;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.35px}.tree-group [role="group"]{display:grid}.tree-group [role="group"]>.empty{padding:8px 10px;text-align:left;font-size:11px}.metric-meter{display:grid;gap:5px;margin:4px 0 12px}.metric-meter-heading{display:flex;align-items:center;justify-content:space-between}.metric-meter progress{height:13px;accent-color:#6c9fc4}.search-form{max-width:760px}.search-form input{flex:1}.search-results{margin-top:10px}.node-notes{display:grid;gap:10px}.node-notes textarea{max-width:900px;resize:vertical;min-height:180px}
+html[data-theme="dark"] .tree-group{border-color:#35414d}
+html[data-theme="dark"] .tree-group-title{color:#b8c8d5}
+html[data-theme="dark"] .metric-meter progress{accent-color:#56bd91}
+@media(max-width:650px){.search-form{align-items:stretch}.metric-meter{margin-bottom:8px}}

@@ -64,7 +64,8 @@ const creationRuns = new Map();
 const imageDownloads = new Map();
 const readCache = new Map();
 let inventory=[], serverInfo={}, taskLogScope='', taskLogItems=[], taskLogMode='tasks';
-const instanceTabs=[['summary','◫','Resumo'],['console','>_','Console'],['resources','▤','Recursos'],['network','⌘','Rede'],['dns','☷','DNS'],['devices','▧','Dispositivos'],['options','⚙','Opções'],['backups','▣','Backup'],['snapshots','◷','Snapshots']];
+const instanceTabs=[['summary','◫','Sumário'],['console','>_','Console'],['resources','▤','Recursos'],['network','⌘','Rede'],['dns','☷','DNS'],['devices','▧','Dispositivos'],['options','⚙','Opções'],['history','◷','Histórico de tarefas'],['backups','▣','Backup'],['snapshots','◷','Snapshots']];
+const nodeTabs=[['search','⌕','Buscar'],['summary','◫','Sumário'],['notes','✎','Notas'],['system','▦','Sistema'],['storage','▤','Discos e armazenamento'],['network','⌘','Rede'],['tasks','◷','Histórico de tarefas']];
 function trackTask(key,task){
   tasks.set(key,task);
   if(tasks.size>100){const completed=[...tasks].find(([id,item])=>id!==key&&item.status_code>=200);tasks.delete(completed?.[0]||tasks.keys().next().value);}
@@ -72,7 +73,7 @@ function trackTask(key,task){
 }
 function watchingRun(run,page){return session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page===page&&!document.hidden;}
 function resumeRun(run,poll){if(run.status_code<200&&!run.connectionError&&!run.polling){clearTimeout(run.timer);run.timer=setTimeout(()=>poll(run),0);}}
-const pages = [ ['overview','◫','Resumo'],['instances','▣','Containers'],['images','◇','Templates'],['storage','▤','Armazenamento'],['volumes','▣','Volumes'],['networks','⌘','Rede'],['profiles','☷','Perfis'],['projects','▱','Projetos'],['tasks','◷','Tarefas'],['alerts','△','Alertas'],['server','▧','Nó'],['settings','⚙','Permissões e sessão'],['users','♙','Usuários'] ];
+const pages = [ ['search','⌕','Buscar'],['overview','◫','Sumário'],['server','▧','Nó'],['instances','▣','Containers'],['storage','▤','Armazenamento'],['volumes','▣','Volumes'],['networks','⌘','Rede'],['images','◇','Templates'],['profiles','☷','Perfis'],['projects','▱','Projetos'],['tasks','◷','Histórico de tarefas'],['alerts','△','Alertas'],['settings','⚙','Permissões e sessão'],['users','♙','Usuários'] ];
 const numberFormat = new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1});
 const fmt = n => n === null || n === undefined ? 'n/d' : numberFormat.format(n);
 const bytes = n => n === null || n === undefined ? 'n/d' : n >= 1073741824 ? fmt(n/1073741824)+' GiB' : fmt(n/1048576)+' MiB';
@@ -358,9 +359,14 @@ async function render() {
   clearTimeout(timer); const id=++generation; const scope={host,project}; const r=route(); busy=true;
   const title=r.page==='overview'?'Datacenter':pages.find(p=>p[0]===r.page)?.[2] || (r.page==='instance'?'Container '+r.target:r.page==='create'?'Criar CT':'Página não encontrada');
   $('#title').textContent=title; $('#breadcrumb').textContent=`${host} / ${project} / ${title}`;
-  $('#subtitle').textContent=r.page==='instance'?`Gerencie ${r.target} e acompanhe seus recursos.`:({overview:'Seu laboratório sob controle. Veja o que está acontecendo agora.',instances:'Encontre, acompanhe e gerencie seus containers.',create:'Escolha uma imagem. Nós cuidamos da configuração.',images:'Sistemas disponíveis para o seu próximo container.',storage:'Acompanhe o espaço disponível para seu laboratório.',networks:'Conexões que mantêm seus containers em rede.',projects:'Organize seus ambientes em projetos separados.'})[r.page]||'Gerencie os recursos do seu laboratório.';
+  $('#subtitle').textContent=r.page==='instance'?`Gerencie ${r.target} e acompanhe seus recursos.`:r.page==='server'?(nodeTabs.find(([key])=>key===(r.target||'summary'))?.[2]+' do nó')||'Resumo do nó':({overview:'Resumo do datacenter, dos containers e dos recursos disponíveis.',search:'Pesquise containers, imagens, armazenamento, redes, perfis e projetos.',instances:'Encontre, acompanhe e gerencie seus containers.',create:'Escolha uma imagem. Nós cuidamos da configuração.',images:'Sistemas disponíveis para o seu próximo container.',storage:'Acompanhe o espaço disponível para seu laboratório.',networks:'Conexões que mantêm seus containers em rede.',projects:'Organize seus ambientes em projetos separados.'})[r.page]||'Gerencie os recursos do seu laboratório.';
   $('#object-actions').replaceChildren();
-  $('#navigation').replaceChildren(...(r.page==='instance'?instanceTabs:pages.filter(page=>page[0]!=='users'||session.manage_users)).map(([key,symbol,label])=>el('a',{href:r.page==='instance'?instanceLink(r.target,key):'#'+key,class:(r.page==='instance'?r.tab===key:r.page===key)?'active':'','aria-current':(r.page==='instance'?r.tab===key:r.page===key)?'page':null},el('span',{},symbol),label)));
+  const navigationItems=r.page==='instance'?instanceTabs:r.page==='server'?nodeTabs:pages.filter(page=>page[0]!=='users'||session.manage_users);
+  $('#navigation').replaceChildren(...navigationItems.map(([key,symbol,label])=>{
+    const active=r.page==='instance'?r.tab===key:r.page==='server'?(r.target===key||(!r.target&&key==='summary')):r.page===key;
+    const href=r.page==='instance'?instanceLink(r.target,key):r.page==='server'?'#server/'+key:'#'+key;
+    return el('a',{href,class:active?'active':'','aria-current':active?'page':null},el('span',{},symbol),label);
+  }));
   if(r.page!=='create'&&$('#create-dialog').open)$('#create-dialog').close();
   $('#banner').hidden=!session.demo; $('#banner').textContent='DEMONSTRAÇÃO · Todos os dados e operações são simulados em memória. Nada é enviado a um servidor Incus real.';
   $('#connection').textContent='Consultando Incus…'; $('#content').setAttribute('aria-busy','true');
@@ -382,28 +388,28 @@ async function render() {
       container.append(el('div',{class:'cards'},cards.map(([label,value,note])=>el('div',{class:'card'},el('div',{class:'label'},label),el('div',{class:'value'},value),el('div',{class:'note'},note)))));
       container.append(el('div',{class:'grid'},panel('Containers',instanceTable(instances),el('a',{href:'#instances'},'Ver todos ↗')),panel('Identidade do servidor',el('div',{class:'panel-body'},kv([['Servidor',server.environment?.server_name],['Project',project],['Conexão',session.demo?'Fixture explícita':transportLabel()],['Atualização',session.low_resource?'Manual pelo botão Atualizar':'A cada 15 s, com aba visível']])))));
       if(resources.error)container.append(errorNode(resources.error));
-      if(!session.low_resource&&session.host_metrics)container.append(await storageView(scope,true));
-    } else if(r.page==='instances') container.append(filteredInstances(instances));
+      if(session.host_metrics)container.append(await storageView(scope,false));
+    } else if(r.page==='search') container.append(await searchView(scope,instances));
+    else if(r.page==='instances') container.append(filteredInstances(instances));
     else if(r.page==='instance') container.append(await detail(r,scope));
     else if(r.page==='storage'||r.page==='alerts') container.append(await storageView(scope,r.page==='alerts'));
     else if(r.page==='volumes') container.append(await volumesView(scope));
-    else if(r.page==='server') container.append(el('div',{},
-      panel('Identidade do nó',el('div',{class:'panel-body'},kv([['Servidor',server.environment?.server_name],['Arquitetura',server.environment?.kernel_architecture],['Incus',server.environment?.server_version],['Cluster',server.environment?.server_clustered?'Configurado':'Não configurado'],['VM','Fora do escopo: extensão não comprova KVM'],['Origem','Incus /1.0']]))),
-      extensionsView(server.api_extensions)));
+    else if(r.page==='server') {
+      const tab=r.target||'summary';
+      if(tab==='search')container.append(await searchView(scope,instances));
+      else if(tab==='summary')container.append(await serverSummaryView(scope,server,instances));
+      else if(tab==='notes')container.append(nodeNotesView());
+      else if(tab==='system')container.append(await serverSystemView(scope,server));
+      else if(tab==='storage')container.append(await storageView(scope,false),await volumesView(scope));
+      else if(tab==='network')container.append(await networksView(scope));
+      else if(tab==='tasks')container.append(await taskView(scope));
+      else container.append(await serverSummaryView(scope,server,instances));
+    }
     else if(r.page==='images') container.append(await imagesView(scope,server));
-    else if(['networks','profiles','projects'].includes(r.page)) {
+    else if(r.page==='networks')container.append(await networksView(scope));
+    else if(['profiles','projects'].includes(r.page)) {
       const result=await read(r.page,undefined,scope); const data=result.data;
-      if(r.page==='networks'){
-        container.append(panel('Redes do nó',table(['NOME','TIPO','ATIVA','IPv4 / CIDR','IPv6 / CIDR','NAT','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.type,item.status||'n/d',item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',item.config?.['ipv4.nat']==='true'?'Sim':'Não',inspectResource(item,'network')]))));
-        if(session.host_metrics)for(const network of data.filter(item=>item.managed&&item.type==='bridge')){
-          try{
-            const leases=(await read('network-leases',network.name,scope)).data;
-            container.append(panel('Leases DHCP · '+network.name,table(['HOSTNAME','MAC','IPv4','IPv6'],leases.map(lease=>[lease.hostname||'—',lease.hwaddr||'—',lease.ipv4||'—',lease.ipv6||'—']))));
-          }catch(error){container.append(errorNode(error));}
-        }
-        else container.append(notice('A lista de leases DHCP pode incluir outros Projects e exige a permissão de métricas globais do host.'));
-      }
-      else container.append(panel(title,table(['NOME','DESCRIÇÃO','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.description||'—',inspectResource(item,r.page)]))));
+      container.append(panel(title,table(['NOME','DESCRIÇÃO','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.description||'—',inspectResource(item,r.page)]))));
       if(r.page==='projects')container.append(notice('A lista contém somente os escopos configurados no servidor do painel. A autorização final permanece no Incus.'));
     } else if(r.page==='tasks') container.append(await taskView(scope));
     else if(r.page==='create') container.append(await createView(scope,server));
@@ -450,6 +456,64 @@ async function storageView(scope,alertsOnly=false) {
     return el('div',{},alertsOnly?(alerts.length?alerts:notice('Nenhum alerta de capacidade nas métricas disponíveis.')):panel('Storage pools',table(['POOL','DRIVER','CAPACIDADE','UTILIZADO','USO','ESTADO','COLETA'],rows)),!alertsOnly?alerts:null,el('small',{},'Fonte: Incus pool resources. Capacidade física não é calculada somando du, snapshots ou subvolumes.'));
   } catch(error){return errorNode(error);}
 }
+function usageMeter(label,used,total){
+  if(!(Number(total)>0)||used==null)return el('div',{class:'metric-meter'},el('strong',{},label),notice('Métrica indisponível para esta identidade.'));
+  const percent=Math.min(100,Math.max(0,Number(used)/Number(total)*100));
+  return el('div',{class:'metric-meter'},el('div',{class:'metric-meter-heading'},el('strong',{},label),el('span',{},fmt(percent)+'%')),el('progress',{max:'100',value:String(percent),'aria-label':label}),el('small',{},bytes(used)+' utilizados de '+bytes(total)));
+}
+async function serverSummaryView(scope,server,instances){
+  const metrics=session.host_metrics?await read('host-summary',undefined,scope).catch(error=>({error})):{};
+  const memory=metrics.data?.memory,cpu=metrics.data?.cpu;
+  const running=instances.filter(item=>item.status==='Running').length;
+  const cards=[
+    ['Estado','Conectado',transportLabel()],
+    ['Containers',instances.length,`${running} em execução · ${instances.length-running} parados`],
+    ['CPUs lógicas',cpu?.total??'n/d','Capacidade informada pelo Incus'],
+    ['Memória em uso',bytes(memory?.used),memory?'de '+bytes(memory.total):'Métrica indisponível']
+  ];
+  const summary=el('div',{class:'cards'},cards.map(([label,value,note])=>el('div',{class:'card'},el('div',{class:'label'},label),el('div',{class:'value'},value),el('div',{class:'note'},note))));
+  const identity=panel('Informações do nó',el('div',{class:'panel-body'},kv([
+    ['Nome',server.environment?.server_name||scope.host],['Incus',server.environment?.server_version],['Arquitetura',server.environment?.kernel_architecture],
+    ['Cluster',server.environment?.server_clustered?'Configurado':'Standalone'],['Projeto selecionado',scope.project],['Conexão',transportLabel()]
+  ])));
+  const resources=panel('Memória',el('div',{class:'panel-body'},usageMeter('Uso de memória',memory?.used,memory?.total),metrics.error?errorNode(metrics.error):null,
+    el('p',{class:'muted'},cpu?.total?`${cpu.total} CPUs lógicas disponíveis no host.`:'Incus não informou a contagem de CPUs.')));
+  const storage=session.host_metrics?await storageView(scope,false):notice('O resumo de armazenamento exige a permissão de métricas do host.');
+  return el('div',{},summary,el('div',{class:'grid'},identity,resources),storage,panel('Containers deste nó',instanceTable(instances),el('a',{href:'#instances'},'Ver todos')));
+}
+function nodeNotesView(){
+  const key='incus-node-note:'+encodeURIComponent(host)+':'+encodeURIComponent(session.username);
+  let saved='';try{saved=localStorage.getItem(key)||'';}catch{}
+  const input=el('textarea',{rows:'12','aria-label':'Notas do nó',placeholder:'Anotações sobre este nó…'},saved);
+  const feedback=el('p',{class:'form-feedback','aria-live':'polite'});
+  const form=el('form',{class:'panel-body node-notes'},el('label',{},'Notas do nó',input),el('small',{},'As notas ficam salvas neste navegador e associadas ao nó e à sua identidade.'),el('div',{class:'form-actions'},el('button',{type:'submit',class:'primary'},'Salvar notas')),feedback);
+  form.onsubmit=event=>{event.preventDefault();try{localStorage.setItem(key,input.value);feedback.textContent='Notas salvas neste navegador.';}catch{feedback.textContent='Não foi possível salvar as notas neste navegador.';}};
+  return panel('Notas',form);
+}
+async function serverSystemView(scope,server){
+  const metrics=session.host_metrics?await read('host-summary',undefined,scope).catch(error=>({error})):{};
+  const cpu=metrics.data?.cpu,memory=metrics.data?.memory;
+  return el('div',{},
+    panel('Sistema',el('div',{class:'panel-body'},kv([
+      ['Servidor',server.environment?.server_name],['Arquitetura do kernel',server.environment?.kernel_architecture],['Sistema de containers','Incus'],
+      ['Versão do Incus',server.environment?.server_version],['API',server.api_version||'1.0'],['Cluster',server.environment?.server_clustered?'Configurado':'Standalone'],
+      ['CPUs lógicas',cpu?.total],['Memória total',memory?.total==null?'n/d':bytes(memory.total)]
+    ]),metrics.error?errorNode(metrics.error):null)),
+    extensionsView(server.api_extensions));
+}
+async function networksView(scope){
+  try{
+    const data=(await read('networks',undefined,scope)).data;
+    const content=el('div',{},panel('Redes do nó',table(['NOME','TIPO','ATIVA','IPv4 / CIDR','IPv6 / CIDR','NAT','CONFIGURAÇÃO'],data.map(item=>()=>[
+      item.name,item.type,item.status||'n/d',item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',item.config?.['ipv4.nat']==='true'?'Sim':'Não',inspectResource(item,'network')
+    ]))));
+    if(session.host_metrics)for(const network of data.filter(item=>item.managed&&item.type==='bridge')){
+      try{const leases=(await read('network-leases',network.name,scope)).data;content.append(panel('Leases DHCP · '+network.name,table(['HOSTNAME','MAC','IPv4','IPv6'],leases.map(lease=>[lease.hostname||'—',lease.hwaddr||'—',lease.ipv4||'—',lease.ipv6||'—']))));}
+      catch(error){content.append(errorNode(error));}
+    }else content.append(notice('A lista de leases DHCP pode incluir outros Projects e exige a permissão de métricas globais do host.'));
+    return content;
+  }catch(error){return errorNode(error);}
+}
 async function volumesView(scope) {
   if(!session.host_metrics)return notice('O inventário de volumes usa a API global de armazenamento e exige a permissão de métricas do host.',true);
   try{
@@ -463,6 +527,42 @@ async function volumesView(scope) {
     }
     return el('div',{},panel('Volumes de armazenamento',table(['POOL','NOME','TIPO','CONTEÚDO','PROJECT','DESCRIÇÃO'],rows)),notice('Inventário somente para leitura. A exclusão ou alteração de volumes não está habilitada no painel.'));
   }catch(error){return errorNode(error);}
+}
+async function searchView(scope,instances){
+  const input=el('input',{id:'resource-search',type:'search',placeholder:'Nome, estado, arquitetura ou descrição','aria-label':'Pesquisar recursos'});
+  input.value=$('#global-search').value;
+  const output=el('div',{class:'search-results'},empty('Digite um termo para pesquisar no escopo selecionado.'));
+  const form=el('form',{class:'toolbar search-form'},input,el('button',{type:'submit',class:'primary'},'Pesquisar'));
+  input.oninput=()=>{$('#global-search').value=input.value;renderResourceTree();};
+  form.onsubmit=async event=>{
+    event.preventDefault();const term=input.value.trim().toLocaleLowerCase('pt-BR');
+    if(term.length<2){output.replaceChildren(notice('Digite pelo menos dois caracteres para iniciar a busca.'));return;}
+    const owner=session;
+    output.replaceChildren(loadingView('Pesquisando recursos…'));
+    const resources=[['Imagens','images'],['Redes','networks'],['Perfis','profiles'],['Projetos','projects']];
+    if(session.host_metrics)resources.push(['Armazenamento','pools']);
+    const settled=await Promise.allSettled(resources.map(([,resource])=>read(resource,undefined,scope)));
+    if(session!==owner||host!==scope.host||project!==scope.project||route().page!=='search')return;
+    const records=instances.map(item=>({type:'Container',name:item.name,detail:`${item.status||'n/d'} · ${item.architecture||'n/d'}`,href:instanceLink(item.name),search:[item.name,item.status,item.architecture]}));
+    settled.forEach((result,index)=>{
+      if(result.status!=='fulfilled')return;
+      const [type]=resources[index],items=Array.isArray(result.value.data)?result.value.data:[];
+      for(const item of items){
+        if(type==='Imagens')records.push({type,name:item.properties?.description||item.aliases?.[0]?.name||item.fingerprint,detail:(item.architecture||'n/d')+' · '+bytes(item.size),href:'#images',search:[item.properties?.description,item.fingerprint,...(item.aliases||[]).map(alias=>alias.name)]});
+        else if(type==='Redes')records.push({type,name:item.name,detail:(item.type||'n/d')+' · '+(item.status||'n/d'),href:'#networks',search:[item.name,item.type,item.description]});
+        else if(type==='Perfis')records.push({type,name:item.name,detail:item.description||'Perfil Incus',href:'#profiles',search:[item.name,item.description]});
+        else if(type==='Projetos')records.push({type,name:item.name,detail:item.description||'Projeto Incus',href:'#projects',search:[item.name,item.description]});
+        else if(type==='Armazenamento')records.push({type,name:item.name,detail:(item.driver||'n/d')+' · '+(item.status||'n/d'),href:'#storage',search:[item.name,item.driver,item.status]});
+      }
+    });
+    const matches=records.filter(item=>item.search.filter(Boolean).join(' ').toLocaleLowerCase('pt-BR').includes(term)).sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
+    const failures=settled.filter(result=>result.status==='rejected').length;
+    output.replaceChildren(matches.length?panel(`${matches.length} recurso(s) encontrado(s)`,table(['TIPO','RECURSO','DETALHES'],matches.map(item=>[item.type,el('a',{href:item.href},item.name),item.detail]))):empty('Nenhum recurso corresponde à busca neste escopo.'));
+    if(failures)output.append(notice(`${failures} fonte(s) não puderam ser consultadas. Os resultados exibem somente os dados autorizados.`));
+  };
+  const page=panel('Buscar recursos',el('div',{class:'panel-body'},el('p',{class:'muted'},'Busca no nó e no projeto selecionado, como a pesquisa do Datacenter no Proxmox.'),form,output));
+  if(input.value.trim().length>=2)form.requestSubmit();
+  return page;
 }
 function userScopesField(initial={}) {
   const fields=el('fieldset',{class:'user-scopes'},el('legend',{},'Hosts e Projects autorizados'));
@@ -555,6 +655,7 @@ async function detail(r,scope) {
     wrapper.append(panel('DNS herdado da rede',table(['REDE','DOMÍNIO','MODO','GATEWAY IPv4'],networks.filter(n=>used.has(n.name)).map(n=>[n.name,n.config?.['dns.domain']||'Padrão do Incus',n.config?.['dns.mode']||'Padrão do Incus',n.config?.['ipv4.address']||'n/d']))),notice('O container recebe DNS pelo DHCP da bridge. Alterações feitas dentro do sistema convidado não são consultadas por esta tela.'));
   } else if(r.tab==='devices')wrapper.append(panel('Dispositivos',table(['DISPOSITIVO','ORIGEM','CONFIGURAÇÃO'],Object.entries(item.expanded_devices||{}).map(([key,value])=>[key,Object.hasOwn(item.devices||{},key)?'Local':'Herdado de perfil',inspect('Ver propriedades',()=>propertyTable(value))]))));
   else if(r.tab==='options')wrapper.append(editView(item,scope));
+  else if(r.tab==='history')wrapper.append(await instanceTaskHistoryView(scope,r.target));
   else if(['snapshots','backups'].includes(r.tab)){
     const result=await read(r.tab,r.target,scope);
     const artifacts=result.data.map(item=>{
@@ -713,6 +814,24 @@ async function taskView(scope) {
   }
   $('#task-summary').textContent=`${all.size} operações neste escopo · estado confirmado pelo Incus`;
   return panel('Operações assíncronas',table(['UUID','DESCRIÇÃO','ESTADO','PROGRESSO / ERRO'],[...all.values()].map(i=>()=>[i.id,i.description||i.action,status(i.status),i.err?notice(i.err,true):operationMetadata(i.metadata)])));
+}
+function operationList(data){return Array.isArray(data)?data:Object.values(data||{}).flat().filter(item=>item&&typeof item==='object');}
+function operationMatchesInstance(operation,target){
+  if(operation.target===target)return true;
+  const paths=[...(operation.resources?.instances||[]),...(operation.resources?.containers||[])];
+  if(paths.some(path=>{const name=String(path).split('/').pop();try{return decodeURIComponent(name)===target;}catch{return name===target;}}))return true;
+  return String(operation.description||'').includes('/instances/'+target);
+}
+async function instanceTaskHistoryView(scope,target){
+  try{
+    const remote=operationList((await read('operations',undefined,scope)).data);
+    const combined=new Map(remote.map(item=>[item.id,item]));
+    for(const task of tasks.values())if(task.host===scope.host&&task.project===scope.project&&task.target===target)combined.set(task.id,{...combined.get(task.id),...task});
+    const items=[...combined.values()].filter(item=>operationMatchesInstance(item,target)).reverse();
+    return panel('Histórico de tarefas · '+target,table(['INÍCIO','OPERAÇÃO','ESTADO','RESULTADO',''],items.map(item=>[
+      date(item.created_at||item.timestamp),item.description||item.action||item.id,status(item.status||String(item.status_code)),item.err||'—',el('button',{type:'button',class:'task-details-link',onclick:()=>openTaskDetail(item)},'Detalhes')
+    ])));
+  }catch(error){return errorNode(error);}
 }
 async function imagesView(scope,server){
   const owner=session,key=scope.host+'/'+scope.project;
@@ -930,9 +1049,6 @@ function creationScreen(run){
 function renderResourceTree(){
   if(!session)return;
   const r=route(),term=$('#global-search').value.trim().toLowerCase();
-  const root=el('a',{href:'#overview',role:'treeitem',class:r.page==='overview'?'active':''},'▾ ▦ Datacenter');
-  const hostLink=el('a',{href:'#server',role:'treeitem',class:'tree-node'+(r.page==='server'?' active':'')},'▾ ▧ '+(serverInfo.environment?.server_name||host));
-  const projectLink=el('a',{href:'#projects',role:'treeitem',class:'tree-project'+(r.page==='projects'?' active':'')},'▾ ▱ '+project);
   const items=inventory.filter(i=>!term||[i.name,i.status,i.architecture].join(' ').toLowerCase().includes(term)).sort((a,b)=>a.name.localeCompare(b.name));
   const leaves=items.slice(0,100).map(item=>{
     const link=el('a',{href:instanceLink(item.name),role:'treeitem','aria-selected':String(r.page==='instance'&&r.target===item.name),class:'leaf '+item.status.toLowerCase()+(r.page==='instance'&&r.target===item.name?' active':''),title:item.name+' · '+item.status},el('span',{class:'tree-state','aria-hidden':'true'},'●'),icon('box'),item.name);
@@ -940,7 +1056,20 @@ function renderResourceTree(){
     link.ondblclick=event=>{event.preventDefault();if(session.enable_console&&canMutate(item.name)&&item.status==='Running')openConsoleWindow(item.name);};
     return link;
   });
-  $('#tree').replaceChildren(root,...($('#tree-view').value==='project'?[projectLink,hostLink]:[hostLink,projectLink]),...leaves,...(items.length>100?[el('a',{href:'#instances',class:'leaf'},'Ver '+items.length+' containers…')]:[]),...(term&&!items.length?[el('div',{class:'empty'},'Nenhum resultado')]:[]),el('a',{href:'#storage',class:'tree-storage'+(r.page==='storage'?' active':'')},'▤ Armazenamento ('+host+')'),el('a',{href:'#images',class:'tree-storage'+(r.page==='images'?' active':'')},'◇ Templates ('+project+')'));
+  const link=(href,label,active,cls='')=>el('a',{href,role:'treeitem',class:(cls+' '+(active?'active':'')).trim()},label);
+  const group=(label,...children)=>el('section',{class:'tree-group'},el('div',{class:'tree-group-title'},label),el('div',{role:'group'},children));
+  const selectedProject=$('#tree-view').value==='project';
+  const tree=[
+    group('Datacenter',link('#search','⌕ Buscar',r.page==='search'),link('#overview','◫ Sumário',r.page==='overview')),
+    group('Nó',link('#server/summary','▧ '+(serverInfo.environment?.server_name||host),r.page==='server','tree-node')),
+    ...(selectedProject?[group('Projeto',link('#projects','▱ '+project,r.page==='projects','tree-project'))]:[]),
+    group('Containers',link('#instances',`▣ Todos os containers (${inventory.length})`,r.page==='instances'),...leaves,...(inventory.length>100?[link('#instances','Ver todos os '+inventory.length+' containers…',r.page==='instances','leaf')]:[]),...(term&&!items.length?[el('div',{class:'empty'},'Nenhum container corresponde à busca.')]:[])),
+    group('Armazenamento',link('#storage','▤ Pools de armazenamento',r.page==='storage'||(r.page==='server'&&r.target==='storage')),link('#volumes','▣ Volumes',r.page==='volumes')),
+    group('Rede',link('#networks','⌘ Redes',r.page==='networks'||(r.page==='server'&&r.target==='network'))),
+    group('Recursos Incus',...(!selectedProject?[link('#projects','▱ Projetos',r.page==='projects')]:[]),link('#images','◇ Templates',r.page==='images'),link('#profiles','☷ Perfis',r.page==='profiles')),
+    group('Operação',link('#tasks','◷ Histórico de tarefas',r.page==='tasks'||(r.page==='server'&&r.target==='tasks')),link('#alerts','△ Alertas',r.page==='alerts'),link('#settings','⚙ Permissões e sessão',r.page==='settings'),...(session.manage_users?[link('#users','♙ Usuários',r.page==='users')]:[]))
+  ];
+  $('#tree').replaceChildren(...tree);
 }
 let resourceMenu;
 function showResourceMenu(event,item){
@@ -955,6 +1084,7 @@ function showResourceMenu(event,item){
 document.addEventListener('pointerdown',event=>{if(resourceMenu&&!resourceMenu.contains(event.target)){resourceMenu.remove();resourceMenu=null;}});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')resourceMenu?.remove();});
 $('#global-search').oninput=()=>renderResourceTree();
+$('#global-search').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();const input=$('#resource-search');if(route().page==='search'&&input){input.value=event.currentTarget.value;input.form.requestSubmit();}else location.hash='#search';}};
 $('#tree-view').onchange=()=>renderResourceTree();
 function mergedTaskLog(){
   const merged=new Map(taskLogItems.filter(i=>i&&typeof i==='object').map(i=>[i.id,i]));
