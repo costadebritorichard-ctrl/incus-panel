@@ -12,3 +12,6 @@ artifacts/
 .git-local/
 .credentials/
 config.tvbox.local.json
+
+# User-provided Proxmox UI reference screenshots
+proxmox-ref/

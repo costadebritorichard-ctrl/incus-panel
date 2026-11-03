@@ -1,7 +1,7 @@
 'use strict';
 const $ = s => document.querySelector(s);
-let theme = 'light';
-try { theme = localStorage.getItem('incus-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch {}
+let theme = 'dark';
+try { theme = localStorage.getItem('incus-theme') || 'dark'; } catch {}
 function applyTheme(value) {
   theme = value === 'dark' ? 'dark' : 'light';
   document.documentElement.dataset.theme = theme;
@@ -63,9 +63,11 @@ const tasks = new Map();
 const creationRuns = new Map();
 const imageDownloads = new Map();
 const readCache = new Map();
-let inventory=[], serverInfo={}, taskLogScope='', taskLogItems=[], taskLogMode='tasks';
-const instanceTabs=[['summary','◫','Sumário'],['console','>_','Console'],['resources','▤','Recursos'],['network','⌘','Rede'],['dns','☷','DNS'],['devices','▧','Dispositivos'],['options','⚙','Opções'],['history','◷','Histórico de tarefas'],['backups','▣','Backup'],['snapshots','◷','Snapshots']];
-const nodeTabs=[['search','⌕','Buscar'],['summary','◫','Sumário'],['notes','✎','Notas'],['system','▦','Sistema'],['storage','▤','Discos e armazenamento'],['network','⌘','Rede'],['tasks','◷','Histórico de tarefas']];
+let inventory=[], serverInfo={}, storageInventory=[], networkInventory=[], taskLogScope='', taskLogItems=[], taskLogMode='tasks';
+const instanceTabs=[['summary','◫','Sumário'],['console','>_','Console'],['resources','▤','Recursos'],['network','⌘','Rede'],['dns','☷','DNS'],['options','⚙','Opções'],['history','◷','Histórico de tarefas'],['backups','▣','Backup'],['snapshots','◷','Snapshots'],['permissions','♙','Permissões']];
+const nodeTabs=[['search','⌕','Buscar'],['summary','◫','Sumário'],['notes','✎','Notas'],['system','▦','Sistema'],['network','⌘','Rede'],['storage','▤','Discos'],['tasks','◷','Histórico de tarefas']];
+const storageTabs=[['summary','◫','Sumário'],['content','▤','Conteúdo'],['permissions','♙','Permissões']];
+const networkTabs=[['summary','◫','Sumário'],['permissions','♙','Permissões']];
 function trackTask(key,task){
   tasks.set(key,task);
   if(tasks.size>100){const completed=[...tasks].find(([id,item])=>id!==key&&item.status_code>=200);tasks.delete(completed?.[0]||tasks.keys().next().value);}
@@ -73,11 +75,13 @@ function trackTask(key,task){
 }
 function watchingRun(run,page){return session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page===page&&!document.hidden;}
 function resumeRun(run,poll){if(run.status_code<200&&!run.connectionError&&!run.polling){clearTimeout(run.timer);run.timer=setTimeout(()=>poll(run),0);}}
-const pages = [ ['search','⌕','Buscar'],['overview','◫','Sumário'],['server','▧','Nó'],['instances','▣','Containers'],['storage','▤','Armazenamento'],['volumes','▣','Volumes'],['networks','⌘','Rede'],['images','◇','Templates'],['profiles','☷','Perfis'],['projects','▱','Projetos'],['tasks','◷','Histórico de tarefas'],['alerts','△','Alertas'],['settings','⚙','Permissões e sessão'],['users','♙','Usuários'] ];
+const pages = [ ['search','⌕','Buscar'],['overview','◫','Sumário'],['datacenter-notes','✎','Notas'],['cluster','◉','Cluster'],['settings','⚙','Opções'],['storage','▤','Armazenamento'],['backups','▣','Backup'],['permissions','♙','Permissões'],['networks','⌘','Rede'],['instances','▣','Containers'],['images','◇','Templates'],['profiles','☷','Perfis'],['projects','▱','Projetos'],['volumes','▤','Volumes'],['tasks','◷','Histórico de tarefas'],['alerts','△','Alertas'],['users','♙','Usuários'] ];
+const metricHistory=new Map();
 const numberFormat = new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1});
 const fmt = n => n === null || n === undefined ? 'n/d' : numberFormat.format(n);
 const bytes = n => n === null || n === undefined ? 'n/d' : n >= 1073741824 ? fmt(n/1073741824)+' GiB' : fmt(n/1048576)+' MiB';
 const date = n => n ? new Date(typeof n === 'number' ? n*1000 : n).toLocaleString('pt-BR') : 'n/d';
+const localDate = n => n ? new Date(typeof n==='number'&&n<1e12?n*1000:n).toLocaleString('pt-BR') : 'n/d';
 const transportLabel = () => ({ssh:'SSH verificado',unix:'Socket local Incus',tls:'TLS verificado'})[session?.hosts.find(h=>h.id===host)?.transport||'tls'];
 const badge = (text, cls='') => el('span',{class:'badge '+cls},text);
 const status = text => el('span',{class:'status '+String(text).toLowerCase()},({'Running':'Em execução','Stopped':'Parado','Success':'Concluída','Failure':'Falhou','Running operation':'Em andamento'})[text] || text || 'Desconhecido');
@@ -171,7 +175,8 @@ async function api(path, body) {
 }
 async function read(resource,target,scope={host,project}) {
   const path='/api/read?'+new URLSearchParams({...scope,resource,...(target?{target}:{})});
-  if(!['server','instance-list'].includes(resource))return api(path);
+  const cacheable=['server','instance-list',...(session?.low_resource?['host-summary','pools','networks']:[])];
+  if(!cacheable.includes(resource))return api(path);
   const cached=readCache.get(path);
   if(cached&&Date.now()<cached.expires)return cached.promise;
   const entry={expires:Infinity};
@@ -322,7 +327,7 @@ window.addEventListener('hashchange',()=>{setMenu(false,{restoreFocus:false});cl
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){clearTimeout(timer);clearTimeout(eventTimer);for(const run of [...creationRuns.values(),...imageDownloads.values()])clearTimeout(run.timer);return;}
   if(!session)return;
-  for(const run of creationRuns.values())if(watchingRun(run,'create'))resumeRun(run,pollCreation);
+  for(const run of creationRuns.values())if(run.owner===session&&host===run.scope.host&&project===run.scope.project)resumeRun(run,pollCreation);
   for(const run of imageDownloads.values())if(watchingRun(run,'images'))resumeRun(run,pollImageDownload);
   if(!session.low_resource){eventTimer=setTimeout(pollEvents,2000);if(!consoleId&&!menuOpen&&!$('#content form')&&!$('#confirm').open){readCache.clear();render();}else scheduleRefresh();}
 });
@@ -357,14 +362,14 @@ function filteredInstances(items) {
 async function render() {
   if(!session)return;
   clearTimeout(timer); const id=++generation; const scope={host,project}; const r=route(); busy=true;
-  const title=r.page==='overview'?'Datacenter':pages.find(p=>p[0]===r.page)?.[2] || (r.page==='instance'?'Container '+r.target:r.page==='create'?'Criar CT':'Página não encontrada');
+  const title=r.page==='overview'?'Datacenter':r.page==='server'?`${serverInfo.environment?.server_name||host} · ${nodeTabs.find(([key])=>key===(r.target||'summary'))?.[2]||'Nó'}`:r.page==='storage'&&r.target?r.target:r.page==='network'&&r.target?r.target:pages.find(p=>p[0]===r.page)?.[2] || (r.page==='instance'?'Container '+r.target:r.page==='create'?'Criar CT':'Página não encontrada');
   $('#title').textContent=title; $('#breadcrumb').textContent=`${host} / ${project} / ${title}`;
   $('#subtitle').textContent=r.page==='instance'?`Gerencie ${r.target} e acompanhe seus recursos.`:r.page==='server'?(nodeTabs.find(([key])=>key===(r.target||'summary'))?.[2]+' do nó')||'Resumo do nó':({overview:'Resumo do datacenter, dos containers e dos recursos disponíveis.',search:'Pesquise containers, imagens, armazenamento, redes, perfis e projetos.',instances:'Encontre, acompanhe e gerencie seus containers.',create:'Escolha uma imagem. Nós cuidamos da configuração.',images:'Sistemas disponíveis para o seu próximo container.',storage:'Acompanhe o espaço disponível para seu laboratório.',networks:'Conexões que mantêm seus containers em rede.',projects:'Organize seus ambientes em projetos separados.'})[r.page]||'Gerencie os recursos do seu laboratório.';
   $('#object-actions').replaceChildren();
-  const navigationItems=r.page==='instance'?instanceTabs:r.page==='server'?nodeTabs:pages.filter(page=>page[0]!=='users'||session.manage_users);
+  const navigationItems=r.page==='instance'?instanceTabs:r.page==='server'?nodeTabs:r.page==='storage'&&r.target?storageTabs:r.page==='network'?networkTabs:pages.filter(page=>page[0]!=='users'||session.manage_users);
   $('#navigation').replaceChildren(...navigationItems.map(([key,symbol,label])=>{
-    const active=r.page==='instance'?r.tab===key:r.page==='server'?(r.target===key||(!r.target&&key==='summary')):r.page===key;
-    const href=r.page==='instance'?instanceLink(r.target,key):r.page==='server'?'#server/'+key:'#'+key;
+    const active=r.page==='instance'?r.tab===key:r.page==='server'?(r.target===key||(!r.target&&key==='summary')):r.page==='storage'&&r.target?r.tab===key:r.page==='network'?r.tab===key:r.page===key;
+    const href=r.page==='instance'?instanceLink(r.target,key):r.page==='server'?'#server/'+key:r.page==='storage'&&r.target?'#storage/'+encodeURIComponent(r.target)+'/'+key:r.page==='network'?'#network/'+encodeURIComponent(r.target)+'/'+key:'#'+key;
     return el('a',{href,class:active?'active':'','aria-current':active?'page':null},el('span',{},symbol),label);
   }));
   if(r.page!=='create'&&$('#create-dialog').open)$('#create-dialog').close();
@@ -378,21 +383,23 @@ async function render() {
     if(serverResult.status==='rejected')throw serverResult.reason;
     if(instancesResult.status==='rejected')throw instancesResult.reason;
     const server=serverResult.value.data, instances=instancesResult.value.data;
-    inventory=instances;serverInfo=server;renderResourceTree();
+    inventory=instances;serverInfo=server;
+    const [poolsForTree,networksForTree]=await Promise.allSettled([session.host_metrics?read('pools',undefined,scope):Promise.resolve({data:[]}),read('networks',undefined,scope)]);
+    if(id!==generation||!session)return;
+    storageInventory=poolsForTree.status==='fulfilled'?poolsForTree.value.data:[];
+    networkInventory=networksForTree.status==='fulfilled'?networksForTree.value.data:[];
+    renderResourceTree();
     $('#create-ct').setAttribute('aria-disabled',String(session.read_only||session.role==='observador'));
     if(r.page==='overview') {
-      const running=instances.filter(i=>i.status==='Running').length;
-      const resources=session.host_metrics?await read('host-summary',undefined,scope).catch(error=>({error})):{};
-      const memory=resources.data?.memory;
-      const cards=[['Containers',instances.length,`${running} em execução · ${instances.filter(i=>i.status==='Stopped').length} parados`],['Memória do host',bytes(memory?.used),memory?'de '+bytes(memory.total):'Fonte indisponível ou não autorizada'],['Arquitetura',server.environment?.kernel_architecture||'n/d','Containers LXC · sem criação de VM'],['Incus',server.environment?.server_version||'n/d',server.environment?.server_clustered?'Cluster configurado':'Servidor standalone']];
-      container.append(el('div',{class:'cards'},cards.map(([label,value,note])=>el('div',{class:'card'},el('div',{class:'label'},label),el('div',{class:'value'},value),el('div',{class:'note'},note)))));
-      container.append(el('div',{class:'grid'},panel('Containers',instanceTable(instances),el('a',{href:'#instances'},'Ver todos ↗')),panel('Identidade do servidor',el('div',{class:'panel-body'},kv([['Servidor',server.environment?.server_name],['Project',project],['Conexão',session.demo?'Fixture explícita':transportLabel()],['Atualização',session.low_resource?'Manual pelo botão Atualizar':'A cada 15 s, com aba visível']])))));
-      if(resources.error)container.append(errorNode(resources.error));
-      if(session.host_metrics)container.append(await storageView(scope,false));
-    } else if(r.page==='search') container.append(await searchView(scope,instances));
+      container.append(await datacenterSummaryView(scope,server,instances));
+    } else if(r.page==='datacenter-notes')container.append(datacenterNotesView());
+    else if(r.page==='cluster')container.append(clusterView(scope,server));
+    else if(r.page==='permissions')container.append(await permissionsView(scope,instances));
+    else if(r.page==='backups')container.append(await datacenterBackupsView(scope,instances));
+    else if(r.page==='search') container.append(await searchView(scope,instances));
     else if(r.page==='instances') container.append(filteredInstances(instances));
     else if(r.page==='instance') container.append(await detail(r,scope));
-    else if(r.page==='storage'||r.page==='alerts') container.append(await storageView(scope,r.page==='alerts'));
+    else if(r.page==='storage'||r.page==='alerts') container.append(r.page==='storage'&&r.target?await storageDetailView(scope,r.target,r.tab):await storageView(scope,r.page==='alerts'));
     else if(r.page==='volumes') container.append(await volumesView(scope));
     else if(r.page==='server') {
       const tab=r.target||'summary';
@@ -407,6 +414,7 @@ async function render() {
     }
     else if(r.page==='images') container.append(await imagesView(scope,server));
     else if(r.page==='networks')container.append(await networksView(scope));
+    else if(r.page==='network')container.append(await networkDetailView(scope,r.target,r.tab));
     else if(['profiles','projects'].includes(r.page)) {
       const result=await read(r.page,undefined,scope); const data=result.data;
       container.append(panel(title,table(['NOME','DESCRIÇÃO','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.description||'—',inspectResource(item,r.page)]))));
@@ -456,30 +464,150 @@ async function storageView(scope,alertsOnly=false) {
     return el('div',{},alertsOnly?(alerts.length?alerts:notice('Nenhum alerta de capacidade nas métricas disponíveis.')):panel('Storage pools',table(['POOL','DRIVER','CAPACIDADE','UTILIZADO','USO','ESTADO','COLETA'],rows)),!alertsOnly?alerts:null,el('small',{},'Fonte: Incus pool resources. Capacidade física não é calculada somando du, snapshots ou subvolumes.'));
   } catch(error){return errorNode(error);}
 }
+function clusterView(scope,server){
+  const clustered=Boolean(server.environment?.server_clustered);
+  return el('div',{class:'cluster-view'},healthView('Estado do cluster',true,clustered?'Este servidor pertence a um cluster Incus.':'Cluster não configurado · servidor standalone.'),panel('Membros',clustered?el('div',{class:'panel-body'},kv([['Nó conectado',server.environment?.server_name||scope.host],['API do Incus',server.environment?.server_version],['Estado','A API do painel confirma apenas o vínculo ao cluster. A lista de membros não está exposta neste escopo.']])):empty('Nenhum cluster Incus configurado.')),notice('A administração de membros e quorum fica no próprio Incus. O painel não altera a topologia do cluster.'));
+}
+async function permissionsView(scope,instances){
+  const writable=instances.filter(item=>canMutate(item.name));
+  const body=el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Host',scope.host],['Projeto',scope.project],['Ações neste projeto',session.read_only?'Somente leitura':session.role==='observador'?'Somente leitura':'Conforme as permissões do painel'],['Containers autorizados',`${writable.length} de ${instances.length}`],['Métricas do host',session.host_metrics?'Permitidas':'Não autorizadas']]));
+  body.append(notice('O Incus aplica as permissões do servidor em cada chamada. O painel acrescenta o escopo por host, projeto e container; não há ACL independente por container nesta aplicação.'));
+  if(session.manage_users)body.append(el('a',{class:'button-link',href:'#users'},...iconLabel('edit','Gerenciar usuários e escopos')));
+  return panel('Permissões efetivas',body);
+}
+async function datacenterBackupsView(scope,instances){
+  const selected=instances.slice(0,100),results=await Promise.allSettled(selected.map(item=>read('backups',item.name,scope)));
+  const rows=[],failures=[];
+  results.forEach((result,index)=>{
+    const item=selected[index];
+    if(result.status==='rejected'){failures.push(item.name);return;}
+    for(const backup of result.value.data||[]){const raw=typeof backup==='string'?backup:backup.name;rows.push([item.name,String(raw||'').split('/').pop(),date(backup.created_at),date(backup.expires_at),el('a',{href:instanceLink(item.name,'backups')},'Abrir')]);}
+  });
+  const view=panel('Backups dos containers',table(['CONTAINER','BACKUP','CRIADO EM','EXPIRA EM',''],rows),el('a',{href:'#instances'},'Containers'));
+  if(instances.length>selected.length)view.append(notice(`Exibindo os primeiros ${selected.length} containers. Abra a aba Backup em cada container para consultar os demais.`));
+  if(failures.length)view.append(notice(`Não foi possível consultar backups de ${failures.length} container(s): ${failures.join(', ')}.`));
+  view.append(notice('Os backups podem ser criados ou removidos na aba Backup de cada container. O Incus não expõe neste painel uma política central de retenção.'));
+  return view;
+}
+async function storageDetailView(scope,target,tab='summary'){
+  let pools=storageInventory;
+  if(!pools.length&&session.host_metrics)pools=(await read('pools',undefined,scope).catch(()=>({data:[]}))).data;
+  const pool=pools.find(item=>item.name===target);
+  if(!pool)return errorNode(new Error('Pool indisponível ou sem permissão de consulta.'));
+  if(tab==='permissions')return el('div',{},await permissionsView(scope,inventory),notice(`Pool ${pool.name} pertence ao host e o Incus aplica a autorização do servidor.`));
+  if(tab==='content'){
+    const result=await read('volumes',pool.name,scope).catch(error=>({error}));
+    const volumes=result.data||[];
+    return el('div',{},el('div',{class:'toolbar'},el('a',{class:'button-link',href:'#images'},'Templates de container'),el('a',{class:'button-link',href:'#backups'},'Backups'),el('a',{class:'button-link',href:'#volumes'},'Todos os volumes')),
+      panel('Conteúdo do pool '+pool.name,table(['NOME','TIPO','CONTEÚDO','PROJETO','DESCRIÇÃO'],volumes.map(item=>[item.name||'n/d',item.type||'custom',item.content_type||'filesystem',item.project||scope.project,item.description||'—']))),
+      result.error?errorNode(result.error):notice('O Incus armazena imagens, snapshots e volumes neste pool. Arquivos ISO e discos de máquinas virtuais não se aplicam a containers LXC.'));
+  }
+  const usage=await read('pool-resources',pool.name,scope).catch(error=>({error})),space=usage.data?.space;
+  const percent=space?.total>0&&space.used!=null?space.used/space.total*100:null;
+  const points=rememberMetric(scope.host+'/storage/'+pool.name,percent,usage.timestamp);
+  return el('div',{class:'dashboard-view'},el('div',{class:'grid dashboard-top'},healthView(pool.name,pool.status==='Created',pool.status||'Estado não informado'),panel('Capacidade',el('div',{class:'summary-resource-body'},gauge('Espaço utilizado',space?.used,space?.total),el('div',{class:'resource-value-card'},el('span',{},'Driver'),el('strong',{},pool.driver||'n/d'),el('small',{},'Tipo de armazenamento do Incus')),el('div',{class:'resource-value-card'},el('span',{},'Disponível'),el('strong',{},space?.total!=null&&space?.used!=null?bytes(Math.max(0,space.total-space.used)):'n/d'),el('small',{},'Capacidade livre informada pelo pool'))))),
+    metricChart('Uso do pool',points,{unit:percent===null?'':'%',color:'#91bd20',emptyText:usage.error?'O Incus não autorizou a leitura dos recursos do pool.':'O Incus não informou os contadores deste pool.'}),
+    panel('Detalhes',el('div',{class:'panel-body'},kv([['Nome',pool.name],['Driver',pool.driver],['Estado',pool.status],['Utilizado',bytes(space?.used)],['Capacidade',bytes(space?.total)],['Coletado em',date(usage.timestamp)]]))));
+}
+async function networkDetailView(scope,target,tab='summary'){
+  const networks=(await read('networks',undefined,scope).catch(error=>({data:[],error}))).data||networkInventory;
+  const network=networks.find(item=>item.name===target);
+  if(!network)return errorNode(new Error('Rede indisponível neste projeto.'));
+  if(tab==='permissions')return el('div',{},await permissionsView(scope,inventory),notice('A rede é visível neste projeto conforme as permissões devolvidas pelo Incus. O painel não configura ACLs de rede separadas.'));
+  const attached=inventory.filter(item=>Object.values(item.expanded_devices||{}).some(device=>device.type==='nic'&&(device.network===network.name||device.parent===network.name)));
+  const body=panel('Configuração da rede',el('div',{class:'panel-body'},kv([['Nome',network.name],['Tipo',network.type],['Gerenciada',network.managed?'Sim':'Não'],['Estado',network.status],['Gateway / CIDR IPv4',network.config?.['ipv4.address']],['Faixa DHCP IPv4',network.config?.['ipv4.dhcp.ranges']],['DHCP IPv4',network.config?.['ipv4.dhcp']],['NAT IPv4',network.config?.['ipv4.nat']],['IPv6 / CIDR',network.config?.['ipv6.address']],['Domínio DNS',network.config?.['dns.domain']],['Projeto',scope.project]]),inspectResource(network,'network')));
+  const result=el('div',{class:'dashboard-view'},el('div',{class:'grid dashboard-top'},healthView(network.name,network.status==='Created',network.type+' · '+(network.managed?'gerenciada pelo Incus':'externa')),body),panel('Containers conectados',instanceTable(attached)));
+  if(session.host_metrics&&network.managed&&network.type==='bridge'){
+    const leases=await read('network-leases',network.name,scope).catch(error=>({error}));
+    result.append(leases.error?errorNode(leases.error):panel('Leases DHCP',table(['HOSTNAME','MAC','IPv4','IPv6'],(leases.data||[]).map(item=>[item.hostname||'—',item.hwaddr||'—',item.ipv4||'—',item.ipv6||'—']))));
+  }else result.append(notice('A lista global de leases DHCP exige métricas do host e só está disponível para bridges gerenciadas.'));
+  return result;
+}
 function usageMeter(label,used,total){
   if(!(Number(total)>0)||used==null)return el('div',{class:'metric-meter'},el('strong',{},label),notice('Métrica indisponível para esta identidade.'));
   const percent=Math.min(100,Math.max(0,Number(used)/Number(total)*100));
   return el('div',{class:'metric-meter'},el('div',{class:'metric-meter-heading'},el('strong',{},label),el('span',{},fmt(percent)+'%')),el('progress',{max:'100',value:String(percent),'aria-label':label}),el('small',{},bytes(used)+' utilizados de '+bytes(total)));
 }
+function rememberMetric(key,value,sourceTimestamp){
+  if(value===null||value===undefined||!Number.isFinite(Number(value)))return metricHistory.get(key)||[];
+  const now=Date.now(),points=metricHistory.get(key)||[];
+  if(sourceTimestamp!==undefined&&points.at(-1)?.sourceTimestamp===sourceTimestamp)return points;
+  if(!points.length||now-points[points.length-1].at>=5000)points.push({at:now,value:Number(value),sourceTimestamp});
+  while(points.length>60||points[0]?.at<now-30*60*1000)points.shift();
+  metricHistory.set(key,points);return points;
+}
+function metricChart(title,points,{unit='',color='#91bd20',emptyText='Aguardando a próxima coleta do Incus.'}={}){
+  const body=el('div',{class:'chart-body'});
+  if(points.length){
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    const labelValue=unit==='bytes'?bytes(points.at(-1).value):fmt(points.at(-1).value)+' '+unit;
+    for(const [key,value]of Object.entries({viewBox:'0 0 640 180',preserveAspectRatio:'none',role:'img','aria-label':title+' · '+labelValue}))svg.setAttribute(key,value);
+    const vals=points.map(point=>point.value),lo=Math.min(0,...vals),hi=Math.max(...vals),span=Math.max(hi-lo,1);
+    for(let line=1;line<=4;line++){const y=12+line*31;const grid=document.createElementNS(svg.namespaceURI,'path');grid.setAttribute('d',`M0 ${y}H640`);grid.setAttribute('class','chart-gridline');svg.append(grid);}
+    const coords=vals.map((value,index)=>[points.length===1?0:index*640/(points.length-1),166-(value-lo)/span*145]);
+    if(coords.length===1)coords.push([640,coords[0][1]]);
+    const path=coords.map(([x,y],index)=>(index?'L':'M')+x.toFixed(1)+' '+y.toFixed(1)).join(' ');
+    const area=document.createElementNS(svg.namespaceURI,'path');area.setAttribute('d',path+' L640 174 L0 174 Z');area.setAttribute('class','chart-area');area.style.fill=color;svg.append(area);
+    const line=document.createElementNS(svg.namespaceURI,'path');line.setAttribute('d',path);line.setAttribute('class','chart-line');line.style.stroke=color;svg.append(line);
+    body.append(svg,el('div',{class:'chart-axis'},el('span',{},new Date(points[0].at).toLocaleTimeString('pt-BR')),el('span',{},labelValue),el('span',{},new Date(points.at(-1).at).toLocaleTimeString('pt-BR'))));
+  }else body.append(el('div',{class:'chart-placeholder'},emptyText));
+  return panel(title,body);
+}
+function gauge(label,used,total){
+  if(!(Number(total)>0)||used==null)return el('div',{class:'summary-gauge unavailable',style:'--gauge-angle:0deg'},el('div',{class:'gauge-number'},'n/d'),el('div',{class:'gauge-label'},label));
+  const value=Math.max(0,Math.min(Number(total),Number(used))),percent=Math.min(100,value/Number(total)*100);
+  return el('div',{class:'summary-gauge',style:`--gauge-angle:${percent*3.6}deg`},el('div',{class:'gauge-number'},fmt(percent)+'%'),el('div',{class:'gauge-label'},label),el('small',{},bytes(value)+' / '+bytes(total)));
+}
+function healthView(title,healthy,detail){
+  return panel(title,el('div',{class:'health-view'},el('div',{class:'health-symbol '+(healthy?'healthy':'unknown')},healthy?'✓':'!'),el('strong',{},healthy?'OK':'Verificar'),el('span',{},detail)));
+}
+async function datacenterSummaryView(scope,server,instances){
+  const metrics=session.host_metrics?await read('host-summary',undefined,scope).catch(error=>({error})): {error:new Error('Métricas do host não autorizadas para esta identidade.')};
+  const memory=metrics.data?.memory;
+  const pools=session.host_metrics?(await read('pools',undefined,scope).catch(error=>({data:[],error}))).data:[];
+  const running=instances.filter(item=>item.status==='Running').length;
+  const memoryHistory=rememberMetric(scope.host+'/memory',memory?.used,metrics.timestamp);
+  const poolRows=[];
+  for(const pool of pools){
+    const result=await read('pool-resources',pool.name,scope).catch(error=>({error}));
+    const space=result.data?.space,percent=space?.total>0&&space.used!=null?space.used/space.total*100:null;
+    if(percent!==null)rememberMetric(scope.host+'/storage/'+pool.name,percent,result.timestamp);
+    poolRows.push([pool.name,pool.driver||'n/d',bytes(space?.used),bytes(space?.total),percent===null?'n/d':fmt(percent)+'%',badge(pool.status||'Desconhecido',pool.status==='Created'?'good':'warn')]);
+  }
+  const resources=el('div',{class:'summary-resource-body'},
+    gauge('Memória do host',memory?.used,memory?.total),
+    el('div',{class:'resource-value-card'},el('span',{},'CPU'),el('strong',{},metrics.data?.cpu?.total==null?'n/d':fmt(metrics.data.cpu.total)),el('small',{},'núcleos lógicos · uso não exposto pelo Incus')),
+    el('div',{class:'resource-value-card'},el('span',{},'Containers'),el('strong',{},fmt(instances.length)),el('small',{},`${running} em execução · ${instances.length-running} parados`)));
+  return el('div',{class:'dashboard-view'},
+    el('div',{class:'grid dashboard-top'},healthView('Saúde',true,server.environment?.server_clustered?'Cluster Incus conectado':'Nó conectado · servidor standalone'),panel('Recursos',resources)),
+    el('div',{class:'grid dashboard-charts'},metricChart('Memória em uso',memoryHistory,{unit:'bytes',color:'#2682ad',emptyText:metrics.error?'Métricas do host indisponíveis para esta identidade.':'O Incus não informou a utilização de memória.'}),poolRows.length?panel('Armazenamento',table(['POOL','DRIVER','UTILIZADO','CAPACIDADE','USO','ESTADO'],poolRows)):notice('A capacidade dos pools exige a permissão de métricas globais do host.')),
+    panel('Containers',instanceTable(instances),el('a',{href:'#instances'},'Ver todos')),
+    panel('Identidade do servidor',el('div',{class:'panel-body'},kv([['Nó',server.environment?.server_name||scope.host],['Incus',server.environment?.server_version],['Arquitetura',server.environment?.kernel_architecture],['Projeto',scope.project],['Conexão',transportLabel()],['Cluster',server.environment?.server_clustered?'Configurado':'Standalone']]))));
+}
 async function serverSummaryView(scope,server,instances){
-  const metrics=session.host_metrics?await read('host-summary',undefined,scope).catch(error=>({error})):{};
+  const metrics=session.host_metrics?await read('host-summary',undefined,scope).catch(error=>({error})): {error:new Error('Métricas do host não autorizadas para esta identidade.')};
   const memory=metrics.data?.memory,cpu=metrics.data?.cpu;
   const running=instances.filter(item=>item.status==='Running').length;
-  const cards=[
-    ['Estado','Conectado',transportLabel()],
-    ['Containers',instances.length,`${running} em execução · ${instances.length-running} parados`],
-    ['CPUs lógicas',cpu?.total??'n/d','Capacidade informada pelo Incus'],
-    ['Memória em uso',bytes(memory?.used),memory?'de '+bytes(memory.total):'Métrica indisponível']
-  ];
-  const summary=el('div',{class:'cards'},cards.map(([label,value,note])=>el('div',{class:'card'},el('div',{class:'label'},label),el('div',{class:'value'},value),el('div',{class:'note'},note))));
-  const identity=panel('Informações do nó',el('div',{class:'panel-body'},kv([
-    ['Nome',server.environment?.server_name||scope.host],['Incus',server.environment?.server_version],['Arquitetura',server.environment?.kernel_architecture],
-    ['Cluster',server.environment?.server_clustered?'Configurado':'Standalone'],['Projeto selecionado',scope.project],['Conexão',transportLabel()]
-  ])));
-  const resources=panel('Memória',el('div',{class:'panel-body'},usageMeter('Uso de memória',memory?.used,memory?.total),metrics.error?errorNode(metrics.error):null,
-    el('p',{class:'muted'},cpu?.total?`${cpu.total} CPUs lógicas disponíveis no host.`:'Incus não informou a contagem de CPUs.')));
-  const storage=session.host_metrics?await storageView(scope,false):notice('O resumo de armazenamento exige a permissão de métricas do host.');
-  return el('div',{},summary,el('div',{class:'grid'},identity,resources),storage,panel('Containers deste nó',instanceTable(instances),el('a',{href:'#instances'},'Ver todos')));
+  const memoryHistory=rememberMetric(scope.host+'/memory',memory?.used,metrics.timestamp);
+  const poolRows=[];
+  if(session.host_metrics){
+    const pools=(await read('pools',undefined,scope).catch(error=>({data:[]}))).data;
+    for(const pool of pools){const result=await read('pool-resources',pool.name,scope).catch(error=>({error})),space=result.data?.space,percent=space?.total>0&&space.used!=null?space.used/space.total*100:null;if(percent!==null)rememberMetric(scope.host+'/storage/'+pool.name,percent,result.timestamp);poolRows.push([pool.name,pool.driver||'n/d',bytes(space?.used),bytes(space?.total),percent===null?'n/d':fmt(percent)+'%']);}
+  }
+  return el('div',{class:'dashboard-view node-dashboard'},
+    el('div',{class:'grid dashboard-top'},healthView(`Nó '${server.environment?.server_name||scope.host}'`,true,`Ativo · ${transportLabel()}`),panel('Visão geral',el('div',{class:'panel-body'},kv([['Tempo de atividade','Métrica não fornecida pela API do Incus'],['Cluster',server.environment?.server_clustered?'Configurado':'Standalone'],['Containers',`${running} em execução de ${instances.length}`],['Versão do Incus',server.environment?.server_version],['Arquitetura',server.environment?.kernel_architecture]])))),
+    panel('Recursos',el('div',{class:'summary-resource-body'},gauge('Memória',memory?.used,memory?.total),el('div',{class:'resource-value-card'},el('span',{},'CPU'),el('strong',{},cpu?.total==null?'n/d':fmt(cpu.total)),el('small',{},'núcleos lógicos · utilização não fornecida pela API do Incus')),el('div',{class:'resource-value-card'},el('span',{},'Containers'),el('strong',{},fmt(instances.length)),el('small',{},`${running} em execução · ${instances.length-running} parados`)))),
+    el('div',{class:'grid dashboard-charts'},metricChart('Uso de memória',memoryHistory,{unit:'bytes',color:'#2682ad',emptyText:metrics.error?'Métricas do host não autorizadas.':'Sem histórico coletado.'}),poolRows.length?panel('Uso de armazenamento',table(['POOL','DRIVER','UTILIZADO','CAPACIDADE','USO'],poolRows)):notice('As métricas físicas de armazenamento exigem a permissão do host.')),
+    panel('Containers deste nó',instanceTable(instances),el('a',{href:'#instances'},'Ver todos')));
+}
+function datacenterNotesView(){
+  const key='incus-datacenter-note:'+encodeURIComponent(host)+':'+encodeURIComponent(session.username);
+  let saved='';try{saved=localStorage.getItem(key)||'';}catch{}
+  const input=el('textarea',{rows:'12','aria-label':'Notas do datacenter',placeholder:'Anotações do datacenter…'},saved);
+  const feedback=el('p',{class:'form-feedback','aria-live':'polite'});
+  const form=el('form',{class:'panel-body node-notes'},el('label',{},'Notas do datacenter',input),el('small',{},'As notas ficam salvas neste navegador e associadas ao host e à sua identidade.'),el('div',{class:'form-actions'},el('button',{type:'submit',class:'primary'},'Salvar notas')),feedback);
+  form.onsubmit=event=>{event.preventDefault();try{localStorage.setItem(key,input.value);feedback.textContent='Notas salvas neste navegador.';}catch{feedback.textContent='Não foi possível salvar as notas neste navegador.';}};
+  return panel('Notas do datacenter',form);
 }
 function nodeNotesView(){
   const key='incus-node-note:'+encodeURIComponent(host)+':'+encodeURIComponent(session.username);
@@ -529,6 +657,7 @@ async function volumesView(scope) {
   }catch(error){return errorNode(error);}
 }
 async function searchView(scope,instances){
+  const initialRoute=route(),isSearchPage=initialRoute.page==='search'||(initialRoute.page==='server'&&initialRoute.target==='search');
   const input=el('input',{id:'resource-search',type:'search',placeholder:'Nome, estado, arquitetura ou descrição','aria-label':'Pesquisar recursos'});
   input.value=$('#global-search').value;
   const output=el('div',{class:'search-results'},empty('Digite um termo para pesquisar no escopo selecionado.'));
@@ -542,7 +671,7 @@ async function searchView(scope,instances){
     const resources=[['Imagens','images'],['Redes','networks'],['Perfis','profiles'],['Projetos','projects']];
     if(session.host_metrics)resources.push(['Armazenamento','pools']);
     const settled=await Promise.allSettled(resources.map(([,resource])=>read(resource,undefined,scope)));
-    if(session!==owner||host!==scope.host||project!==scope.project||route().page!=='search')return;
+    if(session!==owner||host!==scope.host||project!==scope.project||!(route().page==='search'||(route().page==='server'&&route().target==='search')))return;
     const records=instances.map(item=>({type:'Container',name:item.name,detail:`${item.status||'n/d'} · ${item.architecture||'n/d'}`,href:instanceLink(item.name),search:[item.name,item.status,item.architecture]}));
     settled.forEach((result,index)=>{
       if(result.status!=='fulfilled')return;
@@ -561,7 +690,7 @@ async function searchView(scope,instances){
     if(failures)output.append(notice(`${failures} fonte(s) não puderam ser consultadas. Os resultados exibem somente os dados autorizados.`));
   };
   const page=panel('Buscar recursos',el('div',{class:'panel-body'},el('p',{class:'muted'},'Busca no nó e no projeto selecionado, como a pesquisa do Datacenter no Proxmox.'),form,output));
-  if(input.value.trim().length>=2)form.requestSubmit();
+  if(isSearchPage&&input.value.trim().length>=2)form.requestSubmit();
   return page;
 }
 function userScopesField(initial={}) {
@@ -624,6 +753,44 @@ async function usersView() {
     return container;
   }catch(error){return errorNode(error);}
 }
+function instanceNetworkCounters(state){
+  let received=0,sent=0,found=false;
+  for(const network of Object.values(state.network||{})){
+    const counters=network?.counters||{};
+    if(Number.isFinite(Number(counters.bytes_received)))received+=Number(counters.bytes_received),found=true;
+    if(Number.isFinite(Number(counters.bytes_sent)))sent+=Number(counters.bytes_sent),found=true;
+  }
+  return found?{received,sent}:null;
+}
+function instanceSummaryView(scope,item,state,stateResultTimestamp){
+  const root=Object.entries(item.expanded_devices||{}).find(([,device])=>device.type==='disk'&&device.path==='/');
+  const cpu=state.cpu?.usage==null?null:Number(state.cpu.usage)/1e9,memory=state.memory?.usage;
+  const disk=state.disk?.[root?.[0]||'root']?.usage??state.disk?.root?.usage;
+  const samples={
+    cpu:rememberMetric(scope.host+'/'+scope.project+'/'+item.name+'/cpu',cpu,stateResultTimestamp),
+    memory:rememberMetric(scope.host+'/'+scope.project+'/'+item.name+'/memory',memory,stateResultTimestamp),
+    disk:rememberMetric(scope.host+'/'+scope.project+'/'+item.name+'/disk',disk,stateResultTimestamp)
+  };
+  const counters=instanceNetworkCounters(state);
+  const received=rememberMetric(scope.host+'/'+scope.project+'/'+item.name+'/received',counters?.received,stateResultTimestamp);
+  const sent=rememberMetric(scope.host+'/'+scope.project+'/'+item.name+'/sent',counters?.sent,stateResultTimestamp);
+  const addresses=Object.values(state.network||{}).flatMap(network=>network?.addresses||[]).filter(address=>['inet','inet6'].includes(address.family)).map(address=>address.address+(address.netmask?'/'+address.netmask:''));
+  const privileged=(item.expanded_config?.['security.privileged']??item.config?.['security.privileged'])==='true';
+  const statePanel=panel('Estado',el('div',{class:'panel-body resource-summary-state'},kv([
+    ['Status',status(state.status)],['Estado HA','Não aplicável ao Incus'],['Nó',scope.host],['Sem privilégios',privileged?'Não':'Sim'],
+    ['Uso de CPU',cpu===null?'n/d':fmt(cpu)+' s acumulados'],['Memória em uso',memory==null?'n/d':bytes(memory)],['Limite de memória',item.expanded_config?.['limits.memory']||'Sem limite explícito'],
+    ['Swap',state.memory?.swap_usage==null?'n/d':bytes(state.memory.swap_usage)],['Disco raiz',root?.[1]?.size||'Capacidade do pool'],['IPs',addresses.join(', ')||'Sem informação de rede']
+  ])));
+  const notes=panel('Notas',el('div',{class:'panel-body instance-notes'},el('p',{},item.description||'Nenhuma nota cadastrada.'),el('a',{href:instanceLink(item.name,'options'),class:'button-link'},...iconLabel('edit','Editar opções'))));
+  const charts=[
+    metricChart('Uso de CPU acumulado',samples.cpu,{unit:'s',color:'#91bd20',emptyText:'O Incus não informou o contador de CPU.'}),
+    metricChart('Uso de memória',samples.memory,{unit:'bytes',color:'#2682ad',emptyText:'O Incus não informou o uso de memória.'}),
+    metricChart('Rede · bytes recebidos',received,{unit:'bytes',color:'#91bd20',emptyText:'Contadores de rede não disponíveis para este container.'}),
+    metricChart('Rede · bytes enviados',sent,{unit:'bytes',color:'#2682ad',emptyText:'Contadores de rede não disponíveis para este container.'}),
+    metricChart('Uso de disco',samples.disk,{unit:'bytes',color:'#c79629',emptyText:'O Incus não informou o uso do disco.'})
+  ];
+  return el('div',{class:'dashboard-view'},el('div',{class:'grid dashboard-top'},statePanel,notes),el('div',{class:'grid instance-charts'},charts),el('small',{},'Os gráficos mantêm amostras coletadas nesta sessão. O Incus não fornece histórico persistente de métricas.'));
+}
 async function detail(r,scope) {
   const [instanceResult,stateResult]=await Promise.all([read('instance',r.target,scope),['summary','resources','network'].includes(r.tab)?read('state',r.target,scope):Promise.resolve(null)]);
   const item=instanceResult.data,state=stateResult?.data||{status:item.status};
@@ -642,20 +809,21 @@ async function detail(r,scope) {
   }
   $('#object-actions').replaceChildren(...actions.childNodes);
   if(r.tab==='summary') {
-    wrapper.append(el('div',{class:'grid resource-summary'},panel('Estado',el('div',{class:'panel-body'},kv([['Nome',item.name],['Nó',scope.host],['Projeto',scope.project],['Estado',status(state.status)],['Arquitetura',item.architecture],['Sistema',item.expanded_config?.['image.description']||item.config?.['image.description']||'n/d'],['Perfis',(item.profiles||[]).join(', ')],['Inicializar no boot',(item.expanded_config?.['boot.autostart']??item.config?.['boot.autostart'])==='true'?'Sim':'Não']]))),panel('Uso de recursos',el('div',{class:'panel-body'},kv([['Memória em uso',bytes(state.memory?.usage)],['Limite de memória',item.expanded_config?.['limits.memory']||'Sem limite explícito'],['CPU acumulada',state.cpu?.usage==null?'n/d':fmt(state.cpu.usage/1e9)+' s'],['Limite de CPU',item.expanded_config?.['limits.cpu']||'Herdado'],['Uso de disco',bytes(state.disk?.root?.usage)],['Última coleta',date(stateResult.timestamp)]])))));
-    wrapper.append(panel('Notas',el('div',{class:'panel-body'},el('p',{},item.description||'Nenhuma descrição definida.'),el('a',{class:'button-link',href:instanceLink(r.target,'options')},...iconLabel('edit','Editar notas e opções')))));
+    wrapper.append(instanceSummaryView(scope,item,state,stateResult?.timestamp));
     if(!canMutate(r.target))wrapper.append(notice('Ações bloqueadas pelo modo de leitura, papel ou autorização deste container.'));
-  } else if(r.tab==='resources'){
-    wrapper.append(panel('Recursos',table(['RECURSO','CONFIGURAÇÃO','USO ATUAL'],[['Memória',item.expanded_config?.['limits.memory']||'Herdado',bytes(state.memory?.usage)],['Núcleos',item.expanded_config?.['limits.cpu']||'Herdado','—'],['Limite de CPU',item.expanded_config?.['limits.cpu.allowance']||'Herdado',state.cpu?.usage==null?'n/d':fmt(state.cpu.usage/1e9)+' s acumulados'],...Object.entries(item.expanded_devices||{}).filter(([,d])=>d.type==='disk').map(([key,d])=>['Disco ('+key+')',(d.pool||'')+' · '+(d.size||'Capacidade do pool'),bytes(state.disk?.[key]?.usage)])]),el('a',{class:'button-link',href:instanceLink(r.target,'options')},'Editar')));
+  } else if(r.tab==='resources'||r.tab==='devices'){
+    wrapper.append(panel('Recursos',table(['RECURSO','CONFIGURAÇÃO','USO ATUAL'],[['Memória',item.expanded_config?.['limits.memory']||'Herdado',bytes(state.memory?.usage)],['Núcleos',item.expanded_config?.['limits.cpu']||'Herdado','—'],['Limite de CPU',item.expanded_config?.['limits.cpu.allowance']||'Herdado',state.cpu?.usage==null?'n/d':fmt(state.cpu.usage/1e9)+' s acumulados'],...Object.entries(item.expanded_devices||{}).filter(([,d])=>d.type==='disk').map(([key,d])=>['Disco ('+key+')',(d.pool||'')+' · '+(d.size||'Capacidade do pool'),bytes(state.disk?.[key]?.usage)])]),el('a',{class:'button-link',href:instanceLink(r.target,'options')},'Editar')),
+      panel('Dispositivos',table(['DISPOSITIVO','ORIGEM','CONFIGURAÇÃO'],Object.entries(item.expanded_devices||{}).map(([key,value])=>[key,Object.hasOwn(item.devices||{},key)?'Local':'Herdado de perfil',inspect('Ver propriedades',()=>propertyTable(value))]))));
   } else if(r.tab==='network'){
     wrapper.append(panel('Interfaces de rede',table(['NOME','TIPO','BRIDGE / REDE','MAC','ENDEREÇOS'],Object.entries(item.expanded_devices||{}).filter(([,d])=>d.type==='nic').map(([key,d])=>{const nic=state.network?.[d.name||key];return [d.name||key,d.nictype||'Gerenciada',d.network||d.parent||'n/d',nic?.hwaddr||d.hwaddr||'n/d',(nic?.addresses||[]).map(a=>a.address+(a.netmask?'/'+a.netmask:'')).join(', ')||d['ipv4.address']||'DHCP / não informado'];}))));
   } else if(r.tab==='dns'){
     const networks=(await read('networks',undefined,scope)).data;
     const used=new Set(Object.values(item.expanded_devices||{}).filter(d=>d.type==='nic').map(d=>d.network));
     wrapper.append(panel('DNS herdado da rede',table(['REDE','DOMÍNIO','MODO','GATEWAY IPv4'],networks.filter(n=>used.has(n.name)).map(n=>[n.name,n.config?.['dns.domain']||'Padrão do Incus',n.config?.['dns.mode']||'Padrão do Incus',n.config?.['ipv4.address']||'n/d']))),notice('O container recebe DNS pelo DHCP da bridge. Alterações feitas dentro do sistema convidado não são consultadas por esta tela.'));
-  } else if(r.tab==='devices')wrapper.append(panel('Dispositivos',table(['DISPOSITIVO','ORIGEM','CONFIGURAÇÃO'],Object.entries(item.expanded_devices||{}).map(([key,value])=>[key,Object.hasOwn(item.devices||{},key)?'Local':'Herdado de perfil',inspect('Ver propriedades',()=>propertyTable(value))]))));
+  }
   else if(r.tab==='options')wrapper.append(editView(item,scope));
   else if(r.tab==='history')wrapper.append(await instanceTaskHistoryView(scope,r.target));
+  else if(r.tab==='permissions')wrapper.append(await permissionsView(scope,[item]));
   else if(['snapshots','backups'].includes(r.tab)){
     const result=await read(r.tab,r.target,scope);
     const artifacts=result.data.map(item=>{
@@ -924,7 +1092,7 @@ $('#close-create').onclick=closeCreateWizard;
 $('#create-dialog').addEventListener('cancel',event=>{event.preventDefault();closeCreateWizard();});
 async function createView(scope,server) {
   const key=scope.host+'/'+scope.project;
-  if(creationRuns.has(key)){const run=creationRuns.get(key);resumeRun(run,pollCreation);return creationScreen(run);}
+  if(creationRuns.has(key)){const run=creationRuns.get(key);resumeRun(run,pollCreation);openCreationTaskViewer(run);return creationScreen(run);}
   const owner=session;
   const [catalog,poolsResult,networksResult,profilesResult]=await Promise.all([read('creation-images',undefined,scope),session.host_metrics?read('pools',undefined,scope):Promise.resolve({data:[]}),read('networks',undefined,scope),read('profiles',undefined,scope)]);
   if(session!==owner||route().page!=='create'||host!==scope.host||project!==scope.project)return el('div');
@@ -962,10 +1130,10 @@ async function createView(scope,server) {
     page(fields(field('Domínio DNS',domain,'full'),field('Modo DNS',dnsMode,'full')),notice('Configuração herdada da bridge do Incus. O assistente preserva o DNS entregue por DHCP.')),
     page(review,fields(field('Iniciar após criar',start,'full')))
   ];
-  const titles=['Geral','Template','Discos','CPU','Memória','Rede','DNS','Confirmar'];
+  const titles=['Geral','Template','Disco','CPU','Memória','Rede','DNS','Confirmar'];
   const tabs=el('div',{class:'wizard-tabs',role:'tablist','aria-label':'Etapas de criação'}),error=el('p',{class:'wizard-error',role:'alert'});
   let step=0;
-  const back=el('button',{type:'button',onclick:()=>show(step-1)},'Anterior'),next=el('button',{type:'button',onclick:()=>{if(validate(step))show(step+1);}},'Próximo'),submit=el('button',{type:'submit',class:'primary'},'Concluir');
+  const back=el('button',{type:'button',onclick:()=>show(step-1)},'Anterior'),next=el('button',{type:'button',onclick:()=>{if(validate(step))show(step+1);}},'Próximo'),submit=el('button',{type:'submit',class:'primary'},'Criar');
   const form=el('form',{class:'wizard-form',novalidate:''},tabs,...sections,error,el('div',{class:'wizard-footer'},el('small',{},'Container Incus · '+scope.host+' / '+scope.project),el('button',{type:'button',onclick:closeCreateWizard},'Cancelar'),back,next,submit));
   const tabButtons=titles.map((title,index)=>{const button=el('button',{type:'button',role:'tab',id:'wizard-tab-'+index,'aria-controls':'wizard-page-'+index,onclick:()=>{if(index<=step||validateThrough(index))show(index);}},title);sections[index].id='wizard-page-'+index;sections[index].setAttribute('aria-labelledby',button.id);return button;});tabs.append(...tabButtons);
   function validate(index){
@@ -1000,50 +1168,98 @@ async function createView(scope,server) {
     if(disk.value&&!disk.disabled)options.disk_gib=Number(disk.value);if(ipv4Mode.value==='static'&&ipv4.value)options.ipv4=ipv4.value.trim();
     const body={...scope,...(requestedName?{target:requestedName}:{}),...(selected.remote_image?{remote_image:selected.remote_image}:{image:selected.image})};
     if(!session.manage_all_instances){$('#create-dialog').close();openAction('create',requestedName,{...body,profiles:profile?['default']:[]});return;}
-    const run={key,scope,owner:session,target:requestedName||'Novo container',phase:'prepare',status_code:100,metadata:{},start_after_create:start.checked};
-    creationRuns.set(key,run);$('#create-dialog').close();$('#content').replaceChildren(creationScreen(run));
-    try{const created=await api('/api/create',{...body,options});if(session!==run.owner)return;Object.assign(run,created,{phase:'create'});updateCreationScreen(run);pollCreation(run);}
-    catch(error){if(session!==run.owner)return;Object.assign(run,{status_code:400,err:error.message,uncertain:!error.status||error.status>=500});updateCreationScreen(run);}
+    const run={key,scope,owner:session,target:requestedName||'Novo container',phase:'prepare',status_code:100,metadata:{},start_after_create:start.checked,started_at:Date.now(),updated_at:Date.now(),output:[]};
+    appendCreationLog(run,'Iniciando a criação do container '+run.target+'.');appendCreationLog(run,'Enviando a configuração ao Incus.');
+    creationRuns.set(key,run);$('#create-dialog').close();$('#content').replaceChildren(creationScreen(run));openCreationTaskViewer(run);
+    try{
+      const created=await api('/api/create',{...body,options});
+      if(session!==run.owner)return;
+      Object.assign(run,created,{phase:'create',updated_at:Date.now()});appendCreationLog(run,'Tarefa aceita pelo Incus. Aguardando a criação da instância.');
+      trackTask(`${scope.host}/${scope.project}/${run.operation}`,{...scope,...run,id:run.operation,action:'create',description:`CT ${run.target} - Criar`});
+      updateCreationScreen(run);pollCreation(run);
+    }catch(error){if(session!==run.owner)return;Object.assign(run,{status_code:400,err:error.message,uncertain:!error.status||error.status>=500,updated_at:Date.now()});appendCreationLog(run,error.message,true);updateCreationScreen(run);}
   };
   show(0);$('#create-dialog-content').replaceChildren(form);if(!$('#create-dialog').open)$('#create-dialog').showModal();
-  return panel('Criar container',el('div',{class:'panel-body create-launcher'},el('p',{},'Configure o container no assistente: Geral, Template, Discos, CPU, Memória, Rede, DNS e Confirmar.'),el('button',{type:'button',onclick:()=>$('#create-dialog').showModal()},'Abrir assistente')));
+  return panel('Criar container',el('div',{class:'panel-body create-launcher'},el('p',{},'Configure o container no assistente: Geral, Template, Disco, CPU, Memória, Rede, DNS e Confirmar.'),el('button',{type:'button',onclick:()=>$('#create-dialog').showModal()},'Abrir assistente')));
 }
 function updateCreationScreen(run){
   if(session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page==='create')$('#content').replaceChildren(creationScreen(run));
+  if($('#task-detail').open&&$('#task-detail').dataset.taskRun===run.key)openCreationTaskViewer(run,false);
 }
 async function pollCreation(run){
-  if(!watchingRun(run,'create')||!run.operation||run.polling)return;
+  if(session!==run.owner||host!==run.scope.host||project!==run.scope.project||!run.operation||run.status_code>=200||run.polling||document.hidden)return;
   clearTimeout(run.timer);run.polling=true;
   try{
     const state=(await read('operation',run.operation,run.scope)).data;
     if(session!==run.owner)return;
-    Object.assign(run,state,{connectionError:null});
-    trackTask(`${run.scope.host}/${run.scope.project}/${run.operation}`,{...run.scope,...state,action:'create'});
+    Object.assign(run,state,{connectionError:null,updated_at:Date.now()});
+    const progress=Object.entries(state.metadata||{}).find(([key,value])=>/progress/i.test(key)&&typeof value==='string')?.[1];
+    if(progress)appendCreationLog(run,progress);
+    if(state.status_code>=200)appendCreationLog(run,state.status_code<400&&!state.err?'Container criado e confirmado pelo Incus.':state.err||'A operação terminou com erro.',Boolean(state.err)||state.status_code>=400);
+    trackTask(`${run.scope.host}/${run.scope.project}/${run.operation}`,{...run.scope,...state,action:'create',target:run.target,description:`CT ${run.target} - Criar`});
     updateCreationScreen(run);
-    if(state.status_code<200){if(watchingRun(run,'create'))run.timer=setTimeout(()=>pollCreation(run),session.low_resource?5000:1500);}
-    else readCache.clear();
-  }catch(error){run.connectionError=error.message;updateCreationScreen(run);}
+    if(state.status_code<200)run.timer=setTimeout(()=>pollCreation(run),session.low_resource?5000:1500);
+    else{
+      readCache.clear();
+      const latest=await read('instance-list',undefined,run.scope).catch(()=>null);
+      if(latest&&session===run.owner){inventory=latest.data;renderResourceTree();}
+    }
+  }catch(error){run.connectionError=error.message;run.updated_at=Date.now();appendCreationLog(run,'Conexão temporariamente interrompida: '+error.message,true);updateCreationScreen(run);}
   finally{run.polling=false;}
+}
+function appendCreationLog(run,message,isError=false){
+  run.output??=[];
+  const last=run.output.at(-1);
+  if(last?.text===message)return;
+  run.output.push({at:Date.now(),text:String(message),error:isError});
+}
+function creationTaskStatus(run){
+  if(run.status_code>=400||run.err)return 'Falhou';
+  if(run.status_code===200)return 'Concluída';
+  if(run.connectionError)return 'Conexão interrompida';
+  return 'Em andamento';
+}
+function creationTaskViewer(run){
+  const active=run.viewerTab||'output',body=el('div');
+  const outputText=(run.output||[]).map(entry=>`[${new Date(entry.at).toLocaleTimeString('pt-BR')}] ${entry.text}`).join('\n')||'Aguardando a saída da operação do Incus…';
+  const tabs=el('div',{class:'task-view-tabs',role:'tablist','aria-label':'Detalhes da tarefa'});
+  for(const [key,label]of [['output','Saída'],['status','Status']])tabs.append(el('button',{type:'button',role:'tab',class:active===key?'active':'','aria-selected':String(active===key),onclick:()=>{run.viewerTab=key;updateCreationScreen(run);}},label));
+  const toolbar=el('div',{class:'task-view-toolbar'});
+  const download=el('button',{type:'button',disabled:outputText.startsWith('Aguardando a saída')?'':null,onclick:()=>{
+    const url=URL.createObjectURL(new Blob([outputText+'\n'],{type:'text/plain;charset=utf-8'})),link=el('a',{href:url,download:`ct-${run.target}-create.log`});
+    link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }},'↓ Download');
+  toolbar.append(download);
+  if(run.status_code<200&&run.operation)toolbar.append(el('span',{class:'muted'},'Acompanhe pela operação do Incus'));
+  if(run.connectionError)toolbar.append(el('button',{type:'button',onclick:()=>{run.connectionError=null;appendCreationLog(run,'Consultando novamente o Incus.');pollCreation(run);}},'Consultar novamente'));
+  if(active==='output')body.append(el('pre',{class:'task-view-output','aria-live':'polite'},outputText));
+  else{
+    const progress=Object.entries(run.metadata||{}).find(([key,value])=>/progress/i.test(key)&&typeof value==='string')?.[1];
+    const phases={prepare:'Preparar configuração',create:'Baixar imagem e criar container',start:'Iniciar container',verify:'Confirmar funcionamento'};
+    body.append(el('div',{class:'task-view-status'},kv([['Tarefa',`CT ${run.target} - Criar`],['Estado',creationTaskStatus(run)],['Servidor',run.scope.host],['Projeto',run.scope.project],['Etapa',phases[run.phase]||'Solicitação ao Incus'],['Progresso',progress||'O Incus ainda não informou um percentual'],['Início',localDate(run.started_at)],['Última atualização',localDate(run.updated_at)],['Resultado',run.err|| (run.status_code===200?'Container criado.':'Aguardando a confirmação do Incus.')]]),run.err?notice(run.err,true):null));
+  }
+  const content=el('div',{},tabs,toolbar,body);
+  content.dataset.createRun=run.key;
+  return content;
+}
+function openCreationTaskViewer(run,show=true){
+  const dialog=$('#task-detail');
+  $('#task-detail-title').textContent=`Task viewer: CT ${run.target} - Criar`;
+  dialog.dataset.taskRun=run.key;
+  $('#task-detail-content').replaceChildren(creationTaskViewer(run));
+  if(show&&!dialog.open)dialog.showModal();
 }
 function creationScreen(run){
   const success=run.status_code===200,failed=run.status_code>=400;
-  const phases=[['prepare','Preparar configuração'],['create','Baixar imagem e criar container'],...(run.start_after_create===false?[]:[['start','Iniciar container']]),['verify','Confirmar funcionamento']];
-  const current=success?phases.length:Math.max(0,phases.findIndex(([key])=>key===run.phase));
   const screen=el('section',{class:'panel creation-screen','aria-labelledby':'creation-heading'});
   const body=el('div',{class:'panel-body'});
-  const label=success?'Container pronto':failed?'Não foi possível concluir':run.connectionError?'Conexão interrompida':'Criando seu container';
-  body.append(el('div',{class:'creation-heading'},...(!success&&!failed&&!run.connectionError?[el('span',{class:'spinner','aria-hidden':'true'})]:[]),el('h2',{id:'creation-heading'},label)),el('p',{class:'creation-target'},run.target));
-  const percentage=Object.entries(run.metadata||{}).filter(([key,value])=>/progress/i.test(key)&&typeof value==='string').sort(([a],[b])=>Number(/download/i.test(a))-Number(/download/i.test(b))).map(([,value])=>value.match(/(\d+(?:\.\d+)?)%/)).find(Boolean);
-  const numeric=percentage?Math.min(100,Math.max(0,Number(percentage[1]))):null;
-  const bar=el('progress',{max:'100','aria-label':'Progresso da etapa atual',...(success?{value:'100'}:numeric!==null?{value:String(numeric)}:{})});
-  if(!failed&&!run.connectionError)body.append(bar,el('p',{class:'muted',role:'status'},success?(run.start_after_create===false?'Container criado e parado, conforme solicitado.':'Container criado e em execução.'):numeric!==null?`Progresso informado pelo Incus: ${numeric}% nesta etapa.`:'Etapa em andamento. Aguardando o progresso informado pelo Incus…'));
-  body.append(el('ol',{class:'creation-steps'},...phases.map(([key,title],index)=>el('li',{class:index<current?'complete':index===current?'current':'','aria-current':index===current?'step':null},el('span',{'aria-hidden':'true'},index<current?'✓':String(index+1)),title))));
-  if(success)body.append(el('a',{class:'primary creation-link',href:instanceLink(run.target)},'Abrir container →'),run.start_after_create!==false?el('a',{class:'button-link creation-link',href:instanceLink(run.target,'console')},'>_ Console'):null);
-  else if(failed)body.append(notice(run.err||'O Incus não concluiu a operação.',true));
-  else if(!run.connectionError)body.append(el('p',{class:'muted'},'Você pode navegar pelo painel. A criação continua em segundo plano; volte a esta tela para acompanhar.'));
-  if(run.connectionError)body.append(notice(run.connectionError,true),el('button',{type:'button',onclick:()=>pollCreation(run)},'Consultar novamente'));
+  const label=success?'Container criado':failed?'Criação com erro':run.connectionError?'Conexão interrompida':'Tarefa de criação';
+  body.append(el('div',{class:'creation-heading'},el('h2',{id:'creation-heading'},label)),el('p',{class:'creation-target'},`CT ${run.target} · ${creationTaskStatus(run)}`),el('button',{type:'button',class:'primary',onclick:()=>openCreationTaskViewer(run)},'Abrir visualizador de tarefas'));
+  if(success)body.append(el('a',{class:'creation-link',href:instanceLink(run.target)},'Abrir container →'),run.start_after_create!==false?el('a',{class:'creation-link',href:instanceLink(run.target,'console')},'>_ Console'):null);
+  if(failed)body.append(notice(run.err||'O Incus não concluiu a operação.',true));
+  if(run.connectionError)body.append(notice(run.connectionError,true));
   if(run.uncertain)body.append(notice('A conexão falhou antes da confirmação. Confira Containers ou Tarefas antes de tentar criar novamente.',true));
-  if(success||failed)body.append(el('button',{type:'button',onclick:()=>{creationRuns.delete(run.key);render();}},success?'Criar outro container':'Voltar ao formulário'));
+  if(success||failed)body.append(el('button',{type:'button',onclick:()=>{creationRuns.delete(run.key);render();}},success?'Criar outro container':'Voltar ao assistente'));
   screen.append(body);return screen;
 }
 function renderResourceTree(){
@@ -1056,18 +1272,18 @@ function renderResourceTree(){
     link.ondblclick=event=>{event.preventDefault();if(session.enable_console&&canMutate(item.name)&&item.status==='Running')openConsoleWindow(item.name);};
     return link;
   });
-  const link=(href,label,active,cls='')=>el('a',{href,role:'treeitem',class:(cls+' '+(active?'active':'')).trim()},label);
-  const group=(label,...children)=>el('section',{class:'tree-group'},el('div',{class:'tree-group-title'},label),el('div',{role:'group'},children));
+  const link=(href,label,active,cls='')=>el('a',{href,role:'treeitem','aria-selected':String(Boolean(active)),class:(cls+' '+(active?'active':'')).trim()},label);
   const selectedProject=$('#tree-view').value==='project';
   const tree=[
-    group('Datacenter',link('#search','⌕ Buscar',r.page==='search'),link('#overview','◫ Sumário',r.page==='overview')),
-    group('Nó',link('#server/summary','▧ '+(serverInfo.environment?.server_name||host),r.page==='server','tree-node')),
-    ...(selectedProject?[group('Projeto',link('#projects','▱ '+project,r.page==='projects','tree-project'))]:[]),
-    group('Containers',link('#instances',`▣ Todos os containers (${inventory.length})`,r.page==='instances'),...leaves,...(inventory.length>100?[link('#instances','Ver todos os '+inventory.length+' containers…',r.page==='instances','leaf')]:[]),...(term&&!items.length?[el('div',{class:'empty'},'Nenhum container corresponde à busca.')]:[])),
-    group('Armazenamento',link('#storage','▤ Pools de armazenamento',r.page==='storage'||(r.page==='server'&&r.target==='storage')),link('#volumes','▣ Volumes',r.page==='volumes')),
-    group('Rede',link('#networks','⌘ Redes',r.page==='networks'||(r.page==='server'&&r.target==='network'))),
-    group('Recursos Incus',...(!selectedProject?[link('#projects','▱ Projetos',r.page==='projects')]:[]),link('#images','◇ Templates',r.page==='images'),link('#profiles','☷ Perfis',r.page==='profiles')),
-    group('Operação',link('#tasks','◷ Histórico de tarefas',r.page==='tasks'||(r.page==='server'&&r.target==='tasks')),link('#alerts','△ Alertas',r.page==='alerts'),link('#settings','⚙ Permissões e sessão',r.page==='settings'),...(session.manage_users?[link('#users','♙ Usuários',r.page==='users')]:[]))
+    link('#overview','▾  Datacenter',!['server','instance'].includes(r.page)&&!(r.page==='storage'&&r.target)&&r.page!=='network','tree-root'),
+    link('#server/summary','▾  '+(serverInfo.environment?.server_name||host),r.page==='server','tree-node'),
+    ...(selectedProject?[link('#projects','▱  '+project,r.page==='projects','tree-project')]:[]),
+    link('#instances',`▾  Containers (${inventory.length})`,r.page==='instances','tree-branch'),
+    ...leaves,
+    ...(inventory.length>100?[link('#instances','Ver todos os '+inventory.length+' containers…',r.page==='instances','leaf')]:[]),
+    ...(term&&!items.length?[el('div',{class:'empty'},'Nenhum container corresponde à busca.')]:[]),
+    ...storageInventory.map(pool=>link('#storage/'+encodeURIComponent(pool.name)+'/summary','▤  '+pool.name+' ('+(serverInfo.environment?.server_name||host)+')',r.page==='storage'&&r.target===pool.name,'tree-storage')),
+    ...networkInventory.map(network=>link('#network/'+encodeURIComponent(network.name)+'/summary','⌘  '+network.name+' ('+(serverInfo.environment?.server_name||host)+')',r.page==='network'&&r.target===network.name,'tree-network'))
   ];
   $('#tree').replaceChildren(...tree);
 }
@@ -1084,7 +1300,7 @@ function showResourceMenu(event,item){
 document.addEventListener('pointerdown',event=>{if(resourceMenu&&!resourceMenu.contains(event.target)){resourceMenu.remove();resourceMenu=null;}});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')resourceMenu?.remove();});
 $('#global-search').oninput=()=>renderResourceTree();
-$('#global-search').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();const input=$('#resource-search');if(route().page==='search'&&input){input.value=event.currentTarget.value;input.form.requestSubmit();}else location.hash='#search';}};
+$('#global-search').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();const input=$('#resource-search'),current=route();if((current.page==='search'||(current.page==='server'&&current.target==='search'))&&input){input.value=event.currentTarget.value;input.form.requestSubmit();}else location.hash='#search';}};
 $('#tree-view').onchange=()=>renderResourceTree();
 function mergedTaskLog(){
   const merged=new Map(taskLogItems.filter(i=>i&&typeof i==='object').map(i=>[i.id,i]));
@@ -1109,6 +1325,13 @@ async function refreshTaskLog(){
   }catch(error){if(session===owner&&host===scope.host&&project===scope.project&&taskLogMode===mode)$('#task-log-content').replaceChildren(errorNode(error));}
 }
 function taskDetailView(task){
+  if(task.action==='create'||/^CT .+ - Criar$/.test(task.description||'')){
+    const run=[...creationRuns.values()].find(item=>item.operation===task.id||item.target===task.target);
+    if(run)return creationTaskViewer(run);
+    const fallback={key:'task-'+task.id,scope:{host:task.host||host,project:task.project||project},target:task.target||'container',status_code:task.status_code??100,status:task.status,phase:task.phase,metadata:task.metadata||{},err:task.err||'',started_at:task.created_at||task.timestamp||Date.now(),updated_at:Date.now(),output:[]};
+    appendCreationLog(fallback,fallback.err|| (fallback.status_code>=200?'Tarefa '+creationTaskStatus(fallback)+'.':'Tarefa enviada ao Incus.'));
+    return creationTaskViewer(fallback);
+  }
   const content=el('div',{class:'task-detail-view'},kv([['Operação',task.id],['Estado',task.status||'Em andamento'],['Alvo',task.target||'—'],['Etapa',task.phase||'—'],['Código do estado',task.status_code??'—']]));
   if(task.err)content.append(notice(task.err,true));
   const metadata=task.metadata&&typeof task.metadata==='object'?task.metadata:{};
@@ -1117,7 +1340,16 @@ function taskDetailView(task){
   return content;
 }
 async function openTaskDetail(task){
-  const dialog=$('#task-detail');$('#task-detail-title').textContent='Tarefa: '+(task.description||task.action||task.id);
+  const dialog=$('#task-detail');
+  if(task.action==='create'||/^CT .+ - Criar$/.test(task.description||'')){
+    const run=[...creationRuns.values()].find(item=>item.operation===task.id||item.target===task.target)||{key:'task-'+task.id,scope:{host:task.host||host,project:task.project||project},target:task.target||'container',status_code:task.status_code??100,metadata:task.metadata||{},phase:task.phase,err:task.err||'',started_at:task.created_at||task.timestamp||Date.now(),updated_at:Date.now(),output:[]};
+    appendCreationLog(run,run.err|| (run.status_code>=200?'Tarefa '+creationTaskStatus(run)+'.':'Tarefa enviada ao Incus.'));
+    openCreationTaskViewer(run);
+    if(run.status_code<200&&run.operation)resumeRun(run,pollCreation);
+    return;
+  }
+  delete dialog.dataset.taskRun;
+  $('#task-detail-title').textContent='Tarefa: '+(task.description||task.action||task.id);
   $('#task-detail-content').replaceChildren(taskDetailView(task));
   if(!dialog.open)dialog.showModal();
   if(task.status_code<200&&task.id){const scope={host,project},owner=session;try{const result=(await read('operation',task.id,scope)).data;if(session!==owner||!dialog.open)return;$('#task-detail-content').replaceChildren(taskDetailView({...task,...result}));}catch(error){if(dialog.open)$('#task-detail-content').append(errorNode(error));}}
