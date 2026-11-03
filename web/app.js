@@ -80,8 +80,64 @@ const date = n => n ? new Date(typeof n === 'number' ? n*1000 : n).toLocaleStrin
 const transportLabel = () => ({ssh:'SSH verificado',unix:'Socket local Incus',tls:'TLS verificado'})[session?.hosts.find(h=>h.id===host)?.transport||'tls'];
 const badge = (text, cls='') => el('span',{class:'badge '+cls},text);
 const status = text => el('span',{class:'status '+String(text).toLowerCase()},({'Running':'Em execução','Stopped':'Parado','Success':'Concluída','Failure':'Falhou','Running operation':'Em andamento'})[text] || text || 'Desconhecido');
-const json = value => el('pre',{},JSON.stringify(value,null,2));
-function inspect(value){const details=el('details',{},el('summary',{},'Inspecionar configuração'));let rendered=false;details.addEventListener('toggle',()=>{if(details.open&&!rendered){rendered=true;details.append(json(value));}});return details;}
+const propertyLabels={
+  'limits.memory':'Memória máxima','limits.cpu':'Núcleos de CPU','limits.cpu.allowance':'Limite de CPU','boot.autostart':'Iniciar no boot',
+  'security.protection.delete':'Proteção contra exclusão','image.description':'Sistema operacional','ipv4.address':'Endereço IPv4 / CIDR',
+  'ipv4.nat':'NAT IPv4','ipv6.address':'Endereço IPv6 / CIDR','ipv6.nat':'NAT IPv6','dns.domain':'Domínio DNS','dns.mode':'Modo DNS',
+  'download_progress':'Progresso do download','download_speed':'Velocidade do download','downloaded_bytes':'Dados recebidos','fingerprint':'Fingerprint da imagem',
+  'created_at':'Criada em','updated_at':'Atualizada em','status_code':'Código do estado','may_cancel':'Pode cancelar','err':'Erro'
+};
+function propertyName(key){return propertyLabels[key]||String(key).replaceAll('_',' ').replaceAll('.',' › ');}
+function propertyValue(value,depth=0,key=''){
+  if(value===null||value===undefined||value==='')return el('span',{class:'muted'},'—');
+  if(typeof value==='string'&&['true','false'].includes(value)&&/^(?:boot\.autostart|security\.protection\.|ipv[46]\.nat|features\.)/.test(key))return value==='true'?'Sim':'Não';
+  if(typeof value==='number'&&/(?:timestamp|_at)$/.test(key))return date(value);
+  if(typeof value==='number'&&/(?:bytes|size|usage|memory|total)$/i.test(key))return bytes(value);
+  if(typeof value==='boolean')return value?'Sim':'Não';
+  if(Array.isArray(value))return value.length?el('ul',{class:'property-list'},value.map(item=>el('li',{},propertyValue(item,depth+1)))):el('span',{class:'muted'},'Nenhum');
+  if(typeof value==='object')return depth<3?propertyTable(value,depth+1):el('span',{class:'muted'},Object.keys(value).length+' propriedades');
+  return String(value);
+}
+function propertyTable(value,depth=0){
+  const entries=Array.isArray(value)?value.map((item,index)=>[String(index+1),item]):Object.entries(value||{});
+  if(!entries.length)return empty('Nenhuma propriedade informada.');
+  return el('div',{class:'table-wrap property-wrap'},el('table',{class:'property-table'},el('thead',{},el('tr',{},el('th',{},'PROPRIEDADE'),el('th',{},'VALOR'))),el('tbody',{},entries.map(([key,item])=>el('tr',{},el('th',{scope:'row'},el('span',{},propertyName(key)),propertyLabels[key]?el('code',{},key):null),el('td',{},propertyValue(item,depth,key)))))));
+}
+function inspect(label,renderContent){
+  const details=el('details',{class:'resource-inspector'},el('summary',{},label));let rendered=false;
+  details.addEventListener('toggle',()=>{if(details.open&&!rendered){rendered=true;details.append(el('div',{class:'inspector-body'},renderContent()));}});return details;
+}
+function inspectResource(item,kind){
+  return inspect('Ver configuração e propriedades',()=>{
+    const body=el('div',{class:'inspector-sections'});
+    if(item.description)body.append(el('div',{},el('h3',{},'Descrição'),el('p',{},item.description)));
+    if(item.config)body.append(el('div',{},el('h3',{},kind==='network'?'Configuração da rede':'Configuração'),propertyTable(item.config)));
+    if(item.devices)body.append(el('div',{},el('h3',{},'Dispositivos do perfil'),propertyTable(item.devices)));
+    if(item.features)body.append(el('div',{},el('h3',{},'Recursos do projeto'),propertyTable(item.features)));
+    if(!body.childElementCount)body.append(empty('Nenhuma configuração adicional.'));
+    return body;
+  });
+}
+function operationMetadata(metadata){
+  const value=metadata&&typeof metadata==='object'?metadata:{};
+  if(!Object.keys(value).length)return el('span',{class:'muted'},'Aguardando detalhes');
+  const progress=Object.entries(value).find(([key,item])=>/progress/i.test(key)&&typeof item==='string')?.[1];
+  return inspect(progress||'Ver detalhes da operação',()=>propertyTable(value));
+}
+function extensionArea(name){
+  if(/cluster|member|raft/i.test(name))return 'Cluster';
+  if(/storage|volume|bucket/i.test(name))return 'Armazenamento';
+  if(/network|bridge|ovn|ovn|dns/i.test(name))return 'Rede';
+  if(/image|alias/i.test(name))return 'Imagens';
+  if(/project/i.test(name))return 'Projetos';
+  if(/profile/i.test(name))return 'Perfis';
+  if(/instance|container|console|exec/i.test(name))return 'Containers';
+  return 'Geral';
+}
+function extensionsView(extensions){
+  const items=Array.isArray(extensions)?extensions.slice().sort((a,b)=>a.localeCompare(b)):[];
+  return panel('Capacidades da API Incus',el('div',{class:'panel-body'},el('p',{class:'muted'},items.length+' extensões disponíveis neste servidor.'),table(['ÁREA','EXTENSÃO','ESTADO'],items.map(name=>[extensionArea(name),el('code',{},name),badge('Disponível','good')]))));
+}
 const panel = (title, content, action) => el('section',{class:'panel'},el('div',{class:'panel-head'},el('h2',{},title),action),content);
 const empty = text => el('div',{class:'empty'},text);
 const kv = pairs => el('dl',{class:'key-values'},pairs.map(([k,v])=>el('div',{},el('dt',{},k),el('dd',{},v ?? 'n/d'))));
@@ -331,12 +387,14 @@ async function render() {
     else if(r.page==='instance') container.append(await detail(r,scope));
     else if(r.page==='storage'||r.page==='alerts') container.append(await storageView(scope,r.page==='alerts'));
     else if(r.page==='volumes') container.append(await volumesView(scope));
-    else if(r.page==='server') container.append(panel('Identidade e capacidades',el('div',{class:'panel-body'},kv([['Servidor',server.environment?.server_name],['Arquitetura',server.environment?.kernel_architecture],['Incus',server.environment?.server_version],['Cluster',server.environment?.server_clustered?'Configurado':'Não configurado'],['VM','Fora do escopo: extensão não comprova KVM'],['Origem','Incus /1.0']]),json(server.api_extensions))));
+    else if(r.page==='server') container.append(el('div',{},
+      panel('Identidade do nó',el('div',{class:'panel-body'},kv([['Servidor',server.environment?.server_name],['Arquitetura',server.environment?.kernel_architecture],['Incus',server.environment?.server_version],['Cluster',server.environment?.server_clustered?'Configurado':'Não configurado'],['VM','Fora do escopo: extensão não comprova KVM'],['Origem','Incus /1.0']]))),
+      extensionsView(server.api_extensions)));
     else if(r.page==='images') container.append(await imagesView(scope,server));
     else if(['networks','profiles','projects'].includes(r.page)) {
       const result=await read(r.page,undefined,scope); const data=result.data;
       if(r.page==='networks'){
-        container.append(panel('Redes do nó',table(['NOME','TIPO','ATIVA','IPv4 / CIDR','IPv6 / CIDR','NAT','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.type,item.status||'n/d',item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',item.config?.['ipv4.nat']==='true'?'Sim':'Não',inspect(item)]))));
+        container.append(panel('Redes do nó',table(['NOME','TIPO','ATIVA','IPv4 / CIDR','IPv6 / CIDR','NAT','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.type,item.status||'n/d',item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',item.config?.['ipv4.nat']==='true'?'Sim':'Não',inspectResource(item,'network')]))));
         if(session.host_metrics)for(const network of data.filter(item=>item.managed&&item.type==='bridge')){
           try{
             const leases=(await read('network-leases',network.name,scope)).data;
@@ -345,12 +403,15 @@ async function render() {
         }
         else container.append(notice('A lista de leases DHCP pode incluir outros Projects e exige a permissão de métricas globais do host.'));
       }
-      else container.append(panel(title,table(['NOME','DESCRIÇÃO','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.description||'—',inspect(item)]))));
+      else container.append(panel(title,table(['NOME','DESCRIÇÃO','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.description||'—',inspectResource(item,r.page)]))));
       if(r.page==='projects')container.append(notice('A lista contém somente os escopos configurados no servidor do painel. A autorização final permanece no Incus.'));
     } else if(r.page==='tasks') container.append(await taskView(scope));
     else if(r.page==='create') container.append(await createView(scope,server));
     else if(r.page==='users') container.append(await usersView());
-    else if(r.page==='settings') container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only?'Somente leitura':'Mutações limitadas à allowlist'],['Autorização','Escopo no painel + '+transportLabel()],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice(session.low_resource?'Modo leve: inventário manual pelo botão Atualizar. Consulte Armazenamento e Alertas para verificar a capacidade dos pools.':'O inventário é atualizado a cada 15 segundos. Quando habilitados pelo administrador, eventos antecipam a atualização.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',json((await read('audit',undefined,scope)).data)));
+    else if(r.page==='settings') {
+      const audit=(await read('audit',undefined,scope)).data;
+      container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only?'Somente leitura':'Mutações limitadas à allowlist'],['Autorização','Escopo no painel + '+transportLabel()],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice(session.low_resource?'Modo leve: inventário manual pelo botão Atualizar. Consulte Armazenamento e Alertas para verificar a capacidade dos pools.':'O inventário é atualizado a cada 15 segundos. Quando habilitados pelo administrador, eventos antecipam a atualização.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',table(['HORA','USUÁRIO','ALVO','AÇÃO','RESULTADO'],audit.slice().reverse().map(item=>[date(item.timestamp),item.identity,item.target,item.action,item.result]))));
+    }
     else container.append(empty('Página não encontrada.'));
     if(id!==generation||!session)return;
     const tracked=[...tasks.values()].filter(t=>t.host===scope.host&&t.project===scope.project);
@@ -492,7 +553,7 @@ async function detail(r,scope) {
     const networks=(await read('networks',undefined,scope)).data;
     const used=new Set(Object.values(item.expanded_devices||{}).filter(d=>d.type==='nic').map(d=>d.network));
     wrapper.append(panel('DNS herdado da rede',table(['REDE','DOMÍNIO','MODO','GATEWAY IPv4'],networks.filter(n=>used.has(n.name)).map(n=>[n.name,n.config?.['dns.domain']||'Padrão do Incus',n.config?.['dns.mode']||'Padrão do Incus',n.config?.['ipv4.address']||'n/d']))),notice('O container recebe DNS pelo DHCP da bridge. Alterações feitas dentro do sistema convidado não são consultadas por esta tela.'));
-  } else if(r.tab==='devices')wrapper.append(panel('Dispositivos',table(['DISPOSITIVO','ORIGEM','CONFIGURAÇÃO'],Object.entries(item.expanded_devices||{}).map(([key,value])=>[key,Object.hasOwn(item.devices||{},key)?'Local':'Herdado de perfil',json(value)]))));
+  } else if(r.tab==='devices')wrapper.append(panel('Dispositivos',table(['DISPOSITIVO','ORIGEM','CONFIGURAÇÃO'],Object.entries(item.expanded_devices||{}).map(([key,value])=>[key,Object.hasOwn(item.devices||{},key)?'Local':'Herdado de perfil',inspect('Ver propriedades',()=>propertyTable(value))]))));
   else if(r.tab==='options')wrapper.append(editView(item,scope));
   else if(['snapshots','backups'].includes(r.tab)){
     const result=await read(r.tab,r.target,scope);
@@ -561,7 +622,7 @@ function editView(item,scope){
     }catch(error){message.textContent=error.message;message.setAttribute('role','alert');}
     finally{fields.disabled=!allowed;save.disabled=!allowed;}
   };
-  const output=el('div',{},panel('Editar container',form),el('details',{class:'panel technical-details'},el('summary',{},'Configuração técnica (somente leitura)'),el('div',{class:'panel-body'},el('h2',{},'Local'),json(item.config),el('h2',{},'Efetiva, incluindo perfis'),json(item.expanded_config))));
+  const output=el('div',{},panel('Editar container',form),el('details',{class:'panel technical-details'},el('summary',{},'Configuração técnica (somente leitura)'),el('div',{class:'panel-body inspector-sections'},el('section',{},el('h2',{},'Configuração local'),propertyTable(item.config)),el('section',{},el('h2',{},'Configuração efetiva, incluindo perfis'),propertyTable(item.expanded_config)))));
   if(session.role==='administrador'){
     const button=actionButton('Excluir container','delete',item.name);
     const protectedDelete=(item.expanded_config?.['security.protection.delete']??config['security.protection.delete'])==='true';
@@ -651,7 +712,7 @@ async function taskView(scope) {
     try{const data=all.get(task.id)||(task.status_code>=200?task:(await read('operation',task.id,scope)).data);const updated={...task,...data,...(task.action==='download-image'?{description:'Baixar '+task.target}:{})};trackTask(key,updated);all.set(task.id,updated);}catch(error){all.set(task.id,{...task,err:error.message});}
   }
   $('#task-summary').textContent=`${all.size} operações neste escopo · estado confirmado pelo Incus`;
-  return panel('Operações assíncronas',table(['UUID','DESCRIÇÃO','ESTADO','PROGRESSO / ERRO'],[...all.values()].map(i=>()=>[i.id,i.description||i.action,status(i.status),i.err||JSON.stringify(i.metadata||{})])));
+  return panel('Operações assíncronas',table(['UUID','DESCRIÇÃO','ESTADO','PROGRESSO / ERRO'],[...all.values()].map(i=>()=>[i.id,i.description||i.action,status(i.status),i.err?notice(i.err,true):operationMetadata(i.metadata)])));
 }
 async function imagesView(scope,server){
   const owner=session,key=scope.host+'/'+scope.project;
@@ -917,11 +978,19 @@ async function refreshTaskLog(){
     else{taskLogItems=Array.isArray(result)?result:Object.values(result).flat();renderTaskLog();}
   }catch(error){if(session===owner&&host===scope.host&&project===scope.project&&taskLogMode===mode)$('#task-log-content').replaceChildren(errorNode(error));}
 }
+function taskDetailView(task){
+  const content=el('div',{class:'task-detail-view'},kv([['Operação',task.id],['Estado',task.status||'Em andamento'],['Alvo',task.target||'—'],['Etapa',task.phase||'—'],['Código do estado',task.status_code??'—']]));
+  if(task.err)content.append(notice(task.err,true));
+  const metadata=task.metadata&&typeof task.metadata==='object'?task.metadata:{};
+  if(Object.keys(metadata).length)content.append(el('h3',{},'Detalhes informados pelo Incus'),propertyTable(metadata));
+  else if(!task.err)content.append(notice('O Incus ainda não informou detalhes adicionais para esta operação.'));
+  return content;
+}
 async function openTaskDetail(task){
   const dialog=$('#task-detail');$('#task-detail-title').textContent='Tarefa: '+(task.description||task.action||task.id);
-  $('#task-detail-content').replaceChildren(kv([['Operação',task.id],['Estado',task.status||'Em andamento'],['Alvo',task.target||'—']]),el('pre',{},task.err||JSON.stringify(task.metadata||{},null,2)));
+  $('#task-detail-content').replaceChildren(taskDetailView(task));
   if(!dialog.open)dialog.showModal();
-  if(task.status_code<200&&task.id){const scope={host,project},owner=session;try{const result=(await read('operation',task.id,scope)).data;if(session!==owner||!dialog.open)return;$('#task-detail-content').replaceChildren(kv([['Operação',task.id],['Estado',result.status]]),el('pre',{},result.err||JSON.stringify(result.metadata||{},null,2)));}catch(error){if(dialog.open)$('#task-detail-content').append(errorNode(error));}}
+  if(task.status_code<200&&task.id){const scope={host,project},owner=session;try{const result=(await read('operation',task.id,scope)).data;if(session!==owner||!dialog.open)return;$('#task-detail-content').replaceChildren(taskDetailView({...task,...result}));}catch(error){if(dialog.open)$('#task-detail-content').append(errorNode(error));}}
 }
 $('#close-task-detail').onclick=()=>$('#task-detail').close();
 $('#task-log-refresh').onclick=refreshTaskLog;
