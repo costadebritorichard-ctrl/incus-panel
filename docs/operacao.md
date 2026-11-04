@@ -8,6 +8,15 @@ Configure `read_only: true`, usuários e listas explícitas de Projects. Gere ha
 
 Instale em `/opt/incus-panel`, copie o exemplo de serviço e adapte o caminho/configuração. Crie um usuário de sistema dedicado sem shell administrativo. Configure proxy HTTPS no mesmo host, apontando para `127.0.0.1:8080`, com limite de tamanho de corpo de 64 KiB, timeout e rate limit adequados ao laboratório. Defina `origin` com o endereço exato do navegador. Os exemplos em `deploy/` não foram instalados automaticamente.
 
+Para acessar a mesma instalação por outros domínios HTTPS, configure
+`allowed_origins`, por exemplo `"allowed_origins": ["https://alias.example.invalid"]`,
+em `config.local.json` e reinicie o painel. Cada origem deve conter o esquema,
+domínio e porta quando não for 443, sem caminho nem barra final. A comparação é
+exata: não há curingas, e cabeçalhos Host/Forwarded não autorizam outros domínios.
+Login e ações aceitam a origem principal e as adicionais; as ações continuam
+exigindo o token CSRF. A atualização com `sudo python3 deploy/install.py --update-only`
+preserva essa configuração.
+
 ## F2 e F3 em ambiente isolado
 
 Crie um Project e um container descartável por procedimento administrativo externo. Inclua o nome exato em `mutable_instances[host][project]`, mude `read_only` para falso e atribua operador/admin ao usuário de teste. Nunca inclua `node1`, `node2` ou `php-site` de produção sem autorização específica. O serviço não faz descoberta automática de alvos mutáveis nem aceita curingas.

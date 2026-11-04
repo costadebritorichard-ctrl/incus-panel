@@ -111,6 +111,31 @@ class TLSAvailability(unittest.TestCase):
             with self.subTest(origin=origin, host=host):
                 self.assertEqual(self.post('127.0.0.1', origin=origin, host=host)[0], 403)
 
+    def test_proxy_domains_in_allowed_origins_support_login_and_csrf_logout(self):
+        primary = 'https://panel.example.invalid'
+        alias = 'https://alias.example.invalid'
+        self.server.app.config.update(origin=primary, allowed_origins=[alias])
+        for origin in (primary, alias):
+            with self.subTest(origin=origin):
+                status, headers, session = self.post('127.0.0.1', origin=origin)
+                self.assertEqual(status, 200)
+                self.assertIn('; Secure', headers['Set-Cookie'])
+                cookie = headers['Set-Cookie'].split(';')[0]
+                self.assertEqual(self.post('127.0.0.1', '/api/logout', origin=origin,
+                                           headers={'Cookie': cookie})[0], 403)
+                self.assertEqual(self.post('127.0.0.1', '/api/logout', origin=origin,
+                                           headers={'Cookie': cookie, 'X-CSRF-Token': session['csrf']})[0], 200)
+
+    def test_allowed_origins_require_exact_match_and_ignore_forwarded_headers(self):
+        self.server.app.config['allowed_origins'] = ['https://alias.example.invalid']
+        for origin in ('https://evil.example.invalid', 'https://alias.example.invalid.evil.test',
+                       'http://alias.example.invalid', 'https://alias.example.invalid:8444',
+                       'https://alias.example.invalid/path', 'null'):
+            with self.subTest(origin=origin):
+                self.assertEqual(self.post('127.0.0.1', origin=origin, host=origin.split('://')[-1],
+                                           headers={'X-Forwarded-Host': 'alias.example.invalid',
+                                                    'X-Forwarded-Proto': 'https'})[0], 403)
+
     def test_single_ip_listener_retains_exact_origin_policy(self):
         self.server.app.config['listen_host'] = '127.0.0.1'
         self.assertEqual(self.post('127.0.0.1')[0], 403)

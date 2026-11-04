@@ -5,6 +5,7 @@
   "enable_console": false,
   "enable_events": false,
   "origin": "https://panel.example.invalid",
+  "allowed_origins": [],
   "session_seconds": 1800,
   "hosts": [
     {

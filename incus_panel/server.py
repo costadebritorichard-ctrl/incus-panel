@@ -417,7 +417,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def origin_allowed(self):
         origin = self.headers.get("Origin", "")
-        if origin == self.app.config["origin"]:
+        allowed_origins = set(self.app.config.get("allowed_origins", []))
+        allowed_origins.add(self.app.config["origin"])
+        if origin in allowed_origins:
             return True
         # A wildcard HTTPS listener also accepts the IP actually reached by this
         # connection. Never trust Host/Forwarded alone to authorize an origin.
