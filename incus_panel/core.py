@@ -173,7 +173,7 @@ class Demo:
             elif path == "/1.0/networks":
                 result = [{"name": "labbr0", "type": "bridge", "managed": True, "status": "Created", "config": {"ipv4.nat": "true", "ipv4.address": "10.100.0.1/24"}}]
             elif len(parts) == 4 and parts[1] == "networks" and parts[3] == "leases":
-                result = [{"hostname": "lab-web", "hwaddr": "00:16:3e:12:34:56", "ipv4": "10.100.0.10", "ipv6": ""}]
+                result = [{"hostname": "lab-web", "hwaddr": "00:16:3e:12:34:56", "address": "10.100.0.10", "type": "dynamic"}]
             elif path == "/1.0/storage-pools":
                 result = [{"name": "lab", "driver": "btrfs", "status": "Created"}]
             elif len(parts) >= 3 and parts[1] == "storage-pools":
@@ -341,6 +341,10 @@ class Service:
         if resource in ("resources", "host-summary", "pools", "pool-resources", "volumes", "network-leases") and not user.get("host_metrics", False):
             raise PanelError(403, "Métricas globais não autorizadas para esta identidade.")
         data = client.request("GET", path, project)["metadata"]
+        if resource in ('instances', 'instance-list'):
+            data = [item for item in data if item.get('type') == 'container']
+        if resource == 'instance' and data.get('type') != 'container':
+            raise PanelError(403, 'Somente containers são permitidos neste painel.')
         if resource == 'instance-list':
             # Lists need identity/state and the effective deletion guard, never full configs/devices.
             data = [{**{k: item[k] for k in ('name', 'type', 'status', 'architecture') if k in item},

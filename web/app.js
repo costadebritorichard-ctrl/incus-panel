@@ -36,6 +36,19 @@ const iconPaths = {
   box: ['M12 3l9 5v9l-9 5-9-5V8Z', 'M3 8l9 5 9-5', 'M12 13v9', 'M7.5 5.5l9 5'],
   arrow: ['M5 12h14', 'M13 6l6 6-6 6'], shield: ['M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z', 'M8 12l3 3 5-6']
 };
+Object.assign(iconPaths,{
+  search:['M10 3a7 7 0 1 0 0 14a7 7 0 0 0 0-14','m15 15 6 6'],
+  summary:['M3 3h18v18H3Z','M3 9h18','M10 9v12'],
+  terminal:['m4 6 6 6-6 6','M13 18h7'],
+  network:['M9 3h6v6H9Z','M3 16h6v5H3Z','M15 16h6v5h-6Z','M12 9v4','M6 16v-3h12v3'],
+  storage:['M3 4h18v6H3Z','M3 14h18v6H3Z','M17 7h1','M17 17h1'],
+  settings:['M4 6h16','M4 12h16','M4 18h16','M8 3v6','M16 9v6','M10 15v6'],
+  history:['M12 3a9 9 0 1 0 9 9','M12 7v5l4 2'],
+  users:['M9 3a4 4 0 1 0 0 8a4 4 0 0 0 0-8','M2 21v-3a6 6 0 0 1 12 0v3','M16 4a4 4 0 0 1 0 7','M18 15a5 5 0 0 1 4 5'],
+  alert:['M12 3 2 21h20Z','M12 9v5','M12 17h.01'],
+  file:['M5 3h10l4 4v14H5Z','M15 3v5h4','M8 12h8','M8 16h8']
+});
+const navIcons={'⌕':'search','◫':'summary','>_':'terminal','▤':'storage','⌘':'network','☷':'settings','⚙':'settings','◷':'history','▣':'box','♙':'users','✎':'edit','▦':'summary','◉':'network','◇':'box','▱':'file','△':'alert'};
 function icon(name) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
   for(const [key,value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round',class:'icon','aria-hidden':'true',focusable:'false'}))svg.setAttribute(key,value);
@@ -69,7 +82,7 @@ const nodeTabs=[['search','⌕','Buscar'],['summary','◫','Sumário'],['notes',
 const storageTabs=[['summary','◫','Sumário'],['content','▤','Conteúdo'],['permissions','♙','Permissões']];
 const networkTabs=[['summary','◫','Sumário'],['permissions','♙','Permissões']];
 function trackTask(key,task){
-  tasks.set(key,task);
+  tasks.set(key,{...tasks.get(key),...task});
   if(tasks.size>100){const completed=[...tasks].find(([id,item])=>id!==key&&item.status_code>=200);tasks.delete(completed?.[0]||tasks.keys().next().value);}
   renderTaskLog();
 }
@@ -84,7 +97,7 @@ const date = n => n ? new Date(typeof n === 'number' ? n*1000 : n).toLocaleStrin
 const localDate = n => n ? new Date(typeof n==='number'&&n<1e12?n*1000:n).toLocaleString('pt-BR') : 'n/d';
 const transportLabel = () => ({ssh:'SSH verificado',unix:'Socket local Incus',tls:'TLS verificado'})[session?.hosts.find(h=>h.id===host)?.transport||'tls'];
 const badge = (text, cls='') => el('span',{class:'badge '+cls},text);
-const status = text => el('span',{class:'status '+String(text).toLowerCase()},({'Running':'Em execução','Stopped':'Parado','Success':'Concluída','Failure':'Falhou','Running operation':'Em andamento'})[text] || text || 'Desconhecido');
+const status = value => { const text=({'100':'Em andamento','103':'Em andamento','200':'Success','400':'Failure','401':'Failure','Cancelled':'Cancelada'})[String(value)]||value;return el('span',{class:'status '+String(text).toLowerCase()},({'Running':'Em execução','Stopped':'Parado','Success':'Concluída','Failure':'Falhou','Running operation':'Em andamento'})[text] || text || 'Desconhecido');};
 const propertyLabels={
   'limits.memory':'Memória máxima','limits.cpu':'Núcleos de CPU','limits.cpu.allowance':'Limite de CPU','boot.autostart':'Iniciar no boot',
   'security.protection.delete':'Proteção contra exclusão','image.description':'Sistema operacional','ipv4.address':'Endereço IPv4 / CIDR',
@@ -185,7 +198,7 @@ async function read(resource,target,scope={host,project}) {
   if(readCache.size>8)readCache.delete(readCache.keys().next().value);
   return entry.promise;
 }
-function route() { const [page='',target='',tab='summary'] = location.hash.slice(1).split('/').map(decodeURIComponent); return {page:page||'overview',target,tab}; }
+function route() { const [page='',target='',tab='summary'] = location.hash.slice(1).split('/').map(value=>{try{return decodeURIComponent(value);}catch{return value;}}); return {page:page||'overview',target,tab}; }
 function instanceLink(name, tab='summary') { return '#instance/'+encodeURIComponent(name)+'/'+tab; }
 function canMutate(target) { return !session.read_only && session.role!=='observador' && (session.manage_all_instances || (session.mutable_instances?.[host]?.[project] || []).includes(target)); }
 function actionButton(label, action, target, extra={}) { return el('button',{class:'action-button'+(action==='delete'?' danger-button':''),disabled:canMutate(target)?null:'',onclick:()=>openAction(action,target,extra)},...iconLabel(iconPaths[action]?action:'plus',label)); }
@@ -222,19 +235,21 @@ $('#action-form').onsubmit=async event=>{
       consoleId=result.console;$('#confirm').close();pollConsole();return;
     }
     const data=await api('/api/action',{...action,confirmation:`${action.host}/${action.project}/${action.target}${artifact?'/'+artifact:''}`,name:$('#artifact-name').value});
-    trackTask(`${action.host}/${action.project}/${data.operation}`,{...action,id:data.operation,status:'Aguardando confirmação',status_code:100});
+    trackTask(`${action.host}/${action.project}/${data.operation}`,{...action,id:data.operation,status:'Aguardando confirmação',status_code:100,...(action.action==='create'?{start_after_create:false}:{})});
     $('#submit-action').textContent='Aguardando o Incus…';
     const state=await waitOperation(data.operation,{host:action.host,project:action.project},owner);
     if(session!==owner)return;
     $('#confirm').close();
     notify(state.status_code<200?'Operação em andamento. Acompanhe em Tarefas.':({start:'Container iniciado.',stop:'Container parado.',restart:'Container reiniciado.',delete:'Container excluído.',create:'Container criado.'})[action.action]||'Operação concluída.');
     if(action.action==='delete'&&route().page==='instance'){location.hash='#instances';return;}
-    if(action.action==='create'||state.status_code<200){location.hash='#tasks';return;}
+    if(action.action==='create'){openTaskDetail({...action,...state,id:data.operation,start_after_create:false});return;}
+    if(state.status_code<200){location.hash='#tasks';return;}
     await render();
   } catch(error) { $('#action-error').textContent=error.message; }
   finally { $('#cancel-action').disabled=false; $('#submit-action').disabled=false;$('#submit-action').textContent='Confirmar operação'; }
 };
 function logoutLocal() {
+  closeCreateWizard();metricHistory.clear();resourceMenu?.remove();
   document.body.classList.add('low-resource');
   setMenu(false,{restoreFocus:false});
   closeConsole();
@@ -317,11 +332,11 @@ function fillProjects(preferred) {
   const projects=session.scopes[host]||[];
   project=projects.includes(preferred)?preferred:projects[0];
   $('#project').replaceChildren(...projects.map(p=>el('option',{value:p},p))); $('#project').value=project;
-  localStorage.setItem('incus-scope',JSON.stringify({host,project}));
+  try{localStorage.setItem('incus-scope',JSON.stringify({host,project}));}catch{}
   eventVersion=undefined;clearTimeout(eventTimer);eventTimer=setTimeout(pollEvents,2000);
 }
 $('#host').onchange=()=>{closeConsole();host=$('#host').value;fillProjects();render();};
-$('#project').onchange=()=>{closeConsole();readCache.clear();project=$('#project').value;localStorage.setItem('incus-scope',JSON.stringify({host,project}));eventVersion=undefined;clearTimeout(eventTimer);eventTimer=setTimeout(pollEvents,2000);render();};
+$('#project').onchange=()=>{closeConsole();readCache.clear();project=$('#project').value;try{localStorage.setItem('incus-scope',JSON.stringify({host,project}));}catch{}eventVersion=undefined;clearTimeout(eventTimer);eventTimer=setTimeout(pollEvents,2000);render();};
 $('#refresh').onclick=()=>{closeConsole();readCache.clear();render();}; $('#tree-view').onchange=()=>render();
 window.addEventListener('hashchange',()=>{setMenu(false,{restoreFocus:false});closeConsole();if(session)render();});
 document.addEventListener('visibilitychange',()=>{
@@ -329,7 +344,7 @@ document.addEventListener('visibilitychange',()=>{
   if(!session)return;
   for(const run of creationRuns.values())if(run.owner===session&&host===run.scope.host&&project===run.scope.project)resumeRun(run,pollCreation);
   for(const run of imageDownloads.values())if(watchingRun(run,'images'))resumeRun(run,pollImageDownload);
-  if(!session.low_resource){eventTimer=setTimeout(pollEvents,2000);if(!consoleId&&!menuOpen&&!$('#content form')&&!$('#confirm').open){readCache.clear();render();}else scheduleRefresh();}
+  if(!session.low_resource){eventTimer=setTimeout(pollEvents,2000);if(!consoleId&&!menuOpen&&!$('#content form')&&!$('#confirm').open&&!$('#create-dialog').open&&!$('#task-detail').open){readCache.clear();render();}else scheduleRefresh();}
 });
 function instanceActions(item){
   const actions=el('div',{class:'row-actions'});
@@ -355,12 +370,16 @@ function filteredInstances(items) {
   const filter=el('select',{'aria-label':'Filtrar estado'},el('option',{value:''},'Todos os estados'),el('option',{value:'Running'},'Em execução'),el('option',{value:'Stopped'},'Parados'));
   const sort=el('select',{'aria-label':'Ordenar containers'},el('option',{value:'name'},'Ordenar por nome'),el('option',{value:'status'},'Ordenar por estado'));
   const holder=el('div');
-  function update(){const term=input.value.toLowerCase();holder.replaceChildren(instanceTable(items.filter(i=>(!filter.value||i.status===filter.value)&&[i.name,i.status,i.architecture].join(' ').toLowerCase().includes(term)).sort((a,b)=>String(a[sort.value]).localeCompare(String(b[sort.value])))));}
+  function update(){const term=input.value.toLowerCase();holder.replaceChildren(instanceTable(items.filter(i=>(!filter.value||i.status===filter.value)&&[i.name,i.status,i.status==='Running'?'Em execução':i.status==='Stopped'?'Parado':'',i.architecture].join(' ').toLowerCase().includes(term)).sort((a,b)=>String(a[sort.value]).localeCompare(String(b[sort.value])))));}
   let filterTimer;input.oninput=()=>{clearTimeout(filterTimer);filterTimer=setTimeout(update,120);};filter.onchange=update;sort.onchange=update;update();
   return el('div',{},el('div',{class:'toolbar'},input,filter,sort,el('a',{href:'#create',class:'primary button-link'},...iconLabel('plus','Criar container'))),panel('Seus containers',holder));
 }
 async function render() {
   if(!session)return;
+  // Compatibility for old bookmarks; creation is an overlay, never a workspace page.
+  if(route().page==='create'){history.replaceState(null,'',lastWorkspaceHash);if(!$('#content').childElementCount)await render();openCreateWizard();return;}
+  lastWorkspaceHash=location.hash||'#overview';
+  if(createScope&&(createScope.host!==host||createScope.project!==project))closeCreateWizard();
   clearTimeout(timer); const id=++generation; const scope={host,project}; const r=route(); busy=true;
   const title=r.page==='overview'?'Datacenter':r.page==='server'?`${serverInfo.environment?.server_name||host} · ${nodeTabs.find(([key])=>key===(r.target||'summary'))?.[2]||'Nó'}`:r.page==='storage'&&r.target?r.target:r.page==='network'&&r.target?r.target:pages.find(p=>p[0]===r.page)?.[2] || (r.page==='instance'?'Container '+r.target:r.page==='create'?'Criar CT':'Página não encontrada');
   $('#title').textContent=title; $('#breadcrumb').textContent=`${host} / ${project} / ${title}`;
@@ -370,9 +389,8 @@ async function render() {
   $('#navigation').replaceChildren(...navigationItems.map(([key,symbol,label])=>{
     const active=r.page==='instance'?r.tab===key:r.page==='server'?(r.target===key||(!r.target&&key==='summary')):r.page==='storage'&&r.target?r.tab===key:r.page==='network'?r.tab===key:r.page===key;
     const href=r.page==='instance'?instanceLink(r.target,key):r.page==='server'?'#server/'+key:r.page==='storage'&&r.target?'#storage/'+encodeURIComponent(r.target)+'/'+key:r.page==='network'?'#network/'+encodeURIComponent(r.target)+'/'+key:'#'+key;
-    return el('a',{href,class:active?'active':'','aria-current':active?'page':null},el('span',{},symbol),label);
+    return el('a',{href,class:active?'active':'','aria-current':active?'page':null},icon(navIcons[symbol]||'box'),label);
   }));
-  if(r.page!=='create'&&$('#create-dialog').open)$('#create-dialog').close();
   $('#banner').hidden=!session.demo; $('#banner').textContent='DEMONSTRAÇÃO · Todos os dados e operações são simulados em memória. Nada é enviado a um servidor Incus real.';
   $('#connection').textContent='Consultando Incus…'; $('#content').setAttribute('aria-busy','true');
   $('#content').replaceChildren(loadingView(route().page==='create'?'Carregando imagens disponíveis…':'Carregando '+title+'…'));
@@ -389,7 +407,8 @@ async function render() {
     storageInventory=poolsForTree.status==='fulfilled'?poolsForTree.value.data:[];
     networkInventory=networksForTree.status==='fulfilled'?networksForTree.value.data:[];
     renderResourceTree();
-    $('#create-ct').setAttribute('aria-disabled',String(session.read_only||session.role==='observador'));
+    $('#create-ct').disabled=!canCreate();
+    $('#create-ct').setAttribute('aria-disabled',String(!canCreate()));
     if(r.page==='overview') {
       container.append(await datacenterSummaryView(scope,server,instances));
     } else if(r.page==='datacenter-notes')container.append(datacenterNotesView());
@@ -418,13 +437,13 @@ async function render() {
     else if(['profiles','projects'].includes(r.page)) {
       const result=await read(r.page,undefined,scope); const data=result.data;
       container.append(panel(title,table(['NOME','DESCRIÇÃO','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.description||'—',inspectResource(item,r.page)]))));
+      container.append(notice('Consulta de '+(r.page==='profiles'?'perfis':'projetos')+'. A criação e a edição são feitas diretamente no Incus.'));
       if(r.page==='projects')container.append(notice('A lista contém somente os escopos configurados no servidor do painel. A autorização final permanece no Incus.'));
     } else if(r.page==='tasks') container.append(await taskView(scope));
-    else if(r.page==='create') container.append(await createView(scope,server));
     else if(r.page==='users') container.append(await usersView());
     else if(r.page==='settings') {
       const audit=(await read('audit',undefined,scope)).data;
-      container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only?'Somente leitura':'Mutações limitadas à allowlist'],['Autorização','Escopo no painel + '+transportLabel()],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice(session.low_resource?'Modo leve: inventário manual pelo botão Atualizar. Consulte Armazenamento e Alertas para verificar a capacidade dos pools.':'O inventário é atualizado a cada 15 segundos. Quando habilitados pelo administrador, eventos antecipam a atualização.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',table(['HORA','USUÁRIO','ALVO','AÇÃO','RESULTADO'],audit.slice().reverse().map(item=>[date(item.timestamp),item.identity,item.target,item.action,item.result]))));
+      container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only||session.role==='observador'?'Somente leitura':session.manage_all_instances?'Administração dos containers autorizados':'Alterações limitadas aos nomes autorizados'],['Autorização','Escopo no painel + '+transportLabel()],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice(session.low_resource?'Modo leve: inventário manual pelo botão Atualizar. Consulte Armazenamento e Alertas para verificar a capacidade dos pools.':'O inventário é atualizado a cada 15 segundos. Quando habilitados pelo administrador, eventos antecipam a atualização.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',table(['HORA','USUÁRIO','ALVO','AÇÃO','RESULTADO'],audit.slice().reverse().map(item=>[date(item.timestamp),item.identity,item.target,item.action,item.result]))));
     }
     else container.append(empty('Página não encontrada.'));
     if(id!==generation||!session)return;
@@ -440,13 +459,13 @@ async function render() {
     if(id===generation){busy=false;$('#content').removeAttribute('aria-busy');scheduleRefresh();}
   }
 }
-function scheduleRefresh(){clearTimeout(timer);if(session?.low_resource)return;timer=setTimeout(()=>{if(!session)return;if(!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement))render();else scheduleRefresh();},15000);}
+function scheduleRefresh(){clearTimeout(timer);if(session?.low_resource)return;timer=setTimeout(()=>{if(!session)return;if(!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!$('#create-dialog').open&&!$('#task-detail').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement))render();else scheduleRefresh();},15000);}
 async function pollEvents(){
   if(!session||session.low_resource||document.hidden)return;const scope=host+'/'+project;
   try{const result=await api('/api/events?'+new URLSearchParams({host,project}));if(!session||scope!==host+'/'+project)return;if(!result.enabled)return;
     const changed=result.version!==eventVersion;eventVersion=result.version;
     if(!result.connected){$('#connection').textContent='Eventos desconectados · fallback REST ativo';}
-    if(changed&&!busy&&!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement)){readCache.clear();await render();}
+    if(changed&&!busy&&!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!$('#create-dialog').open&&!$('#task-detail').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement)){readCache.clear();await render();}
   }catch{}
   if(session)eventTimer=setTimeout(pollEvents,2000);
 }
@@ -476,7 +495,9 @@ async function permissionsView(scope,instances){
   return panel('Permissões efetivas',body);
 }
 async function datacenterBackupsView(scope,instances){
-  const selected=instances.slice(0,100),results=await Promise.allSettled(selected.map(item=>read('backups',item.name,scope)));
+  const selected=instances.slice(0,100),results=[];
+  // Keep the lightweight server's four request slots available to other views.
+  for(let offset=0;offset<selected.length;offset+=2)results.push(...await Promise.allSettled(selected.slice(offset,offset+2).map(item=>read('backups',item.name,scope))));
   const rows=[],failures=[];
   results.forEach((result,index)=>{
     const item=selected[index];
@@ -510,16 +531,18 @@ async function storageDetailView(scope,target,tab='summary'){
     panel('Detalhes',el('div',{class:'panel-body'},kv([['Nome',pool.name],['Driver',pool.driver],['Estado',pool.status],['Utilizado',bytes(space?.used)],['Capacidade',bytes(space?.total)],['Coletado em',date(usage.timestamp)]]))));
 }
 async function networkDetailView(scope,target,tab='summary'){
-  const networks=(await read('networks',undefined,scope).catch(error=>({data:[],error}))).data||networkInventory;
+  const networks=(await read('networks',undefined,scope)).data;
   const network=networks.find(item=>item.name===target);
   if(!network)return errorNode(new Error('Rede indisponível neste projeto.'));
   if(tab==='permissions')return el('div',{},await permissionsView(scope,inventory),notice('A rede é visível neste projeto conforme as permissões devolvidas pelo Incus. O painel não configura ACLs de rede separadas.'));
-  const attached=inventory.filter(item=>Object.values(item.expanded_devices||{}).some(device=>device.type==='nic'&&(device.network===network.name||device.parent===network.name)));
+  const instances=await read('instances',undefined,scope).catch(error=>({data:[],error}));
+  const attached=instances.data.filter(item=>Object.values(item.expanded_devices||{}).some(device=>device.type==='nic'&&(device.network===network.name||device.parent===network.name)));
   const body=panel('Configuração da rede',el('div',{class:'panel-body'},kv([['Nome',network.name],['Tipo',network.type],['Gerenciada',network.managed?'Sim':'Não'],['Estado',network.status],['Gateway / CIDR IPv4',network.config?.['ipv4.address']],['Faixa DHCP IPv4',network.config?.['ipv4.dhcp.ranges']],['DHCP IPv4',network.config?.['ipv4.dhcp']],['NAT IPv4',network.config?.['ipv4.nat']],['IPv6 / CIDR',network.config?.['ipv6.address']],['Domínio DNS',network.config?.['dns.domain']],['Projeto',scope.project]]),inspectResource(network,'network')));
   const result=el('div',{class:'dashboard-view'},el('div',{class:'grid dashboard-top'},healthView(network.name,network.status==='Created',network.type+' · '+(network.managed?'gerenciada pelo Incus':'externa')),body),panel('Containers conectados',instanceTable(attached)));
+  if(instances.error)result.append(errorNode(instances.error));
   if(session.host_metrics&&network.managed&&network.type==='bridge'){
     const leases=await read('network-leases',network.name,scope).catch(error=>({error}));
-    result.append(leases.error?errorNode(leases.error):panel('Leases DHCP',table(['HOSTNAME','MAC','IPv4','IPv6'],(leases.data||[]).map(item=>[item.hostname||'—',item.hwaddr||'—',item.ipv4||'—',item.ipv6||'—']))));
+    result.append(leases.error?errorNode(leases.error):panel('Leases DHCP',table(['HOSTNAME','MAC','IPv4','IPv6'],(leases.data||[]).map(item=>[item.hostname||'—',item.hwaddr||'—',item.ipv4||(item.address&&!item.address.includes(':')?item.address:'—'),item.ipv6||(item.address?.includes(':')?item.address:'—')]))));
   }else result.append(notice('A lista global de leases DHCP exige métricas do host e só está disponível para bridges gerenciadas.'));
   return result;
 }
@@ -636,7 +659,7 @@ async function networksView(scope){
       item.name,item.type,item.status||'n/d',item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',item.config?.['ipv4.nat']==='true'?'Sim':'Não',inspectResource(item,'network')
     ]))));
     if(session.host_metrics)for(const network of data.filter(item=>item.managed&&item.type==='bridge')){
-      try{const leases=(await read('network-leases',network.name,scope)).data;content.append(panel('Leases DHCP · '+network.name,table(['HOSTNAME','MAC','IPv4','IPv6'],leases.map(lease=>[lease.hostname||'—',lease.hwaddr||'—',lease.ipv4||'—',lease.ipv6||'—']))));}
+      try{const leases=(await read('network-leases',network.name,scope)).data;content.append(panel('Leases DHCP · '+network.name,table(['HOSTNAME','MAC','IPv4','IPv6'],leases.map(lease=>[lease.hostname||'—',lease.hwaddr||'—',lease.ipv4||(lease.address&&!lease.address.includes(':')?lease.address:'—'),lease.ipv6||(lease.address?.includes(':')?lease.address:'—')]))));}
       catch(error){content.append(errorNode(error));}
     }else content.append(notice('A lista de leases DHCP pode incluir outros Projects e exige a permissão de métricas globais do host.'));
     return content;
@@ -707,7 +730,7 @@ function userScopesField(initial={}) {
 }
 function userForm(initial=null) {
   const creating=!initial;
-  const username=el('input',{name:'username',required:'',maxlength:'64',pattern:'[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}',autocomplete:'username',value:initial?.username||'',readonly:creating?null:''});
+  const username=el('input',{name:'username',required:'',maxlength:'64',pattern:'[A-Za-z0-9][A-Za-z0-9_.@\\-]{0,63}',autocomplete:'username',value:initial?.username||'',readonly:creating?null:''});
   const role=el('select',{name:'role'},el('option',{value:'observador'},'Observador'),el('option',{value:'operador'},'Operador'),el('option',{value:'administrador'},'Administrador'));
   role.value=initial?.role||'observador';
   const password=el('input',{name:'password',type:'password',autocomplete:'new-password',minlength:'12',maxlength:'256',required:creating?'':null,placeholder:creating?'Mínimo 12 caracteres':'Deixe vazio para manter a senha'});
@@ -725,6 +748,7 @@ function userForm(initial=null) {
   }
   form.onsubmit=async event=>{
     event.preventDefault();if(save.disabled)return;
+    if(!form.querySelector('input[name=project]:checked')){feedback.textContent='Selecione pelo menos um projeto autorizado.';return;}
     save.disabled=true;feedback.textContent='Salvando…';
     try{
       const selected={};
@@ -777,7 +801,7 @@ function instanceSummaryView(scope,item,state,stateResultTimestamp){
   const addresses=Object.values(state.network||{}).flatMap(network=>network?.addresses||[]).filter(address=>['inet','inet6'].includes(address.family)).map(address=>address.address+(address.netmask?'/'+address.netmask:''));
   const privileged=(item.expanded_config?.['security.privileged']??item.config?.['security.privileged'])==='true';
   const statePanel=panel('Estado',el('div',{class:'panel-body resource-summary-state'},kv([
-    ['Status',status(state.status)],['Estado HA','Não aplicável ao Incus'],['Nó',scope.host],['Sem privilégios',privileged?'Não':'Sim'],
+    ['Status',status(state.status)],['Nó',scope.host],['Sem privilégios',privileged?'Não':'Sim'],
     ['Uso de CPU',cpu===null?'n/d':fmt(cpu)+' s acumulados'],['Memória em uso',memory==null?'n/d':bytes(memory)],['Limite de memória',item.expanded_config?.['limits.memory']||'Sem limite explícito'],
     ['Swap',state.memory?.swap_usage==null?'n/d':bytes(state.memory.swap_usage)],['Disco raiz',root?.[1]?.size||'Capacidade do pool'],['IPs',addresses.join(', ')||'Sem informação de rede']
   ])));
@@ -1085,22 +1109,43 @@ async function pollImageDownload(run){
   }catch(error){if(session===run.owner){run.connectionError=error.message;updateImageDownload(run);}}
   finally{run.polling=false;}
 }
-let createReturnHash='#instances';
-document.addEventListener('click',event=>{if(event.target.closest('a[href="#create"]')&&route().page!=='create')createReturnHash=location.hash||'#overview';});
-function closeCreateWizard(){if($('#create-dialog').open)$('#create-dialog').close();if(route().page==='create')location.hash=createReturnHash;}
+let lastWorkspaceHash='#overview',createRequest=0,createScope;
+function canCreate(){return session&&!session.read_only&&session.role!=='observador'&&(session.manage_all_instances||(session.mutable_instances?.[host]?.[project]||[]).length>0);}
+const createTrigger=el('button',{id:'create-ct',class:'primary',type:'button',onclick:()=>openCreateWizard()},...iconLabel('plus','Criar CT'));
+$('#create-ct').replaceWith(createTrigger);
+document.addEventListener('click',event=>{
+  if(event.target.closest('a[href="#create"]')){event.preventDefault();openCreateWizard();}
+  else if(event.target.closest('#task-detail a[href^="#"]'))$('#task-detail').close();
+});
+function closeCreateWizard(){createRequest++;createScope=null;$('#create-ct').removeAttribute('aria-busy');$('#create-ct').disabled=!canCreate();if($('#create-dialog').open)$('#create-dialog').close();}
+async function openCreateWizard(){
+  if(!canCreate()){notify('A criação exige permissão de escrita e um nome autorizado neste projeto.');return;}
+  if(createScope||$('#create-dialog').open)return;
+  const scope={host,project},owner=session,key=host+'/'+project,active=creationRuns.get(key);
+  if(active&&active.status_code<200){openCreationTaskViewer(active);resumeRun(active,pollCreation);return;}
+  const request=++createRequest;createScope=scope;
+  $('#create-ct').setAttribute('aria-busy','true');$('#create-ct').disabled=true;
+  try{
+    const server=(await read('server',undefined,scope)).data;
+    await createView(scope,server,request);
+  }catch(error){
+    if(session===owner&&request===createRequest){closeCreateWizard();notify(error.message);}
+  }finally{
+    if(request===createRequest){$('#create-ct').removeAttribute('aria-busy');$('#create-ct').disabled=!canCreate();}
+  }
+}
 $('#close-create').onclick=closeCreateWizard;
 $('#create-dialog').addEventListener('cancel',event=>{event.preventDefault();closeCreateWizard();});
-async function createView(scope,server) {
+async function createView(scope,server,request=createRequest) {
   const key=scope.host+'/'+scope.project;
-  if(creationRuns.has(key)){const run=creationRuns.get(key);resumeRun(run,pollCreation);openCreationTaskViewer(run);return creationScreen(run);}
   const owner=session;
-  const [catalog,poolsResult,networksResult,profilesResult]=await Promise.all([read('creation-images',undefined,scope),session.host_metrics?read('pools',undefined,scope):Promise.resolve({data:[]}),read('networks',undefined,scope),read('profiles',undefined,scope)]);
-  if(session!==owner||route().page!=='create'||host!==scope.host||project!==scope.project)return el('div');
+  const [catalog,poolsResult,networksResult,profilesResult,instancesResult]=await Promise.all([read('creation-images',undefined,scope),session.host_metrics?read('pools',undefined,scope):Promise.resolve({data:[]}),read('networks',undefined,scope),read('profiles',undefined,scope),read('instance-list',undefined,scope)]);
+  if(session!==owner||request!==createRequest||host!==scope.host||project!==scope.project)return el('div');
   const images=catalog.data.images,pools=poolsResult.data.filter(p=>p.status==='Created'),networks=networksResult.data.filter(n=>n.managed&&n.type==='bridge'&&n.status==='Created');
   const profile=profilesResult.data.find(p=>p.name==='default');
-  const target=el('input',{name:'container-name',maxlength:'63',pattern:'[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?',placeholder:'Gerar automaticamente',autocomplete:'off',required:session.manage_all_instances?null:''});
-  const description=el('textarea',{name:'description',rows:'2',maxlength:'2048'});
-  const image=el('select',{name:'image',required:''},images.map(i=>el('option',{value:i.id},i.label+(i.remote_image?' · download':' · local'))));
+  const target=el('input',{name:'container-name',maxlength:'63',pattern:'[a-zA-Z0-9]([a-zA-Z0-9\\-]*[a-zA-Z0-9])?',placeholder:'Ex.: servidor-web',autocomplete:'off',required:''});
+  const description=el('textarea',{name:'description',rows:'2',maxlength:'1024'});
+  const image=el('select',{name:'image',required:''},el('option',{value:''},'Selecione um template…'),images.map(i=>el('option',{value:i.id},i.label+(i.remote_image?' · download':' · local'))));
   const pool=el('select',{name:'pool',required:session.host_metrics?'':null},pools.map(p=>el('option',{value:p.name},p.name+' ('+p.driver+')')));
   if(!session.host_metrics)pool.append(el('option',{value:''},'Automático / perfil default'));
   const defaultRoot=Object.values(profile?.devices||{}).find(d=>d.type==='disk'&&d.path==='/');if(pools.some(p=>p.name===defaultRoot?.pool))pool.value=defaultRoot.pool;
@@ -1115,7 +1160,7 @@ async function createView(scope,server) {
   const ipv4=el('input',{name:'ipv4',placeholder:'Ex.: 10.100.0.10',disabled:''});
   const subnet=el('input',{readonly:'','aria-label':'Sub-rede IPv4'}),domain=el('input',{readonly:''}),dnsMode=el('input',{readonly:''});
   const autostart=el('input',{name:'autostart',type:'checkbox'}),start=el('input',{name:'start-after-create',type:'checkbox',checked:''});
-  const field=(label,input,cls)=>el('label',{class:cls},label,input);
+  const field=(label,input,cls)=>el('label',{class:cls},el('span',{},label,input.required?el('span',{class:'required-mark','aria-hidden':'true'},' *'):null),input);
   const fields=(...nodes)=>el('div',{class:'wizard-fields'},nodes);
   const page=(...nodes)=>el('section',{class:'wizard-page',role:'tabpanel'},nodes);
   const unprivileged=el('input',{type:'checkbox',checked:session.manage_all_instances||profile?.config?.['security.privileged']!=='true'?'':null,disabled:''});
@@ -1131,20 +1176,51 @@ async function createView(scope,server) {
     page(review,fields(field('Iniciar após criar',start,'full')))
   ];
   const titles=['Geral','Template','Disco','CPU','Memória','Rede','DNS','Confirmar'];
-  const tabs=el('div',{class:'wizard-tabs',role:'tablist','aria-label':'Etapas de criação'}),error=el('p',{class:'wizard-error',role:'alert'});
-  let step=0;
-  const back=el('button',{type:'button',onclick:()=>show(step-1)},'Anterior'),next=el('button',{type:'button',onclick:()=>{if(validate(step))show(step+1);}},'Próximo'),submit=el('button',{type:'submit',class:'primary'},'Criar');
+  const tabs=el('div',{class:'wizard-tabs',role:'tablist','aria-label':'Etapas de criação'}),error=el('p',{id:'wizard-error',class:'wizard-error',role:'status','aria-live':'polite'});
+  let step=0,reached=0;
+  const back=el('button',{id:'wizard-back',type:'button',onclick:()=>show(step-1)},'Anterior'),next=el('button',{id:'wizard-next',type:'button',class:'primary',onclick:()=>advance()},'Próximo'),submit=el('button',{id:'wizard-submit',type:'submit',class:'primary'},'Criar');
   const form=el('form',{class:'wizard-form',novalidate:''},tabs,...sections,error,el('div',{class:'wizard-footer'},el('small',{},'Container Incus · '+scope.host+' / '+scope.project),el('button',{type:'button',onclick:closeCreateWizard},'Cancelar'),back,next,submit));
-  const tabButtons=titles.map((title,index)=>{const button=el('button',{type:'button',role:'tab',id:'wizard-tab-'+index,'aria-controls':'wizard-page-'+index,onclick:()=>{if(index<=step||validateThrough(index))show(index);}},title);sections[index].id='wizard-page-'+index;sections[index].setAttribute('aria-labelledby',button.id);return button;});tabs.append(...tabButtons);
+  const tabButtons=titles.map((title,index)=>{const button=el('button',{type:'button',role:'tab',id:'wizard-tab-'+index,'aria-controls':'wizard-page-'+index,onclick:()=>{if(index<=reached&&(index<=step||validateThrough(index)))show(index);}},title);sections[index].id='wizard-page-'+index;sections[index].setAttribute('aria-labelledby',button.id);return button;});tabs.append(...tabButtons);
+  function invalidField(index){
+    target.setCustomValidity('');ipv4.setCustomValidity('');
+    const name=target.value;
+    if(name&&instancesResult.data.some(item=>item.name.toLowerCase()===name.toLowerCase()))target.setCustomValidity('Já existe um container com este nome no projeto.');
+    else if(name&&!session.manage_all_instances&&!(session.mutable_instances?.[scope.host]?.[scope.project]||[]).includes(name))target.setCustomValidity('Escolha um nome autorizado para sua conta neste projeto.');
+    if(!ipv4.disabled&&ipv4.value){
+      const config=networks.find(n=>n.name===network.value)?.config||{};
+      const parse=value=>/^(0|[1-9]\d{0,2})(\.(0|[1-9]\d{0,2})){3}$/.test(value)&&value.split('.').every(part=>Number(part)<=255)?value.split('.').reduce((n,part)=>n*256+Number(part),0):null;
+      const [gateway,prefix]=String(config['ipv4.address']||'').split('/'),address=parse(ipv4.value),gw=parse(gateway),bits=Number(prefix),size=2**(32-bits),base=Math.floor(gw/size)*size;
+      if(address===null||gw===null||!/^\d+$/.test(prefix||'')||bits<0||bits>32||address<=base||address>=base+size-1||address===gw||config['ipv4.dhcp']==='false')ipv4.setCustomValidity('Informe um IPv4 válido e livre na sub-rede da bridge, diferente do gateway, com DHCP habilitado.');
+      else if(instancesResult.data.some(item=>Object.values(item.expanded_devices||{}).some(device=>device.network===network.value&&device['ipv4.address']===ipv4.value)))ipv4.setCustomValidity('Este IPv4 já está reservado para outro container nesta rede.');
+    }
+    return [...sections[index].querySelectorAll('input,select,textarea')].find(input=>!input.disabled&&!input.validity.valid);
+  }
+  function fieldMessage(input){
+    const label=input.closest('label')?.querySelector('span')?.textContent.replace(' *','')||'Campo';
+    if(input.validity.customError)return input.validationMessage;
+    if(input.validity.valueMissing)return 'Preencha '+label+' para continuar.';
+    if(input===target)return 'Use até 63 letras, números e hífens, sem hífen no início ou no fim.';
+    if(input.type==='number')return `${label}: informe um número inteiro de ${input.min} a ${input.max}.`;
+    return label+': '+input.validationMessage;
+  }
   function validate(index){
-    error.textContent='';
-    for(const input of sections[index].querySelectorAll('input,select,textarea'))if(!input.checkValidity()){input.reportValidity();return false;}
-    if(index===1&&!images.length){error.textContent='Nenhuma imagem compatível. Baixe um template e tente novamente.';return false;}
-    if(index===2&&session.manage_all_instances&&session.host_metrics&&!pool.value){error.textContent='Nenhum pool disponível. Configure o armazenamento no Incus.';return false;}
-    if(index===5&&session.manage_all_instances&&!network.value){error.textContent='Nenhuma bridge gerenciada disponível. Configure a rede no Incus.';return false;}
+    const invalid=invalidField(index);
+    if(invalid){show(index);invalid.setAttribute('aria-invalid','true');error.textContent=fieldMessage(invalid);invalid.focus();return false;}
     return true;
   }
-  function validateThrough(index){for(let i=0;i<index;i++)if(!validate(i)){const message=error.textContent;show(i);error.textContent=message;return false;}return true;}
+  function validateThrough(index){for(let i=0;i<index;i++)if(!validate(i))return false;return true;}
+  function updateValidity(){
+    const invalid=invalidField(step);
+    next.disabled=Boolean(invalid);submit.disabled=!canCreate()||Boolean(invalid)||!images.length;
+    error.textContent=invalid?fieldMessage(invalid):'* Campos obrigatórios. Revise cada etapa antes de continuar.';
+    for(const input of sections[step].querySelectorAll('input,select,textarea')){
+      input.setAttribute('aria-describedby','wizard-error');
+      if(input!==invalid)input.removeAttribute('aria-invalid');
+    }
+    if(invalid)reached=Math.min(reached,step);
+    tabButtons.forEach((button,i)=>{button.disabled=i>reached;button.title=i>reached?'Conclua as etapas anteriores':titles[i];});
+  }
+  function advance(){if(validate(step)){reached=Math.max(reached,step+1);show(step+1);}}
   function show(index){
     step=Math.max(0,Math.min(7,index));error.textContent='';
     sections.forEach((section,i)=>section.hidden=i!==step);
@@ -1152,42 +1228,45 @@ async function createView(scope,server) {
     back.disabled=step===0;next.hidden=step===7;submit.hidden=step!==7;submit.disabled=session.read_only||session.role==='observador'||!images.length;
     if(step===7){
       const inherited=!session.manage_all_instances,config=profile?.config||{};
-      review.replaceChildren(table(['PARÂMETRO','VALOR'],[['Nó',scope.host],['Projeto',scope.project],['Nome',target.value.trim()||'Gerado automaticamente'],['Template',images.find(i=>i.id===image.value)?.label||'—'],['Disco raiz',(pool.value||defaultRoot?.pool||'Automático')+(disk.value&&!disk.disabled?' · '+disk.value+' GiB':' · capacidade do pool')],['CPU',inherited?(config['limits.cpu']||'Herdado do perfil default'):cores.value+' núcleo(s) · '+allowance.value+'%'],['Memória',inherited?(config['limits.memory']||'Herdada do perfil default'):memory.value+' MiB'],['Rede',inherited?(defaultNic?.network||defaultNic?.parent||'Herdada do perfil default'):network.value+' · '+(ipv4Mode.value==='static'?ipv4.value:'DHCP')],['DNS',domain.value],['Inicializar no boot',inherited?(config['boot.autostart']||'Herdado do perfil default'):autostart.checked?'Sim':'Não'],['Descrição',inherited?'Herdada do perfil default':description.value||'—']]));
+      review.replaceChildren(table(['PARÂMETRO','VALOR'],[['Nó',scope.host],['Projeto',scope.project],['Nome',target.value.trim()],['Template',images.find(i=>i.id===image.value)?.label||'—'],['Disco raiz',(pool.value||defaultRoot?.pool||'Automático')+(disk.value&&!disk.disabled?' · '+disk.value+' GiB':' · capacidade do pool')],['CPU',inherited?(config['limits.cpu']||'Herdado do perfil default'):cores.value+' núcleo(s) · '+allowance.value+'%'],['Memória',inherited?(config['limits.memory']||'Herdada do perfil default'):memory.value+' MiB'],['Rede',inherited?(defaultNic?.network||defaultNic?.parent||'Herdada do perfil default'):network.value+' · '+(ipv4Mode.value==='static'?ipv4.value:'DHCP')],['DNS',domain.value],['Inicializar no boot',inherited?(config['boot.autostart']||'Herdado do perfil default'):autostart.checked?'Sim':'Não'],['Descrição',inherited?'Não definida':description.value||'—']]));
     }
+    updateValidity();
     if(index>0)tabButtons[step].focus({preventScroll:true});
   }
-  tabs.onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const index=event.key==='Home'?0:event.key==='End'?7:step+(event.key==='ArrowRight'?1:-1);if(index<=step||validateThrough(index))show(index);}};
+  tabs.onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const index=Math.max(0,Math.min(reached,event.key==='Home'?0:event.key==='End'?reached:step+(event.key==='ArrowRight'?1:-1)));if(index<=step||validateThrough(index))show(index);}};
+  form.addEventListener('input',updateValidity);form.addEventListener('change',updateValidity);
   function updatePool(){const supportsQuota=['btrfs','zfs','lvm','ceph'].includes(pools.find(p=>p.name===pool.value)?.driver);disk.disabled=!supportsQuota||!session.manage_all_instances;diskHelp.textContent=supportsQuota?'Cota opcional de disco raiz em GiB.':'Este driver utiliza a capacidade do pool. Cota de disco indisponível neste assistente.';}
   function updateNetwork(){const config=networks.find(n=>n.name===network.value)?.config||{};subnet.value=config['ipv4.address']||'Não informado';domain.value=config['dns.domain']||'Padrão do Incus';dnsMode.value=config['dns.mode']||'Padrão do Incus';ipv4.disabled=ipv4Mode.value!=='static';ipv4.required=!ipv4.disabled;}
   pool.onchange=updatePool;network.onchange=updateNetwork;ipv4Mode.onchange=updateNetwork;updatePool();updateNetwork();
-  if(!session.manage_all_instances){for(const input of [description,pool,disk,cores,allowance,memory,network,ipv4Mode,ipv4,autostart,start])input.disabled=true;sections[0].append(notice('Neste escopo, a criação usa a configuração do perfil default e exige um nome autorizado. Ajustes de recursos ficam disponíveis após criar.'));}
+  if(!session.manage_all_instances){start.checked=false;for(const input of [description,pool,disk,cores,allowance,memory,network,ipv4Mode,ipv4,autostart,start])input.disabled=true;sections[0].append(notice('Neste escopo, a criação usa a configuração do perfil default e exige um nome autorizado. Ajustes de recursos ficam disponíveis após criar.'));}
   form.onsubmit=async event=>{
-    event.preventDefault();if(step!==7){if(validate(step))show(step+1);return;}if(!validateThrough(7)||submit.disabled)return;
+    event.preventDefault();if(session!==owner||host!==scope.host||project!==scope.project||!canCreate())return;if(step!==7){advance();return;}if(!validateThrough(7)||submit.disabled)return;
     const selected=images.find(i=>i.id===image.value),requestedName=target.value.trim();if(!selected)return;
     const options={memory_mib:Number(memory.value),cpu_cores:Number(cores.value),cpu_allowance:Number(allowance.value),autostart:autostart.checked,start:start.checked,pool:pool.value,network:network.value,description:description.value};
     if(disk.value&&!disk.disabled)options.disk_gib=Number(disk.value);if(ipv4Mode.value==='static'&&ipv4.value)options.ipv4=ipv4.value.trim();
     const body={...scope,...(requestedName?{target:requestedName}:{}),...(selected.remote_image?{remote_image:selected.remote_image}:{image:selected.image})};
-    if(!session.manage_all_instances){$('#create-dialog').close();openAction('create',requestedName,{...body,profiles:profile?['default']:[]});return;}
+    if(!session.manage_all_instances){closeCreateWizard();openAction('create',requestedName,{...body,profiles:profile?['default']:[]});return;}
     const run={key,scope,owner:session,target:requestedName||'Novo container',phase:'prepare',status_code:100,metadata:{},start_after_create:start.checked,started_at:Date.now(),updated_at:Date.now(),output:[]};
     appendCreationLog(run,'Iniciando a criação do container '+run.target+'.');appendCreationLog(run,'Enviando a configuração ao Incus.');
-    creationRuns.set(key,run);$('#create-dialog').close();$('#content').replaceChildren(creationScreen(run));openCreationTaskViewer(run);
+    creationRuns.set(key,run);closeCreateWizard();openCreationTaskViewer(run);
     try{
       const created=await api('/api/create',{...body,options});
       if(session!==run.owner)return;
       Object.assign(run,created,{phase:'create',updated_at:Date.now()});appendCreationLog(run,'Tarefa aceita pelo Incus. Aguardando a criação da instância.');
       trackTask(`${scope.host}/${scope.project}/${run.operation}`,{...scope,...run,id:run.operation,action:'create',description:`CT ${run.target} - Criar`});
-      updateCreationScreen(run);pollCreation(run);
-    }catch(error){if(session!==run.owner)return;Object.assign(run,{status_code:400,err:error.message,uncertain:!error.status||error.status>=500,updated_at:Date.now()});appendCreationLog(run,error.message,true);updateCreationScreen(run);}
+      updateCreationTaskViewer(run);pollCreation(run);
+    }catch(error){if(session!==run.owner)return;Object.assign(run,{status_code:400,err:error.message,uncertain:!error.status||error.status>=500,updated_at:Date.now()});appendCreationLog(run,error.message,true);updateCreationTaskViewer(run);}
   };
-  show(0);$('#create-dialog-content').replaceChildren(form);if(!$('#create-dialog').open)$('#create-dialog').showModal();
-  return panel('Criar container',el('div',{class:'panel-body create-launcher'},el('p',{},'Configure o container no assistente: Geral, Template, Disco, CPU, Memória, Rede, DNS e Confirmar.'),el('button',{type:'button',onclick:()=>$('#create-dialog').showModal()},'Abrir assistente')));
+  show(0);$('#create-dialog-content').replaceChildren(form);$('#create-dialog').showModal();target.focus();
+  if(!images.length)sections[1].append(notice('Nenhum template compatível disponível. Consulte Templates antes de criar.',true));
+  return form;
 }
-function updateCreationScreen(run){
-  if(session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page==='create')$('#content').replaceChildren(creationScreen(run));
+function updateCreationTaskViewer(run){
   if($('#task-detail').open&&$('#task-detail').dataset.taskRun===run.key)openCreationTaskViewer(run,false);
 }
+function watchingCreation(run){return session===run.owner&&host===run.scope.host&&project===run.scope.project&&!document.hidden&&$('#task-detail').open&&$('#task-detail').dataset.taskRun===run.key;}
 async function pollCreation(run){
-  if(session!==run.owner||host!==run.scope.host||project!==run.scope.project||!run.operation||run.status_code>=200||run.polling||document.hidden)return;
+  if(!watchingCreation(run)||!run.operation||run.status_code>=200||run.polling)return;
   clearTimeout(run.timer);run.polling=true;
   try{
     const state=(await read('operation',run.operation,run.scope)).data;
@@ -1197,14 +1276,14 @@ async function pollCreation(run){
     if(progress)appendCreationLog(run,progress);
     if(state.status_code>=200)appendCreationLog(run,state.status_code<400&&!state.err?'Container criado e confirmado pelo Incus.':state.err||'A operação terminou com erro.',Boolean(state.err)||state.status_code>=400);
     trackTask(`${run.scope.host}/${run.scope.project}/${run.operation}`,{...run.scope,...state,action:'create',target:run.target,description:`CT ${run.target} - Criar`});
-    updateCreationScreen(run);
-    if(state.status_code<200)run.timer=setTimeout(()=>pollCreation(run),session.low_resource?5000:1500);
+    updateCreationTaskViewer(run);
+    if(state.status_code<200){if(watchingCreation(run))run.timer=setTimeout(()=>pollCreation(run),session.low_resource?5000:1500);}
     else{
       readCache.clear();
       const latest=await read('instance-list',undefined,run.scope).catch(()=>null);
-      if(latest&&session===run.owner){inventory=latest.data;renderResourceTree();}
+      if(latest&&session===run.owner&&host===run.scope.host&&project===run.scope.project){inventory=latest.data;renderResourceTree();}
     }
-  }catch(error){run.connectionError=error.message;run.updated_at=Date.now();appendCreationLog(run,'Conexão temporariamente interrompida: '+error.message,true);updateCreationScreen(run);}
+  }catch(error){run.connectionError=error.message;run.updated_at=Date.now();appendCreationLog(run,'Conexão temporariamente interrompida: '+error.message,true);updateCreationTaskViewer(run);}
   finally{run.polling=false;}
 }
 function appendCreationLog(run,message,isError=false){
@@ -1220,52 +1299,50 @@ function creationTaskStatus(run){
   return 'Em andamento';
 }
 function creationTaskViewer(run){
-  const active=run.viewerTab||'output',body=el('div');
-  const outputText=(run.output||[]).map(entry=>`[${new Date(entry.at).toLocaleTimeString('pt-BR')}] ${entry.text}`).join('\n')||'Aguardando a saída da operação do Incus…';
+  const active=run.viewerTab||'output',body=el('div',{class:'task-view-body'});
+  const lines=(run.output||[]).map(entry=>entry.text);
+  if(run.uncertain)lines.push('Resultado ainda não confirmado. Consulte Containers ou Tarefas antes de repetir a criação.');
+  if(run.status_code===200&&!run.err)lines.push('TASK OK');
+  else if(run.status_code>=400||run.err)lines.push('TASK ERROR: '+(run.err||'O Incus não concluiu a operação.'));
+  const outputText=lines.join('\n')||'Aguardando a saída da operação do Incus…';
   const tabs=el('div',{class:'task-view-tabs',role:'tablist','aria-label':'Detalhes da tarefa'});
-  for(const [key,label]of [['output','Saída'],['status','Status']])tabs.append(el('button',{type:'button',role:'tab',class:active===key?'active':'','aria-selected':String(active===key),onclick:()=>{run.viewerTab=key;updateCreationScreen(run);}},label));
+  for(const [key,label]of [['output','Saída'],['status','Status']])tabs.append(el('button',{id:'task-view-tab-'+key,type:'button',role:'tab',class:active===key?'active':'','data-task-control':key,'aria-controls':'task-view-page','aria-selected':String(active===key),tabindex:active===key?'0':'-1',onclick:()=>{run.viewerTab=key;openCreationTaskViewer(run,false);}},label));
+  tabs.onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();run.viewerTab=event.key==='Home'?'output':event.key==='End'?'status':active==='output'?'status':'output';openCreationTaskViewer(run,false);$('#task-view-tab-'+run.viewerTab).focus();}};
+  body.id='task-view-page';body.setAttribute('role','tabpanel');body.setAttribute('aria-labelledby','task-view-tab-'+active);
   const toolbar=el('div',{class:'task-view-toolbar'});
-  const download=el('button',{type:'button',disabled:outputText.startsWith('Aguardando a saída')?'':null,onclick:()=>{
+  const download=el('button',{type:'button','data-task-control':'download',disabled:run.status_code<200?'':null,onclick:()=>{
     const url=URL.createObjectURL(new Blob([outputText+'\n'],{type:'text/plain;charset=utf-8'})),link=el('a',{href:url,download:`ct-${run.target}-create.log`});
     link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-  }},'↓ Download');
-  toolbar.append(download);
-  if(run.status_code<200&&run.operation)toolbar.append(el('span',{class:'muted'},'Acompanhe pela operação do Incus'));
-  if(run.connectionError)toolbar.append(el('button',{type:'button',onclick:()=>{run.connectionError=null;appendCreationLog(run,'Consultando novamente o Incus.');pollCreation(run);}},'Consultar novamente'));
-  if(active==='output')body.append(el('pre',{class:'task-view-output','aria-live':'polite'},outputText));
+  }},...iconLabel('download','Download'));
+  if(active==='output')toolbar.append(download);
+  if(run.connectionError)toolbar.prepend(el('button',{type:'button','data-task-control':'retry',onclick:()=>{run.connectionError=null;appendCreationLog(run,'Consultando novamente o Incus.');pollCreation(run);}},'Consultar novamente'));
+  if(active==='output')body.append(el('pre',{class:'task-view-output',tabindex:'0','aria-label':'Saída da tarefa de criação','data-task-control':'log','aria-live':'polite'},outputText));
   else{
     const progress=Object.entries(run.metadata||{}).find(([key,value])=>/progress/i.test(key)&&typeof value==='string')?.[1];
     const phases={prepare:'Preparar configuração',create:'Baixar imagem e criar container',start:'Iniciar container',verify:'Confirmar funcionamento'};
-    body.append(el('div',{class:'task-view-status'},kv([['Tarefa',`CT ${run.target} - Criar`],['Estado',creationTaskStatus(run)],['Servidor',run.scope.host],['Projeto',run.scope.project],['Etapa',phases[run.phase]||'Solicitação ao Incus'],['Progresso',progress||'O Incus ainda não informou um percentual'],['Início',localDate(run.started_at)],['Última atualização',localDate(run.updated_at)],['Resultado',run.err|| (run.status_code===200?'Container criado.':'Aguardando a confirmação do Incus.')]]),run.err?notice(run.err,true):null));
+    body.append(el('div',{class:'task-view-status'},kv([['Tarefa',`CT ${run.target} - Criar`],['Estado',creationTaskStatus(run)],['Servidor',run.scope.host],['Projeto',run.scope.project],['Etapa',phases[run.phase]||'Solicitação ao Incus'],['Progresso',progress||'Não informado pelo Incus'],['Início',localDate(run.started_at)],['Última atualização',localDate(run.updated_at)],['Resultado',run.err|| (run.status_code===200?'TASK OK':'Aguardando a confirmação do Incus.')]]),run.err?notice(run.err,true):null));
   }
-  const content=el('div',{},tabs,toolbar,body);
+  const content=el('div',{class:'task-viewer'},tabs,toolbar,body);
   content.dataset.createRun=run.key;
   return content;
 }
 function openCreationTaskViewer(run,show=true){
   const dialog=$('#task-detail');
-  $('#task-detail-title').textContent=`Task viewer: CT ${run.target} - Criar`;
+  const previous=$('#task-detail .task-view-output'),scrollTop=previous?.scrollTop||0,follow=!previous||previous.scrollHeight-previous.clientHeight-scrollTop<24;
+  const focused=$('#task-detail-content').contains(document.activeElement)?document.activeElement.dataset.taskControl:null;
+  if(show)run.viewerTab='output';
+  $('#task-detail-title').textContent=`Tarefa: CT ${run.target} · Criar`;
   dialog.dataset.taskRun=run.key;
   $('#task-detail-content').replaceChildren(creationTaskViewer(run));
   if(show&&!dialog.open)dialog.showModal();
-}
-function creationScreen(run){
-  const success=run.status_code===200,failed=run.status_code>=400;
-  const screen=el('section',{class:'panel creation-screen','aria-labelledby':'creation-heading'});
-  const body=el('div',{class:'panel-body'});
-  const label=success?'Container criado':failed?'Criação com erro':run.connectionError?'Conexão interrompida':'Tarefa de criação';
-  body.append(el('div',{class:'creation-heading'},el('h2',{id:'creation-heading'},label)),el('p',{class:'creation-target'},`CT ${run.target} · ${creationTaskStatus(run)}`),el('button',{type:'button',class:'primary',onclick:()=>openCreationTaskViewer(run)},'Abrir visualizador de tarefas'));
-  if(success)body.append(el('a',{class:'creation-link',href:instanceLink(run.target)},'Abrir container →'),run.start_after_create!==false?el('a',{class:'creation-link',href:instanceLink(run.target,'console')},'>_ Console'):null);
-  if(failed)body.append(notice(run.err||'O Incus não concluiu a operação.',true));
-  if(run.connectionError)body.append(notice(run.connectionError,true));
-  if(run.uncertain)body.append(notice('A conexão falhou antes da confirmação. Confira Containers ou Tarefas antes de tentar criar novamente.',true));
-  if(success||failed)body.append(el('button',{type:'button',onclick:()=>{creationRuns.delete(run.key);render();}},success?'Criar outro container':'Voltar ao assistente'));
-  screen.append(body);return screen;
+  const output=$('#task-detail .task-view-output');
+  if(output)output.scrollTop=follow?output.scrollHeight:scrollTop;
+  if(!show&&focused)$('#task-detail [data-task-control="'+focused+'"]')?.focus({preventScroll:true});
 }
 function renderResourceTree(){
   if(!session)return;
   const r=route(),term=$('#global-search').value.trim().toLowerCase();
-  const items=inventory.filter(i=>!term||[i.name,i.status,i.architecture].join(' ').toLowerCase().includes(term)).sort((a,b)=>a.name.localeCompare(b.name));
+  const items=inventory.filter(i=>!term||[i.name,i.status,i.status==='Running'?'Em execução':i.status==='Stopped'?'Parado':'',i.architecture].join(' ').toLowerCase().includes(term)).sort((a,b)=>a.name.localeCompare(b.name));
   const leaves=items.slice(0,100).map(item=>{
     const link=el('a',{href:instanceLink(item.name),role:'treeitem','aria-selected':String(r.page==='instance'&&r.target===item.name),class:'leaf '+item.status.toLowerCase()+(r.page==='instance'&&r.target===item.name?' active':''),title:item.name+' · '+item.status},el('span',{class:'tree-state','aria-hidden':'true'},'●'),icon('box'),item.name);
     link.oncontextmenu=event=>{event.preventDefault();showResourceMenu(event,item);};
@@ -1310,9 +1387,9 @@ function mergedTaskLog(){
 function renderTaskLog(){
   if(!session||taskLogMode!=='tasks')return;
   const items=mergedTaskLog();
-  const rows=items.map(task=>()=>[date(task.created_at||task.timestamp),host,task.identity||session.username,task.target||'—',task.description||task.action||'Operação Incus',status(task.status||String(task.status_code)),el('button',{type:'button',class:'task-details-link',onclick:()=>openTaskDetail(task)},'Detalhes')]);
+  const rows=items.map(task=>()=>[localDate(task.created_at||task.timestamp||task.started_at),host,task.identity||session.username,task.target||'—',task.description||task.action||'Operação Incus',status(task.status||String(task.status_code)),el('button',{type:'button',class:'task-details-link',onclick:()=>openTaskDetail(task)},'Detalhes')]);
   const content=table(['INÍCIO','Nó','USUÁRIO','ALVO','DESCRIÇÃO','ESTADO',''],rows);
-  content.querySelectorAll('tbody tr').forEach((row,i)=>{row.ondblclick=()=>openTaskDetail(items[i]);});
+  content.ondblclick=event=>{if(!event.target.closest('button'))event.target.closest('tbody tr')?.querySelector('.task-details-link')?.click();};
   $('#task-log-content').replaceChildren(content);$('#task-summary').textContent=items.length+' tarefas · '+host+' / '+project;
 }
 async function refreshTaskLog(){
@@ -1326,7 +1403,7 @@ async function refreshTaskLog(){
 }
 function taskDetailView(task){
   if(task.action==='create'||/^CT .+ - Criar$/.test(task.description||'')){
-    const run=[...creationRuns.values()].find(item=>item.operation===task.id||item.target===task.target);
+    const run=[...creationRuns.values()].find(item=>item.operation===task.id);
     if(run)return creationTaskViewer(run);
     const fallback={key:'task-'+task.id,scope:{host:task.host||host,project:task.project||project},target:task.target||'container',status_code:task.status_code??100,status:task.status,phase:task.phase,metadata:task.metadata||{},err:task.err||'',started_at:task.created_at||task.timestamp||Date.now(),updated_at:Date.now(),output:[]};
     appendCreationLog(fallback,fallback.err|| (fallback.status_code>=200?'Tarefa '+creationTaskStatus(fallback)+'.':'Tarefa enviada ao Incus.'));
@@ -1342,7 +1419,7 @@ function taskDetailView(task){
 async function openTaskDetail(task){
   const dialog=$('#task-detail');
   if(task.action==='create'||/^CT .+ - Criar$/.test(task.description||'')){
-    const run=[...creationRuns.values()].find(item=>item.operation===task.id||item.target===task.target)||{key:'task-'+task.id,scope:{host:task.host||host,project:task.project||project},target:task.target||'container',status_code:task.status_code??100,metadata:task.metadata||{},phase:task.phase,err:task.err||'',started_at:task.created_at||task.timestamp||Date.now(),updated_at:Date.now(),output:[]};
+    const run=[...creationRuns.values()].find(item=>item.operation===task.id)||{key:'task-'+task.id,owner:session,operation:task.id,scope:{host:task.host||host,project:task.project||project},target:task.target||'container',status_code:task.status_code??100,start_after_create:task.start_after_create,metadata:task.metadata||{},phase:task.phase,err:task.err||'',started_at:task.created_at||task.timestamp||Date.now(),updated_at:Date.now(),output:[]};
     appendCreationLog(run,run.err|| (run.status_code>=200?'Tarefa '+creationTaskStatus(run)+'.':'Tarefa enviada ao Incus.'));
     openCreationTaskViewer(run);
     if(run.status_code<200&&run.operation)resumeRun(run,pollCreation);

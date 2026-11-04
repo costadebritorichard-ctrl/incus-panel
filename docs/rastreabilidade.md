@@ -33,10 +33,10 @@ Gerada por `python scripts/traceability.py`. Implementação local não signific
 | RF-011 / F2 | Disponibilizar shell interativo autorizado em container teste | Console xterm.js, teclado direto/ANSI, resize e encerramento; tests/test_console.py e scripts/dom-smoke.mjs com dublês; não testado com Incus real. |
 | RF-012 / F3 | Filtrar imagens compativeis com destino | Normalização de arquitetura e bloqueio frontend/backend. |
 | RF-013 / F3 | Criar container com Project e profile selecionados | Assistente por etapas, imagem local/remota compatível e perfil default; CPU/RAM/pool/bridge e início opcional validados. Seleção de outros perfis pelo assistente pendente. |
-| RF-014 / F3 | Listar e criar snapshots controlados | Listagem/criação/restauração/exclusão implementadas; validação real pendente. |
-| RF-015 / F3 | Exibir e gerar backup autorizado | Listagem/geração; download/restauração pendentes. |
+| RF-014 / F3 | Listar e criar snapshots controlados | Listagem, criação, restauração e exclusão de snapshots com precondições. |
+| RF-015 / F3 | Exibir e gerar backup autorizado | Listagem, geração e exclusão; download/importação de backups fora do painel. |
 | RF-016 / F3 | Exibir uso real de pools e alertas | Pool resources e 93% por fixture; sem soma lógica Btrfs. |
-| RF-017 / F3 | Inspecionar bridges e dispositivos | Redes e dispositivos consultáveis; leases DHCP exibidos para bridges gerenciadas. |
+| RF-017 / F3 | Inspecionar bridges e dispositivos | Redes, dispositivos, leases DHCP e associações consultáveis; configuração fora do painel. |
 | RF-018 / F3 | Aplicar escopos de Project a leituras e mutacoes | Allowlist backend por usuário e contexto em todas as chamadas. |
 | RF-019 / F3 | Exibir configuracao de Profiles e origem dos devices | Profiles e devices expandidos; leitura sem edição. |
 | RF-020 / F4 | Executar mesma versao do painel para ARMv7, ARM64 e x86-64 | Não validado em ARMv7/ARM64/x86-64; protocolo em docs/experimentos.md. |
@@ -52,24 +52,24 @@ Gerada por `python scripts/traceability.py`. Implementação local não signific
 | TEL-04 / WBS-04.04 — Explorador de recursos | Parcial | Árvore do escopo atual e seleção persistida; agrupamento global completo pendente. |
 | TEL-05 / WBS-04.05 — Catalogo de instancias | Parcial | Tabela, busca, ordenação e filtro de estado; seleção múltipla não disponível. |
 | TEL-06 / WBS-04.06 — Resumo da instancia | Implementado; aceite real pendente | Identidade composta, estado e ações condicionais. |
-| TEL-07 / WBS-04.07 — Recursos da instancia | Parcial | Tabela de RAM, CPU acumulada/limites e discos; rede em aba dedicada. Sem gráficos históricos nem taxas. |
+| TEL-07 / WBS-04.07 — Recursos da instancia | Parcial | Tabela de RAM, CPU acumulada/limites e discos; rede em aba dedicada. Gráficos de amostras da sessão; sem histórico persistente nem taxas. |
 | TEL-08 / WBS-04.08 — Rede e dispositivos da instancia | Implementado; aceite real pendente | Dispositivos expandidos e distinção local/herdado. |
 | TEL-09 / WBS-04.09 — Opcoes e configuracao | Parcial | Edição parcial de descrição/limites/autostart/proteção, revisão/ETag e confirmação do Incus; tests/test_edit.py; aceite real pendente. |
 | TEL-10 / WBS-04.10 — Console interativo | Parcial; aceite real pendente | xterm.js local, exec interativo, teclado/ANSI, resize automático, janela dedicada e encerramento por sessão/navegação; testes de protocolo e DOM com dublês. Validação com Incus real pendente. |
-| TEL-11 / WBS-04.11 — Snapshots | Parcial | Listar/criar/restaurar/excluir snapshots; validar no Incus real. |
-| TEL-12 / WBS-04.12 — Backups | Parcial | Listar/gerar backups; download/restauração pendentes. |
-| TEL-13 / WBS-04.13 — Assistente de criacao de container | Parcial; aceite real pendente | Oito etapas, imagem por arquitetura, CPU/RAM, pool/cota suportada, bridge/reserva IPv4, DNS herdado e início opcional. Opções validadas no backend; modalidade restrita usa default. |
+| TEL-11 / WBS-04.11 — Snapshots | Parcial | Listar, criar, restaurar com container parado e excluir snapshots; aceite real pendente. |
+| TEL-12 / WBS-04.12 — Backups | Parcial | Listar, criar e excluir backups; exportação/importação e restauração de arquivos fora do painel. |
+| TEL-13 / WBS-04.13 — Assistente de criacao de container | Parcial; aceite real pendente | Modal independente da rota, oito etapas sequenciais com validação, imagem por arquitetura, CPU/RAM, pool/cota suportada, bridge/reserva IPv4, DNS herdado e início opcional. Opções validadas no backend; modalidade restrita usa default. |
 | TEL-14 / WBS-04.14 — Imagens | Parcial | Listagem local e download de Alpine/Debian do catálogo por arquitetura, progresso e confirmação no Incus; tests/test_images.py; importação de arquivos/remoção e aceite real pendentes. |
-| TEL-15 / WBS-04.15 — Storage pools e volumes | Parcial | Pools, recursos físicos, alertas 80/90% e inventário de volumes somente para leitura; edição pendente. |
-| TEL-16 / WBS-04.16 — Redes | Parcial | Redes, detalhes JSON e leases DHCP de bridges gerenciadas; edição pendente. |
+| TEL-15 / WBS-04.15 — Storage pools e volumes | Parcial | Pools, detalhes, volumes e alertas 80/90%; criação/configuração de armazenamento fora do painel. |
+| TEL-16 / WBS-04.16 — Redes | Parcial | Redes, propriedades, leases DHCP no contrato Incus e containers associados; configuração de redes fora do painel. |
 | TEL-17 / WBS-04.17 — Profiles | Parcial | Profiles e devices; edição/impacto e filtros aprofundados pendentes. |
 | TEL-18 / WBS-04.18 — Projects | Parcial | Escopos autorizados e seleção; resumo nativo completo de limites pendente. |
 | TEL-19 / WBS-04.19 — Tasks e operacoes | Parcial | Painel inferior recolhível/redimensionável, UUIDs, estado, detalhes e erro; persistência histórica e cancelamento pendentes. |
 | TEL-20 / WBS-04.20 — Alertas e avisos | Parcial | Alertas de capacidade e falhas; reconhecimento e histórico persistente pendentes. |
 | TEL-21 / WBS-04.21 — Servidores e detalhes do host | Parcial | Identidade, arquitetura, extensões e cluster; métricas por membro pendentes. |
-| TEL-22 / WBS-04.22 — Configuracoes, preferencias e seguranca | Parcial | Sessão, tema claro/escuro, segurança e auditoria temporária; limiares configuráveis pendentes. |
+| TEL-22 / WBS-04.22 — Configuracoes, preferencias e seguranca | Parcial | Sessão, segurança, auditoria temporária; limiares configuráveis pendentes. |
 | TEL-23 / WBS-04.23 — Cluster e multiplos hosts | Opcional/parcial | Seleção de hosts independentes; gestão/métricas de membros de cluster pendentes. |
-| TEL-24 / WBS-04.24 — Usuarios e permissoes | Parcial | Contas locais, papéis, Projects, métricas do host e revogação; ACLs/identidades Incus não são gerenciadas. Persistência em arquivo separado; validação real pendente. |
+| TEL-24 / WBS-04.24 — Usuarios e permissoes | Implementado; aceite real pendente | Contas locais persistentes, papéis, Projects e métricas do host; API testada. Gestão desabilitada em demonstração. |
 
 ## WBS completa
 
@@ -163,8 +163,8 @@ O inventário abaixo inclui todos os grupos, pacotes e submódulos. O estado das
 | WBS-04.11 | Snapshots | F3 | Parcial |
 | WBS-04.11.01 | Lista | F3 | Parcial |
 | WBS-04.11.02 | Criar snapshot | F3 | Parcial |
-| WBS-04.11.03 | Restaurar snapshot | F3 | Implementado; aceite real pendente |
-| WBS-04.11.04 | Excluir snapshot | F3 | Implementado; aceite real pendente |
+| WBS-04.11.03 | Restaurar snapshot | F3 | Parcial |
+| WBS-04.11.04 | Excluir snapshot | F3 | Parcial |
 | WBS-04.11.05 | Alertas de armazenamento | F3 | Parcial |
 | WBS-04.12 | Backups | F3 | Parcial |
 | WBS-04.12.01 | Inventario de backups | F3 | Parcial |
@@ -242,8 +242,8 @@ O inventário abaixo inclui todos os grupos, pacotes e submódulos. O estado das
 | WBS-04.23.03 | Visao de recursos | F5 | Opcional/parcial |
 | WBS-04.23.04 | Disponibilidade | F5 | Opcional/parcial |
 | WBS-04.23.05 | Operacoes de cluster | F5 | Opcional/parcial |
-| WBS-04.24 | Usuarios e permissoes | F5 | Parcial; aceite real pendente |
-| WBS-04.24.01 | Contas locais do painel | F5 | Implementado; aceite real pendente |
+| WBS-04.24 | Usuarios e permissoes | F5 | Implementado; aceite real pendente |
+| WBS-04.24.01 | Identidades | F5 | Implementado; aceite real pendente |
 | WBS-04.24.02 | Papeis | F5 | Implementado; aceite real pendente |
 | WBS-04.24.03 | Escopos Project | F5 | Implementado; aceite real pendente |
 | WBS-04.24.04 | Revogacao | F5 | Implementado; aceite real pendente |

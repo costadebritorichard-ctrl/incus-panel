@@ -18,8 +18,9 @@ try{
   await waitFor("typeof api==='function'&&!!document.querySelector('#login-form')");
   await evaluate(`document.querySelector('[name=username]').value='demo';document.querySelector('[name=password]').value=${JSON.stringify(process.env.DEMO_PASSWORD)};document.querySelector('#login-form').requestSubmit()`);
   await waitFor("!document.querySelector('#shell').hidden && document.querySelector('#content').textContent.includes('host-demo')");
-  const pages=['instances','images','storage','networks','profiles','projects','server','tasks','alerts','settings','instance/lab-web/summary','instance/lab-web/resources','instance/lab-web/devices','instance/lab-web/options','instance/lab-web/snapshots','instance/lab-web/backups','instance/lab-web/console','create','overview'];
+  const pages=['instances','images','storage','networks','profiles','projects','server','tasks','alerts','settings','instance/lab-web/summary','instance/lab-web/resources','instance/lab-web/devices','instance/lab-web/options','instance/lab-web/snapshots','instance/lab-web/backups','instance/lab-web/console','overview'];
   for(const route of pages){const previous=await evaluate('generation');await evaluate(`location.hash=${JSON.stringify(route)}`);await waitFor(`generation>${previous}&&!document.querySelector('#content').hasAttribute('aria-busy')`);const text=await evaluate("document.querySelector('#content').textContent");if(/Falha interna|Página não encontrada/.test(text))throw new Error('Falha na rota '+route);}
+  await evaluate("document.querySelector('#create-ct').click()");await waitFor("document.querySelector('#create-dialog').open");await evaluate("document.querySelector('#close-create').click()");
   await fs.mkdir('artifacts',{recursive:true});
   await fs.writeFile('artifacts/desktop.png',Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
   await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});

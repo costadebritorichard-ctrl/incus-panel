@@ -39,6 +39,16 @@ class Contracts(unittest.TestCase):
         self.assertEqual(client.instances["laboratorio", "lab-web"]["status"], "Stopped")
         self.assertEqual(client.instances["redes", "lab-web"]["status"], "Running")
 
+    def test_virtual_machines_are_not_presented_as_containers(self):
+        client = self.service.hosts['demo']
+        client.instances['laboratorio', 'lab-db']['type'] = 'virtual-machine'
+        for resource in ('instances', 'instance-list'):
+            self.assertEqual([item['name'] for item in self.read(resource)], ['lab-web'])
+        with self.assertRaisesRegex(PanelError, 'Somente containers'):
+            self.read('instance', 'lab-db')
+        with self.assertRaisesRegex(PanelError, 'Somente containers'):
+            self.act('start', 'lab-db')
+
     def test_ct018_no_cross_project_reads_or_actions(self):
         for method in (lambda: self.service.read(self.user,"demo","redes","instances"), lambda: self.service.mutate(self.user,"demo","redes","stop","lab-web",{})):
             with self.assertRaises(PanelError) as result:
@@ -135,7 +145,7 @@ class Contracts(unittest.TestCase):
         self.assertEqual(self.read("snapshots", "lab-web"), [])
         for action, resource in (("snapshot","snapshots"),("backup","backups")):
             self.act(action, name="test")
-            self.assertEqual(self.read(resource,"lab-web")[0]["name"], "test")
+            self.assertEqual(self.read(resource,"lab-web")[0]["name"], "lab-web/test")
 
     def test_unknown_resource_and_traversal(self):
         for resource,target in (("certificates",None),("instance","../certificates"),("instance","a?project=redes")):
