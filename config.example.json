@@ -2,6 +2,7 @@
   "demo": false,
   "low_resource": true,
   "read_only": true,
+  "manage_networks": false,
   "enable_console": false,
   "enable_events": false,
   "origin": "https://panel.example.invalid",

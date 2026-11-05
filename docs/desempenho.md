@@ -10,13 +10,21 @@ entre telas. Atualizar, mudança de escopo e ações pelo painel invalidam esse 
 Mudanças feitas por outro cliente Incus exigem o botão Atualizar. Pools são
 consultados em Armazenamento/Alertas; a visão geral não varre todos os pools.
 
+Na navegação do modo leve, o painel mantém até 128 respostas de leitura em um
+cache LRU por sessão e escopo. Ele inclui inventário, detalhes já consultados,
+redes, perfis, imagens e pools; progresso de operações assíncronas não é
+armazenado. Ao trocar de rota dentro do mesmo host/Project, a tela anterior
+permanece visível enquanto a próxima é montada. O botão Atualizar e qualquer
+ação invalidam o cache. Essa alteração evita novas consultas Incus para dados
+já lidos ao alternar entre telas; não é uma medição de latência na TV Box.
+
 Listagens enviam somente os campos necessários, com configurações completas
 disponíveis no detalhe. Tabelas criam até 25 linhas por página e o explorador
 mostra até 25 containers. A busca considera todos os itens do inventário.
 Configurações JSON nas listas são formatadas somente quando abertas.
 
-Criação e download continuam no Incus ao navegar ou ocultar a aba; a consulta de
-progresso para e retoma ao voltar. O console usa intervalos de 1–3 segundos no
+Criação e download continuam no Incus ao sair da tela ou ocultar a aba; a consulta
+de progresso pausa e retoma ao voltar à tela ou à aba. O console usa intervalos de 1–3 segundos no
 modo leve, com 5 segundos na aba oculta. Sombras, desfoques, transições e rotação
 contínua do indicador de carregamento são desativados.
 
@@ -94,3 +102,8 @@ cinco telas, paginação, busca, cache invalidado por Atualizar e ações, isola
 entre projetos, detalhes sob demanda e ausência de polling fora da tela.
 Os smokes de navegação geral e de criação verificaram 19 rotas, viewports desktop
 e móvel, progresso, retomada e erro assíncrono, sem exceções JavaScript.
+
+Em 2026-11-05, a TV Box ARMv7 foi inspecionada por SSH. Veja [os dados e limites
+da medição](tvbox.md#diagnostico-de-desempenho-em-2026-11-05). A tela web não foi
+medida no equipamento; o navegador conectado não permitiu abrir a sessão
+autenticada do painel.

@@ -15,3 +15,4 @@ config.tvbox.local.json
 
 # User-provided Proxmox UI reference screenshots
 proxmox-ref/
+refatorar.md

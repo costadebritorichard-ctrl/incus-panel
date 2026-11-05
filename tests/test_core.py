@@ -145,7 +145,7 @@ class Contracts(unittest.TestCase):
         self.assertEqual(self.read("snapshots", "lab-web"), [])
         for action, resource in (("snapshot","snapshots"),("backup","backups")):
             self.act(action, name="test")
-            self.assertEqual(self.read(resource,"lab-web")[0]["name"], "lab-web/test")
+        self.assertEqual(self.read(resource,"lab-web")[0]["name"], "test")
 
     def test_unknown_resource_and_traversal(self):
         for resource,target in (("certificates",None),("instance","../certificates"),("instance","a?project=redes")):

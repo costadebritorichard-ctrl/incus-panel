@@ -25,11 +25,56 @@ def name(value):
 
 
 EDITABLE_CONFIG = frozenset(('limits.memory', 'limits.cpu', 'boot.autostart', 'security.protection.delete'))
+BRIDGE_CONFIG_KEYS = frozenset((
+    'ipv4.address', 'ipv4.dhcp', 'ipv4.nat',
+    'ipv6.address', 'ipv6.dhcp', 'ipv6.nat', 'dns.domain',
+))
+BRIDGE_BOOLEAN_KEYS = frozenset(('ipv4.dhcp', 'ipv4.nat', 'ipv6.dhcp', 'ipv6.nat'))
+
+
+def bridge_config(body, *, defaults=False):
+    if not isinstance(body, dict) or set(body) - BRIDGE_CONFIG_KEYS:
+        raise PanelError(400, 'Configuração de bridge contém opções não permitidas.')
+    result = {}
+    if defaults:
+        result.update({'ipv4.address': 'auto', 'ipv4.dhcp': 'true', 'ipv4.nat': 'true',
+                       'ipv6.address': 'none', 'ipv6.dhcp': 'false', 'ipv6.nat': 'false'})
+    for key, value in body.items():
+        if not isinstance(value, str):
+            raise PanelError(400, 'As opções de bridge devem ser texto.')
+        value = value.strip()
+        if key in BRIDGE_BOOLEAN_KEYS:
+            if value not in ('true', 'false'):
+                raise PanelError(400, 'DHCP e NAT devem estar ativados ou desativados.')
+        elif key in ('ipv4.address', 'ipv6.address'):
+            if value not in ('auto', 'none'):
+                try:
+                    address = ipaddress.ip_interface(value)
+                    if address.version != (4 if key == 'ipv4.address' else 6):
+                        raise ValueError()
+                except ValueError as exc:
+                    raise PanelError(400, 'Informe auto, none ou um CIDR válido para o endereço da bridge.') from exc
+        elif key == 'dns.domain' and value and (len(value) > 253 or not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?', value)):
+            raise PanelError(400, 'Domínio DNS inválido.')
+        if value:
+            result[key] = value
+        else:
+            result.pop(key, None)
+    if result.get('ipv4.address') == 'none' and result.get('ipv4.nat') == 'true':
+        raise PanelError(400, 'NAT IPv4 exige um endereço IPv4 na bridge.')
+    if result.get('ipv6.address') == 'none' and result.get('ipv6.nat') == 'true':
+        raise PanelError(400, 'NAT IPv6 exige um endereço IPv6 na bridge.')
+    return result
 
 
 def edit_revision(instance):
     values = {'description': instance.get('description', ''),
               'config': {k: instance.get('config', {}).get(k, '') for k in sorted(EDITABLE_CONFIG)}}
+    return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
+
+
+def network_revision(network):
+    values = {'description': network.get('description', ''), 'config': network.get('config') or {}}
     return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
 
 
@@ -113,10 +158,15 @@ class Incus:
             raw = response.read(8 * 1024 * 1024 + 1)
             if len(raw) > 8 * 1024 * 1024:
                 raise PanelError(502, "Resposta Incus excedeu o limite.")
+            try:
+                data = json.loads(raw)
+            except (ValueError, UnicodeError):
+                data = {}
             if response.status >= 400:
                 messages = {401: "Identidade Incus recusada.", 403: "Sem permissão no Incus.", 404: "Recurso ausente ou não suportado.", 409: "Conflito no recurso.", 412: "Configuração alterada; recarregue antes de salvar."}
-                raise PanelError(response.status, messages.get(response.status, "Incus recusou a operação. Consulte o administrador."))
-            data = json.loads(raw)
+                detail = data.get('error') if isinstance(data, dict) else None
+                message = 'Incus: ' + redact(str(detail))[:2000] if detail else messages.get(response.status, "Incus recusou a operação. Consulte o administrador.")
+                raise PanelError(response.status, message)
             etag_value = response.getheader("ETag")
             if isinstance(etag_value, str):
                 data["_etag"] = etag_value
@@ -137,6 +187,9 @@ class Demo:
         self.lock = threading.RLock()
         self.instances = {}
         self.operations = {}
+        self.networks = {project: [{'name': 'labbr0', 'type': 'bridge', 'managed': True, 'status': 'Created',
+                                    'config': {'ipv4.nat': 'true', 'ipv4.address': '10.100.0.1/24'}, 'used_by': []}]
+                         for project in ('laboratorio', 'redes')}
         self.images = {project: [{"fingerprint": "a" * 64, "architecture": "armv7l", "type": "container", "aliases": [{"name": "debian-lab"}], "properties": {"description": "Debian • fixture local"}, "size": 50000000}]
                        for project in ("laboratorio", "redes")}
         for project in ("laboratorio", "redes"):
@@ -145,13 +198,20 @@ class Demo:
 
     def request(self, method, path, project, body=None, etag=None):
         with self.lock:
-            if etag and method == 'PATCH':
-                current = self.instances.get((project, path.rsplit('/', 1)[-1]))
-                if current is None or etag != edit_revision(current):
+            if etag and method in ('PATCH', 'PUT'):
+                if path.startswith('/1.0/networks/'):
+                    current = next((item for item in self.networks.get(project, []) if item['name'] == path.rsplit('/', 1)[-1]), None)
+                    revision = network_revision(current) if current is not None else None
+                else:
+                    current = self.instances.get((project, path.rsplit('/', 1)[-1]))
+                    revision = edit_revision(current) if current is not None else None
+                if current is None or etag != revision:
                     raise PanelError(412, 'Configuração alterada; recarregue antes de salvar.')
             data = self._request(method, path, project, body or {})
             if method == 'GET' and re.fullmatch(r'/1.0/instances/[^/]+', path):
                 data['_etag'] = edit_revision(data['metadata'])
+            if method == 'GET' and re.fullmatch(r'/1.0/networks/[^/]+', path):
+                data['_etag'] = network_revision(data['metadata'])
             return copy.deepcopy(data)
 
     def _request(self, method, path, project, body):
@@ -171,7 +231,11 @@ class Demo:
             elif path == "/1.0/profiles":
                 result = [{"name": "default", "config": {}, "devices": {"root": {"type": "disk", "path": "/", "pool": "lab"}, "eth0": {"type": "nic", "network": "labbr0"}}}]
             elif path == "/1.0/networks":
-                result = [{"name": "labbr0", "type": "bridge", "managed": True, "status": "Created", "config": {"ipv4.nat": "true", "ipv4.address": "10.100.0.1/24"}}]
+                result = self.networks.get(project, [])
+            elif len(parts) == 3 and parts[1] == 'networks':
+                result = next((item for item in self.networks.get(project, []) if item['name'] == parts[2]), None)
+                if result is None:
+                    raise PanelError(404, 'Rede não encontrada.')
             elif len(parts) == 4 and parts[1] == "networks" and parts[3] == "leases":
                 result = [{"hostname": "lab-web", "hwaddr": "00:16:3e:12:34:56", "address": "10.100.0.10", "type": "dynamic"}]
             elif path == "/1.0/storage-pools":
@@ -201,6 +265,20 @@ class Demo:
                         'fingerprint': fingerprint, 'architecture': 'armv7l', 'type': 'container',
                         'aliases': copy.deepcopy(body.get('aliases', [])),
                         'properties': {'description': alias + ' • fixture local'}, 'size': 25000000})
+            elif path == '/1.0/networks' and method == 'POST':
+                if any(item['name'] == body.get('name') for item in self.networks.setdefault(project, [])):
+                    raise PanelError(409, 'Uma rede com esse nome já existe neste Project.')
+                self.networks[project].append({'name': body['name'], 'type': body.get('type', 'bridge'), 'managed': True,
+                                               'status': 'Created', 'config': copy.deepcopy(body.get('config', {})), 'used_by': []})
+            elif len(parts) == 3 and parts[1] == 'networks' and method in ('PUT', 'DELETE'):
+                networks = self.networks.get(project, [])
+                network = next((item for item in networks if item['name'] == parts[2]), None)
+                if network is None:
+                    raise PanelError(404, 'Rede não encontrada.')
+                if method == 'PUT':
+                    network.update({k: copy.deepcopy(v) for k, v in body.items() if k in ('description', 'config')})
+                else:
+                    networks.remove(network)
             elif path == "/1.0/instances" and method == "POST":
                 key = (project, body["name"])
                 if key in self.instances:
@@ -331,6 +409,8 @@ class Service:
             path = "/1.0/storage-pools/" + name(target) + ("/resources" if resource == "pool-resources" else "/volumes")
         elif resource == "network-leases":
             path = "/1.0/networks/" + name(target) + "/leases"
+        elif resource == "network":
+            path = "/1.0/networks/" + name(target)
         elif resource == "operation":
             path = "/1.0/operations/" + name(target)
         elif resource in allowed:
@@ -345,6 +425,9 @@ class Service:
             data = [item for item in data if item.get('type') == 'container']
         if resource == 'instance' and data.get('type') != 'container':
             raise PanelError(403, 'Somente containers são permitidos neste painel.')
+        if resource in ('snapshots', 'backups'):
+            data = [({**item, 'name': str(item.get('name', '')).rsplit('/', 1)[-1]}
+                     if isinstance(item, dict) else str(item).rsplit('/', 1)[-1]) for item in data]
         if resource == 'instance-list':
             # Lists need identity/state and the effective deletion guard, never full configs/devices.
             data = [{**{k: item[k] for k in ('name', 'type', 'status', 'architecture') if k in item},
@@ -559,8 +642,91 @@ class Service:
         finally:
             self.creation_lock.release()
 
+    def mutate_network(self, user, host, project, action, target, body):
+        client = self.context(user, host, project)
+        if (self.config.get('read_only', True) or user.get('role') != 'administrador'
+                or not self.config.get('manage_networks', False)):
+            raise PanelError(403, 'A gestão de bridges exige administrador e manage_networks habilitado.')
+        if set(body) - {'host', 'project', 'action', 'target', 'confirmation', 'config', 'description', 'name'} or body.get('name'):
+            raise PanelError(400, 'Campos extras não são aceitos na gestão de bridges.')
+        target = name(target)
+        expected = f'{host}/{project}/{target}'
+        if body.get('confirmation') != expected:
+            raise PanelError(400, 'Confirme o alvo completo: ' + expected)
+        method, path, payload, etag = 'POST', '/1.0/networks', {}, None
+        if action == 'network-create':
+            current = client.request('GET', '/1.0/networks', project)['metadata']
+            if any(item.get('name') == target for item in current):
+                raise PanelError(409, 'Uma rede com esse nome já existe neste Project.')
+            description = body.get('description', '')
+            if not isinstance(description, str) or len(description) > 1024:
+                raise PanelError(400, 'A descrição da bridge deve ter até 1024 caracteres.')
+            payload = {'name': target, 'type': 'bridge', 'description': description,
+                       'config': bridge_config(body.get('config', {}), defaults=True)}
+        elif action in ('network-update', 'network-delete'):
+            network_response = client.request('GET', '/1.0/networks/' + target, project)
+            network = network_response['metadata']
+            if network.get('type') != 'bridge' or network.get('managed') is not True:
+                raise PanelError(403, 'O painel só altera bridges gerenciadas pelo Incus.')
+            if (network.get('config') or {}).get('bridge.external_interfaces'):
+                raise PanelError(403, 'Esta bridge usa interfaces externas e não pode ser alterada pelo painel.')
+            if action == 'network-update':
+                raw_config = body.get('config', {})
+                normalized = bridge_config(raw_config)
+                config = dict(network.get('config') or {})
+                for key in raw_config:
+                    if key in normalized:
+                        config[key] = normalized[key]
+                    else:
+                        config.pop(key, None)
+                description = body.get('description', network.get('description', ''))
+                if not isinstance(description, str) or len(description) > 1024:
+                    raise PanelError(400, 'A descrição da bridge deve ter até 1024 caracteres.')
+                etag = network_response.get('_etag')
+                if not isinstance(etag, str) or not etag:
+                    raise PanelError(502, 'O Incus não forneceu uma revisão segura para editar esta bridge.')
+                method, path = 'PUT', '/1.0/networks/' + target
+                payload = {'description': description, 'config': config}
+            else:
+                used = {str(item) for item in network.get('used_by', [])}
+                profiles = client.request('GET', '/1.0/profiles', project)['metadata']
+                instances = client.request('GET', '/1.0/instances', project)['metadata']
+                def references(devices):
+                    return any(device.get('type') == 'nic' and
+                               (device.get('network') == target or device.get('parent') == target)
+                               for device in (devices or {}).values())
+                for profile in profiles:
+                    if references(profile.get('devices')):
+                        used.add('profile: ' + profile['name'])
+                for instance in instances:
+                    if references(instance.get('expanded_devices') or instance.get('devices')):
+                        used.add('container: ' + instance.get('name', 'desconhecido'))
+                if used:
+                    names = ', '.join(sorted(used)[:8])
+                    raise PanelError(409, 'Bridge em uso. Remova suas dependências antes de excluir: ' + names + '.')
+                method, path = 'DELETE', '/1.0/networks/' + target
+        else:
+            raise PanelError(400, 'Ação de rede não permitida.')
+        record = {'identity': user['username'], 'host': host, 'project': project, 'target': target,
+                  'action': action, 'timestamp': time.time(), 'result': 'solicitada'}
+        with self.lock:
+            self.audit.append(record)
+            self.audit[:] = self.audit[-200:]
+        try:
+            response = client.request(method, path, project, payload, etag=etag) if etag else client.request(method, path, project, payload)
+            operation = response.get('operation', '')
+            if response.get('type') != 'async' or not re.fullmatch(r'/1.0/operations/[a-f0-9-]{36}', operation):
+                raise PanelError(502, 'Incus não retornou uma operação rastreável; confira a lista de bridges antes de repetir.')
+            record.update(result='aceita; aguardando Incus', operation=operation.rsplit('/', 1)[-1])
+            return {'operation': record['operation']}
+        except PanelError:
+            record['result'] = 'falha ou resultado incerto; consultar Incus'
+            raise
+
     def mutate(self, user, host, project, action, target, body, launch_devices=None, launch_config=None):
         client = self.context(user, host, project)
+        if action in ('network-create', 'network-update', 'network-delete'):
+            return self.mutate_network(user, host, project, action, target, body)
         if self.config.get("read_only", True) or user["role"] == "observador":
             raise PanelError(403, "Modo somente leitura ou papel sem permissão.")
         name(target)
@@ -621,8 +787,14 @@ class Service:
                     raise PanelError(409, "Estado mudou ou ação incompatível; atualize.")
                 method, path, payload = "PUT", path + "/state", {"action": action, "timeout": 30, "force": False}
             elif action in ("snapshot", "backup"):
+                artifact_name = name(body.get("name"))
+                if action == 'snapshot':
+                    current = client.request('GET', path + '/snapshots', project)['metadata']
+                    known = {str(item.get('name', '') if isinstance(item, dict) else item).rsplit('/', 1)[-1] for item in current}
+                    if artifact_name in known:
+                        raise PanelError(409, f'Já existe um snapshot chamado {artifact_name} neste container. Escolha outro nome.')
                 path += "/snapshots" if action == "snapshot" else "/backups"
-                payload = {"name": name(body.get("name"))}
+                payload = {"name": artifact_name}
                 if action == "snapshot":
                     payload["stateful"] = False
             elif action in ("snapshot-restore", "snapshot-delete", "backup-delete"):

@@ -32,6 +32,14 @@ Use `--project` repetidamente para vários escopos. O assistente mantém uma ún
 
 ## Verificação desta entrega
 
-O executor de desenvolvimento recusou SSH e a porta HTTPS antes da autenticação (`Permission denied`, socket Windows 10013). Nenhum login na TV Box foi concluído e nenhum recurso Incus foi alterado. A integração SSH foi verificada por testes locais de contrato, validação do helper remoto e smoke do painel, totalizando 64 testes automatizados. Compatibilidade e permissões do Incus do equipamento permanecem a confirmar pela execução acima.
+### Diagnostico de desempenho em 2026-11-05
+
+Em 2026-11-05, o acesso SSH à TV Box foi concluído e foram executadas somente consultas de diagnóstico. O equipamento reportou Debian 13, arquitetura ARMv7 (`armv7l`), Incus 6.0.4, cerca de 991 MiB de RAM e cerca de 765 MiB disponíveis durante a consulta. A pool `panel-dir` usa o driver `dir`; a bridge gerenciada `panelbr0` está em uso; há três containers em execução. `container-teste` já contém o snapshot `teste1`, confirmando que uma tentativa de criar outro snapshot com esse nome colidiria. O comando `incus info container-teste`, a listagem de snapshots e as listagens de redes e pools foram consultados sem alterar recursos.
+
+O processo do painel apresentou RSS de aproximadamente 19 MiB, `MemoryCurrent` de 14 MiB e pico de cerca de 31 MiB. O contador do serviço mostrava aproximadamente 196 segundos de CPU acumulados após cerca de 33 horas ativo; esse total não é uma porcentagem instantânea. Essas leituras são um retrato do momento, não um benchmark controlado. Os workloads existentes foram preservados.
+
+As transições da interface não puderam ser cronometradas na TV Box: o navegador disponível não expôs uma sessão autenticada do painel. O código agora reutiliza respostas de leitura já consultadas no modo leve, conserva a tela atual enquanto uma rota do mesmo escopo carrega e mantém o acompanhamento de operações fora do cache. Não há alegação de latência medida na interface real. A aceitação funcional que cria/remove snapshots ou bridges e conecta container continua pendente para um recurso descartável autorizado.
+
+Foram aprovados 217 testes automatizados (4 ignorados), incluindo casos de snapshots, bridges, permissões, transporte Unix e preservação do erro original. A checagem JavaScript passou e o smoke DOM percorreu 20 rotas, confirmou reuso de leituras, manutenção da tela durante carregamento, polling pausado fora da tela, confirmação única de snapshot, criação e console com dublês. O diagnóstico remoto foi somente de leitura. Detalhes e limites estão no [relatório de entrega](entrega.md).
 
 Referência de CLI: [incus query](https://linuxcontainers.org/incus/docs/main/reference/manpages/incus/query/). A versão instalada determina a disponibilidade dos argumentos utilizados.

@@ -38,7 +38,7 @@ def verify_password(password, encoded):
 
 
 def demo_config():
-    return {"demo": True, "read_only": False, "origin": "http://127.0.0.1:8080", "hosts": [{"id": "demo", "alias": "Laboratório simulado"}], "users": [], "mutable_instances": {"demo": {p: ["lab-web", "lab-db", "lab-novo"] for p in ("laboratorio", "redes")}}}
+    return {"demo": True, "read_only": False, "manage_networks": False, "origin": "http://127.0.0.1:8080", "hosts": [{"id": "demo", "alias": "Laboratório simulado"}], "users": [], "mutable_instances": {"demo": {p: ["lab-web", "lab-db", "lab-novo"] for p in ("laboratorio", "redes")}}}
 
 
 class Application:
@@ -80,6 +80,10 @@ class Application:
                     name(project)
         if not 60 <= config.get("session_seconds", 1800) <= 86400:
             raise ValueError("Sessão deve durar entre 60 e 86400 segundos.")
+        if type(config.get('manage_networks', False)) is not bool:
+            raise ValueError('manage_networks deve ser true ou false.')
+        if config.get('manage_networks', False) and config.get('read_only', True):
+            raise ValueError('manage_networks exige read_only desativado.')
         if any(h.get("transport") == "ssh" for h in config["hosts"]):
             if not config.get("read_only", True) or config.get("enable_console") or config.get("enable_events"):
                 raise ValueError("Transportes SSH/socket exigem somente leitura, sem console e sem eventos.")
@@ -329,7 +333,7 @@ class Application:
 
     def public_session(self, session):
         user = session["user"]
-        return {"username": user["username"], "role": user["role"], "scopes": user["scopes"], "host_metrics": user.get("host_metrics", False), "csrf": session["csrf"], "expires": session["expires"], "demo": self.config.get("demo", False), "read_only": self.config.get("read_only", True), "enable_console": self.config.get("enable_console", False), "low_resource": self.service.low_resource, "manage_all_instances": self.config.get("manage_all_instances", False) and user["role"] == "administrador", "manage_users": self.config_path is not None and not self.config.get("demo") and user["role"] == "administrador", "allow_remote_images": self.config.get("allow_remote_images", False), "hosts": [{"id": h["id"], "alias": h["alias"], "transport": h.get("transport", "tls")} for h in self.config["hosts"] if h["id"] in user["scopes"]], "mutable_instances": {h: {p: values for p, values in projects.items() if p in user["scopes"].get(h, [])} for h, projects in self.config.get("mutable_instances", {}).items() if h in user["scopes"]}}
+        return {"username": user["username"], "role": user["role"], "scopes": user["scopes"], "host_metrics": user.get("host_metrics", False), "csrf": session["csrf"], "expires": session["expires"], "demo": self.config.get("demo", False), "read_only": self.config.get("read_only", True), "enable_console": self.config.get("enable_console", False), "low_resource": self.service.low_resource, "manage_all_instances": self.config.get("manage_all_instances", False) and user["role"] == "administrador", "manage_networks": self.config.get("manage_networks", False) and user["role"] == "administrador", "manage_users": self.config_path is not None and not self.config.get("demo") and user["role"] == "administrador", "allow_remote_images": self.config.get("allow_remote_images", False), "hosts": [{"id": h["id"], "alias": h["alias"], "transport": h.get("transport", "tls")} for h in self.config["hosts"] if h["id"] in user["scopes"]], "mutable_instances": {h: {p: values for p, values in projects.items() if p in user["scopes"].get(h, [])} for h, projects in self.config.get("mutable_instances", {}).items() if h in user["scopes"]}}
 
 
 class Handler(BaseHTTPRequestHandler):

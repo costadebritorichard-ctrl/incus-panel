@@ -31,6 +31,9 @@ class UnixIncus:
 
     def request(self, method, path, project, body=None, etag=None):
         write = ((method == 'POST' and path in ('/1.0/instances', '/1.0/images')) or
+                 (method == 'POST' and path == '/1.0/networks') or
+                 (method == 'PUT' and re.fullmatch(r'/1\.0/networks/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', path)) or
+                 (method == 'DELETE' and re.fullmatch(r'/1\.0/networks/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', path)) or
                  (method == 'POST' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}/(?:exec|snapshots|backups)', path)) or
                  (method == 'PUT' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}/state', path)) or
                  (method == 'PUT' and re.fullmatch(r'/1\.0/instances/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', path)) or

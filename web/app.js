@@ -70,7 +70,7 @@ async function waitOperation(operation,scope,owner){
   }
   return state;
 }
-let session, host, project, generation = 0, pendingAction, timer, expiryTimer, busy = false, consoleId, consoleTimer;
+let session, host, project, generation = 0, pendingAction, timer, expiryTimer, busy = false, consoleId, consoleTimer, renderedScope = '', renderedSession;
 let eventTimer,eventVersion;
 const tasks = new Map();
 const creationRuns = new Map();
@@ -188,14 +188,18 @@ async function api(path, body) {
 }
 async function read(resource,target,scope={host,project}) {
   const path='/api/read?'+new URLSearchParams({...scope,resource,...(target?{target}:{})});
-  const cacheable=['server','instance-list',...(session?.low_resource?['host-summary','pools','networks']:[])];
+  const cacheable=['server','instance-list',...(session?.low_resource?[
+    'host-summary','pools','pool-resources','networks','network','network-leases',
+    'profiles','projects','instance','state','snapshots','backups','images',
+    'creation-images','image-catalog','audit'
+  ]:[])];
   if(!cacheable.includes(resource))return api(path);
   const cached=readCache.get(path);
-  if(cached&&Date.now()<cached.expires)return cached.promise;
+  if(cached&&Date.now()<cached.expires){readCache.delete(path);readCache.set(path,cached);return cached.promise;}
   const entry={expires:Infinity};
   entry.promise=api(path).then(result=>{entry.expires=session?.low_resource?Infinity:Date.now()+(resource==='server'?60000:15000);return result;},error=>{if(readCache.get(path)===entry)readCache.delete(path);throw error;});
   readCache.set(path,entry);
-  if(readCache.size>8)readCache.delete(readCache.keys().next().value);
+  if(readCache.size>128)readCache.delete(readCache.keys().next().value);
   return entry.promise;
 }
 function route() { const [page='',target='',tab='summary'] = location.hash.slice(1).split('/').map(value=>{try{return decodeURIComponent(value);}catch{return value;}}); return {page:page||'overview',target,tab}; }
@@ -205,10 +209,12 @@ function actionButton(label, action, target, extra={}) { return el('button',{cla
 function openAction(action,target,extra={}) {
   if(action==='console'){startTerminal(target).catch(showTerminalError);return;}
   pendingAction={host,project,action,target,...extra};
-  $('#action-title').textContent=({start:'Iniciar container',stop:'Parar container',restart:'Reiniciar container',delete:'Excluir container permanentemente',create:'Criar container',snapshot:'Criar snapshot',backup:'Gerar backup','snapshot-restore':'Restaurar snapshot','snapshot-delete':'Excluir snapshot','backup-delete':'Excluir backup',console:'Abrir shell interativo'})[action];
-  $('#action-description').textContent=action==='console'?'Este acesso abre /bin/sh, normalmente como root dentro do container. Comandos podem alterar ou apagar dados.':action==='delete'?'A exclusão remove permanentemente o container e seus snapshots.':action==='snapshot-restore'?'A restauração substitui o estado atual do container pelo snapshot selecionado. O container precisa estar parado.':action==='snapshot-delete'||action==='backup-delete'?'A exclusão remove permanentemente este arquivo de recuperação.':action==='snapshot'||action==='backup'?'A operação consome armazenamento. Blocos compartilhados não representam espaço recuperável garantido.':'Revise o destino. O resultado será confirmado pela operação Incus.';
-  $('#action-review').textContent=`Container: ${target}\nServidor: ${session.hosts.find(h=>h.id===host)?.alias || host}\nProjeto: ${project}${extra.snapshot?`\nSnapshot: ${extra.snapshot}`:''}${extra.backup?`\nBackup: ${extra.backup}`:''}${extra.profiles ? '\nPerfil: '+extra.profiles.join(', ') : ''}`;
-  const needsConfirmation=['delete','snapshot-restore','snapshot-delete','backup-delete'].includes(action);
+  $('#action-title').textContent=({start:'Iniciar container',stop:'Parar container',restart:'Reiniciar container',delete:'Excluir container permanentemente',create:'Criar container',snapshot:'Criar snapshot',backup:'Gerar backup','snapshot-restore':'Restaurar snapshot','snapshot-delete':'Excluir snapshot','backup-delete':'Excluir backup',console:'Abrir shell interativo','network-create':'Criar bridge','network-update':'Atualizar bridge','network-delete':'Excluir bridge'})[action];
+  $('#action-description').textContent=action==='network-delete'?'A bridge só será excluída se não estiver conectada a containers ou perfis.':action==='network-update'?'As opções permitidas se limitam a endereço IPv4/IPv6, DHCP, NAT e domínio DNS. Interfaces físicas externas não são alteradas.':action==='network-create'?'Será criada uma bridge privada gerenciada pelo Incus. Interfaces físicas não serão adicionadas.':action==='console'?'Este acesso abre /bin/sh, normalmente como root dentro do container. Comandos podem alterar ou apagar dados.':action==='delete'?'A exclusão remove permanentemente o container e seus snapshots.':action==='snapshot-restore'?'A restauração substitui o estado atual do container pelo snapshot selecionado. O container precisa estar parado.':action==='snapshot-delete'||action==='backup-delete'?'A exclusão remove permanentemente este arquivo de recuperação.':action==='snapshot'||action==='backup'?'A operação consome armazenamento. Blocos compartilhados não representam espaço recuperável garantido.':'Revise o destino. O resultado será confirmado pela operação Incus.';
+  $('#action-review').textContent=`${action.startsWith('network-')?'Bridge':'Container'}: ${target}\nServidor: ${session.hosts.find(h=>h.id===host)?.alias || host}\nProjeto: ${project}${extra.snapshot?`\nSnapshot: ${extra.snapshot}`:''}${extra.backup?`\nBackup: ${extra.backup}`:''}${extra.profiles ? '\nPerfil: '+extra.profiles.join(', ') : ''}`;
+  const needsConfirmation=['delete','snapshot-restore','snapshot-delete','backup-delete','network-delete'].includes(action);
+  if(extra.config)$('#action-review').textContent+='\nConfiguração solicitada: '+JSON.stringify(extra.config);
+  if(extra.description)$('#action-review').textContent+='\nDescrição: '+extra.description;
   const artifact=extra.snapshot||extra.backup||'';
   const typedValue=artifact?`${host}/${project}/${target}/${artifact}`:target;
   $('#confirmation').parentElement.hidden=!needsConfirmation;
@@ -218,7 +224,12 @@ function openAction(action,target,extra={}) {
   $('#name-label').hidden=!['snapshot','backup'].includes(action);
   $('#artifact-name').required=!$('#name-label').hidden;
   $('#artifact-name').value=''; $('#action-error').textContent='';
-  $('#submit-action').classList.toggle('danger-primary',['delete','snapshot-delete','backup-delete'].includes(action));
+  if(action==='snapshot'){
+    const names=new Set(extra.snapshotNames||[]);let candidate='snapshot',suffix=1;
+    while(names.has(candidate))candidate='snapshot-'+suffix++;
+    $('#artifact-name').value=candidate;
+  }
+  $('#submit-action').classList.toggle('danger-primary',['delete','snapshot-delete','backup-delete','network-delete'].includes(action));
   $('#confirm').showModal(); (needsConfirmation?$('#confirmation'):$('#submit-action')).focus();
 }
 $('#cancel-action').onclick=()=>$('#confirm').close();
@@ -229,20 +240,24 @@ $('#action-form').onsubmit=async event=>{
     const action={...pendingAction},owner=session;
     const artifact=action.snapshot||action.backup||'';
     const typedValue=artifact?`${action.host}/${action.project}/${action.target}/${artifact}`:action.target;
-    if(['delete','snapshot-restore','snapshot-delete','backup-delete'].includes(action.action)&&$('#confirmation').value!==typedValue)throw new Error(`Digite ${typedValue} exatamente como exibido.`);
+    const artifactName=$('#artifact-name').value.trim();
+    if(action.action==='snapshot'&&(action.snapshotNames||[]).includes(artifactName))throw new Error('Já existe um snapshot chamado '+artifactName+'. Atualize a lista e escolha outro nome.');
+    if(['delete','snapshot-restore','snapshot-delete','backup-delete','network-delete'].includes(action.action)&&$('#confirmation').value!==typedValue)throw new Error(`Digite ${typedValue} exatamente como exibido.`);
     if(pendingAction.action==='console'){
       const result=await api('/api/console/start',{...pendingAction,confirmation:$('#confirmation').value});
       consoleId=result.console;$('#confirm').close();pollConsole();return;
     }
-    const data=await api('/api/action',{...action,confirmation:`${action.host}/${action.project}/${action.target}${artifact?'/'+artifact:''}`,name:$('#artifact-name').value});
+    const requestAction={...action};delete requestAction.snapshotNames;
+    const data=await api('/api/action',{...requestAction,confirmation:`${action.host}/${action.project}/${action.target}${artifact?'/'+artifact:''}`,name:artifactName});
     trackTask(`${action.host}/${action.project}/${data.operation}`,{...action,id:data.operation,status:'Aguardando confirmação',status_code:100,...(action.action==='create'?{start_after_create:false}:{})});
     $('#submit-action').textContent='Aguardando o Incus…';
     const state=await waitOperation(data.operation,{host:action.host,project:action.project},owner);
     if(session!==owner)return;
     $('#confirm').close();
-    notify(state.status_code<200?'Operação em andamento. Acompanhe em Tarefas.':({start:'Container iniciado.',stop:'Container parado.',restart:'Container reiniciado.',delete:'Container excluído.',create:'Container criado.'})[action.action]||'Operação concluída.');
+    notify(state.status_code<200?'Operação em andamento. Acompanhe em Tarefas.':({start:'Container iniciado.',stop:'Container parado.',restart:'Container reiniciado.',delete:'Container excluído.',create:'Container criado.','network-create':'Bridge criada.','network-update':'Bridge atualizada.','network-delete':'Bridge excluída.'})[action.action]||'Operação concluída.');
     if(action.action==='delete'&&route().page==='instance'){location.hash='#instances';return;}
     if(action.action==='create'){openTaskDetail({...action,...state,id:data.operation,start_after_create:false});return;}
+    if(action.action==='network-delete'){location.hash='#networks';return;}
     if(state.status_code<200){location.hash='#tasks';return;}
     await render();
   } catch(error) { $('#action-error').textContent=error.message; }
@@ -258,7 +273,7 @@ function logoutLocal() {
   for(const run of imageDownloads.values())clearTimeout(run.timer);
   imageDownloads.clear();readCache.clear();
   $('#feedback').hidden=true;
-  session=null; generation++; clearTimeout(timer); clearTimeout(expiryTimer); clearTimeout(eventTimer); tasks.clear(); $('#content').replaceChildren(); $('#tree').replaceChildren(); $('#shell').hidden=true; $('#login').hidden=false;
+  session=null; renderedScope='';renderedSession=null;readCache.clear();generation++; clearTimeout(timer); clearTimeout(expiryTimer); clearTimeout(eventTimer); tasks.clear(); $('#content').replaceChildren(); $('#tree').replaceChildren(); $('#shell').hidden=true; $('#login').hidden=false;
   if($('#confirm').open) $('#confirm').close();
   if($('#create-dialog').open)$('#create-dialog').close();
   if($('#task-detail').open)$('#task-detail').close();
@@ -393,7 +408,8 @@ async function render() {
   }));
   $('#banner').hidden=!session.demo; $('#banner').textContent='DEMONSTRAÇÃO · Todos os dados e operações são simulados em memória. Nada é enviado a um servidor Incus real.';
   $('#connection').textContent='Consultando Incus…'; $('#content').setAttribute('aria-busy','true');
-  $('#content').replaceChildren(loadingView(route().page==='create'?'Carregando imagens disponíveis…':'Carregando '+title+'…'));
+  if(!$('#content').childNodes.length||renderedScope!==scope.host+'/'+scope.project||renderedSession!==session)
+    $('#content').replaceChildren(loadingView(route().page==='create'?'Carregando imagens disponíveis…':'Carregando '+title+'…'));
   const container=el('div');
   try {
     const [serverResult, instancesResult]=await Promise.allSettled([read('server',undefined,scope),read('instance-list',undefined,scope)]);
@@ -450,6 +466,7 @@ async function render() {
     const tracked=[...tasks.values()].filter(t=>t.host===scope.host&&t.project===scope.project);
     $('#task-summary').textContent=tracked.length?tracked.map(t=>`${t.target}: ${t.status}`).join(' · '):'Operações rastreadas pelo Incus';
     $('#content').replaceChildren(container); $('#connection').textContent=(session.demo?'● Simulação conectada':'● Conectado · '+transportLabel())+' · '+host+' / '+project;
+    renderedScope=scope.host+'/'+scope.project;renderedSession=session;
     $('#updated').textContent='Inventário '+new Date(instancesResult.value.timestamp*1000).toLocaleTimeString('pt-BR');
     if(taskLogScope!==host+'/'+project){taskLogScope=host+'/'+project;taskLogItems=[];refreshTaskLog();}else renderTaskLog();
     if(r.page==='instance'&&r.tab==='console')mountTerminal(r.target,scope,id);
@@ -530,17 +547,50 @@ async function storageDetailView(scope,target,tab='summary'){
     metricChart('Uso do pool',points,{unit:percent===null?'':'%',color:'#91bd20',emptyText:usage.error?'O Incus não autorizou a leitura dos recursos do pool.':'O Incus não informou os contadores deste pool.'}),
     panel('Detalhes',el('div',{class:'panel-body'},kv([['Nome',pool.name],['Driver',pool.driver],['Estado',pool.status],['Utilizado',bytes(space?.used)],['Capacidade',bytes(space?.total)],['Coletado em',date(usage.timestamp)]]))));
 }
+function canManageNetworks(){return !session.read_only&&session.role==='administrador'&&session.manage_networks;}
+function bridgeOptions(config={}){
+  const ipv4=config['ipv4.address']||'auto';
+  const address4=el('input',{name:'ipv4.address',maxlength:'64',value:ipv4});
+  const dhcp4=el('select',{name:'ipv4.dhcp'},el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));
+  dhcp4.value=config['ipv4.dhcp']||(ipv4==='none'?'false':'true');
+  const nat4=el('select',{name:'ipv4.nat'},el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));
+  nat4.value=config['ipv4.nat']||(ipv4==='none'?'false':'true');
+  const address6=el('input',{name:'ipv6.address',maxlength:'64',value:config['ipv6.address']||'none'});
+  const dhcp6=el('select',{name:'ipv6.dhcp'},el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));
+  dhcp6.value=config['ipv6.dhcp']||'false';
+  const nat6=el('select',{name:'ipv6.nat'},el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));
+  nat6.value=config['ipv6.nat']||'false';
+  const domain=el('input',{name:'dns.domain',maxlength:'253',value:config['dns.domain']||''});
+  const fields=[el('label',{},'Endereço IPv4 (CIDR, auto ou none)',address4),el('label',{},'DHCP IPv4',dhcp4),el('label',{},'NAT IPv4',nat4),el('label',{},'Endereço IPv6 (CIDR, auto ou none)',address6),el('label',{},'DHCP IPv6',dhcp6),el('label',{},'NAT IPv6',nat6),el('label',{class:'full'},'Domínio DNS',domain)];
+  return {fields,values:()=>Object.fromEntries([address4,dhcp4,nat4,address6,dhcp6,nat6,domain].map(input=>[input.name,input.value]))};
+}
+function networkActionButton(label,action,target,extra={}){
+  return el('button',{type:'button',class:'action-button'+(action==='network-delete'?' danger-button':''),disabled:canManageNetworks()?null:'',onclick:()=>openAction(action,target,extra)},...iconLabel(action==='network-delete'?'delete':'save',label));
+}
 async function networkDetailView(scope,target,tab='summary'){
-  const networks=(await read('networks',undefined,scope)).data;
-  const network=networks.find(item=>item.name===target);
+  let network;
+  try{network=(await read('network',target,scope)).data;}
+  catch(error){return errorNode(error);}
   if(!network)return errorNode(new Error('Rede indisponível neste projeto.'));
   if(tab==='permissions')return el('div',{},await permissionsView(scope,inventory),notice('A rede é visível neste projeto conforme as permissões devolvidas pelo Incus. O painel não configura ACLs de rede separadas.'));
-  const instances=await read('instances',undefined,scope).catch(error=>({data:[],error}));
-  const attached=instances.data.filter(item=>Object.values(item.expanded_devices||{}).some(device=>device.type==='nic'&&(device.network===network.name||device.parent===network.name)));
+  const dependencies=Array.isArray(network.used_by)?network.used_by:[];
+  const instanceNames=new Set(dependencies.filter(path=>String(path).includes('/instances/')).map(path=>decodeURIComponent(String(path).split('?')[0].split('/').pop())));
+  const attached=inventory.filter(item=>instanceNames.has(item.name));
+  const external=Boolean(network.config?.['bridge.external_interfaces']);
+  const managedBridge=network.managed&&network.type==='bridge';
   const body=panel('Configuração da rede',el('div',{class:'panel-body'},kv([['Nome',network.name],['Tipo',network.type],['Gerenciada',network.managed?'Sim':'Não'],['Estado',network.status],['Gateway / CIDR IPv4',network.config?.['ipv4.address']],['Faixa DHCP IPv4',network.config?.['ipv4.dhcp.ranges']],['DHCP IPv4',network.config?.['ipv4.dhcp']],['NAT IPv4',network.config?.['ipv4.nat']],['IPv6 / CIDR',network.config?.['ipv6.address']],['Domínio DNS',network.config?.['dns.domain']],['Projeto',scope.project]]),inspectResource(network,'network')));
   const result=el('div',{class:'dashboard-view'},el('div',{class:'grid dashboard-top'},healthView(network.name,network.status==='Created',network.type+' · '+(network.managed?'gerenciada pelo Incus':'externa')),body),panel('Containers conectados',instanceTable(attached)));
-  if(instances.error)result.append(errorNode(instances.error));
-  if(session.host_metrics&&network.managed&&network.type==='bridge'){
+  if(dependencies.length)result.append(panel('Dependências informadas pelo Incus',table(['RECURSO'],dependencies.map(value=>[value]))));
+  if(canManageNetworks()&&managedBridge&&!external){
+    const editor=bridgeOptions(network.config||{});
+    const description=el('input',{name:'description',maxlength:'1024',value:network.description||''});
+    const remove=networkActionButton('Excluir bridge','network-delete',network.name);if(dependencies.length)remove.disabled=true;
+    const form=el('form',{class:'network-form'},...editor.fields,el('label',{class:'full'},'Descrição',description),el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},...iconLabel('save','Salvar bridge')),remove));
+    form.onsubmit=event=>{event.preventDefault();openAction('network-update',network.name,{config:editor.values(),description:description.value});};
+    result.append(panel('Editar bridge gerenciada',el('div',{class:'panel-body'},form,notice('A edição altera somente endereço, DHCP, NAT e domínio DNS. Interfaces físicas não são aceitas.'))));
+  }else if(!canManageNetworks())result.append(notice('A gestão de bridges exige habilitação explícita para administradores.'));
+  else if(external)result.append(notice('Esta bridge usa interface externa. O painel a mantém somente para consulta.'));
+  if(session.host_metrics&&managedBridge){
     const leases=await read('network-leases',network.name,scope).catch(error=>({error}));
     result.append(leases.error?errorNode(leases.error):panel('Leases DHCP',table(['HOSTNAME','MAC','IPv4','IPv6'],(leases.data||[]).map(item=>[item.hostname||'—',item.hwaddr||'—',item.ipv4||(item.address&&!item.address.includes(':')?item.address:'—'),item.ipv6||(item.address?.includes(':')?item.address:'—')]))));
   }else result.append(notice('A lista global de leases DHCP exige métricas do host e só está disponível para bridges gerenciadas.'));
@@ -655,12 +705,26 @@ async function serverSystemView(scope,server){
 async function networksView(scope){
   try{
     const data=(await read('networks',undefined,scope)).data;
-    const content=el('div',{},panel('Redes do nó',table(['NOME','TIPO','ATIVA','IPv4 / CIDR','IPv6 / CIDR','NAT','CONFIGURAÇÃO'],data.map(item=>()=>[
-      item.name,item.type,item.status||'n/d',item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',item.config?.['ipv4.nat']==='true'?'Sim':'Não',inspectResource(item,'network')
+    const content=el('div');
+    content.append(panel('Redes do nó',table(['NOME','TIPO','GERENCIADA','ESTADO','IPv4 / CIDR','IPv6 / CIDR','USO','CONFIGURAÇÃO'],data.map(item=>()=>[
+      el('a',{href:'#network/'+encodeURIComponent(item.name)},item.name),item.type,item.managed?'Sim':'Não',item.status||'n/d',
+      item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',(item.used_by||[]).length,inspectResource(item,'network')
     ]))));
-    if(session.host_metrics)for(const network of data.filter(item=>item.managed&&item.type==='bridge')){
-      try{const leases=(await read('network-leases',network.name,scope)).data;content.append(panel('Leases DHCP · '+network.name,table(['HOSTNAME','MAC','IPv4','IPv6'],leases.map(lease=>[lease.hostname||'—',lease.hwaddr||'—',lease.ipv4||(lease.address&&!lease.address.includes(':')?lease.address:'—'),lease.ipv6||(lease.address?.includes(':')?lease.address:'—')]))));}
-      catch(error){content.append(errorNode(error));}
+    if(canManageNetworks()){
+      const networkName=el('input',{name:'network-name',maxlength:'63',pattern:'[A-Za-z0-9][A-Za-z0-9_.-]{0,62}',required:'',placeholder:'Ex.: bridge-lab'});
+      const description=el('input',{name:'description',maxlength:'1024',placeholder:'Opcional'});
+      const editor=bridgeOptions({'ipv4.address':'auto','ipv4.dhcp':'true','ipv4.nat':'true','ipv6.address':'none','ipv6.dhcp':'false','ipv6.nat':'false'});
+      const form=el('form',{class:'network-form'},el('label',{class:'full'},'Nome da bridge',networkName),...editor.fields,el('label',{class:'full'},'Descrição',description),el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},...iconLabel('plus','Criar bridge'))));
+      form.onsubmit=event=>{event.preventDefault();openAction('network-create',networkName.value.trim(),{config:editor.values(),description:description.value});};
+      content.append(panel('Criar bridge gerenciada pelo Incus',el('div',{class:'panel-body'},form,notice('O formulário não aceita interfaces físicas. A bridge será criada com as opções de endereço, DHCP, NAT e DNS informadas.'))));
+    }else content.append(notice('A criação e edição de bridges exige manage_networks habilitado para administradores.'));
+    if(session.host_metrics){
+      const bridges=data.filter(item=>item.managed&&item.type==='bridge');
+      const leases=await Promise.all(bridges.map(async network=>({network,result:await read('network-leases',network.name,scope).then(value=>({data:value.data}),error=>({error}))})));
+      for(const {network,result} of leases){
+        if(result.error)content.append(errorNode(result.error));
+        else content.append(panel('Leases DHCP · '+network.name,table(['HOSTNAME','MAC','IPv4','IPv6'],result.data.map(lease=>[lease.hostname||'—',lease.hwaddr||'—',lease.ipv4||(lease.address&&!lease.address.includes(':')?lease.address:'—'),lease.ipv6||(lease.address?.includes(':')?lease.address:'—')]))));
+      }
     }else content.append(notice('A lista de leases DHCP pode incluir outros Projects e exige a permissão de métricas globais do host.'));
     return content;
   }catch(error){return errorNode(error);}
@@ -867,7 +931,7 @@ async function detail(r,scope) {
       }
       return [artifact,date(item.created_at),date(item.expires_at),controls];
     });
-    wrapper.append(panel(r.tab==='snapshots'?'Snapshots':'Backups',table(['NOME','CRIADO EM','EXPIRA EM','AÇÕES'],artifacts),actionButton('Criar',r.tab==='snapshots'?'snapshot':'backup',r.target)));
+    wrapper.append(panel(r.tab==='snapshots'?'Snapshots':'Backups',table(['NOME','CRIADO EM','EXPIRA EM','AÇÕES'],artifacts),actionButton('Criar',r.tab==='snapshots'?'snapshot':'backup',r.target,r.tab==='snapshots'?{snapshotNames:artifacts.map(item=>item[0])}:{})));
     wrapper.append(notice(r.tab==='snapshots'?'Você pode restaurar ou excluir snapshots. A restauração substitui o estado atual e só está disponível com o container parado.':'Backups podem ser criados e excluídos. O download e a importação de arquivos ainda não estão disponíveis.'));
   } else if(r.tab==='console'){
     const allowed=session.enable_console&&canMutate(r.target)&&state.status==='Running'&&!session.demo;

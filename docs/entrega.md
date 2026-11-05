@@ -1,6 +1,6 @@
 # Relatório por lote — 0.1.0
 
-Este artefato é uma implementação experimental, não a conclusão de todos os critérios da especificação. Não foi acessado hardware Incus real nem foram alterados workloads de produção.
+Este documento preserva o relatório do lote original 0.1.0. A atualização de 2026-11-05, ao final, registra o acesso posterior à TV Box, as correções e as evidências atuais. Os critérios que dependem de mutações em recursos descartáveis seguem pendentes.
 
 ## LOTE-00 / F0
 
@@ -30,6 +30,24 @@ Há seleção de hosts configurados e escopos/papéis no servidor. Gestão de cl
 
 CA/hostname/fingerprint obrigatórios, URLs fixas, nenhuma credencial Incus em assets, redaction recursiva, CSRF/Origin e cookie HttpOnly, hash scrypt, escopos backend e lista de containers mutáveis. Testes exercitam tentativas de atravessar Projects, operar produção, invocar console como observador, usar alvo incorreto e apagar container protegido. O serviço mantém uma identidade TLS por host; use isolamento de serviço/certificado para políticas mais fortes. Requer rede privada e proxy reverso com limites; não foi auditado como serviço público multi-tenant.
 
-## Versionamento e remoto
+## Histórico de versionamento do lote 0.1.0
 
 Commits incrementais reais foram gravados em `.git-local` porque o executor bloqueia escrita em `.git`. Um bundle exporta o histórico completo. O usuário confirmou autenticação GitHub no seu terminal, mas a sessão continuou recebendo bloqueio de socket ao acessar `api.github.com`. Repositório remoto e push não foram confirmados. `scripts/publish.ps1` importa o histórico para o Git normal, cria repositório privado e faz push no terminal autenticado do usuário, sem force.
+
+## Atualização de 2026-11-05
+
+### Correções e validação local
+
+- **Snapshots:** o painel consulta os nomes antes do POST, sugere um nome livre, impede o envio de nomes já exibidos, bloqueia cliques duplicados durante a confirmação, atualiza a lista após sucesso e conserva a mensagem original do Incus em conflito. A lista normaliza o identificador para mostrar somente o nome do snapshot.
+- **Bridges:** administradores podem criar, consultar, editar e excluir bridges gerenciadas quando `manage_networks: true` e `read_only: false`. São editáveis apenas endereço IPv4/IPv6, DHCP, NAT e domínio DNS; interfaces físicas e bridges com uplinks externos são somente leitura. A exclusão verifica dependências no Incus, profiles e NICs expandidas. A seleção de bridge no assistente de criação já existia.
+- **Disco:** o assistente já desabilitava cota para o driver `dir` e só habilitava `btrfs`, `zfs`, `lvm` ou `ceph`; nenhuma migração do pool foi feita.
+- **Autenticação e métricas:** os contratos de sessão, logout, proteção da API e escopos continuam cobertos pela regressão. A interface identifica CPU como tempo acumulado, sem tratá-lo como percentual instantâneo.
+- **Navegação leve:** até 128 respostas estáveis ficam em cache por sessão/escopo; atualização manual, mudança de escopo e mutações limpam o cache. A tela atual continua visível durante a montagem da próxima. O polling de criação e downloads pausa fora da tela correspondente e retoma ao voltar.
+
+A suíte Python aprovou 217 testes, com 4 ignorados. `node --check` e `python -m compileall -q incus_panel` passaram. O smoke DOM percorreu 20 rotas e validou oito etapas de criação, confirmação única de snapshot, cache na troca de telas, retenção da tela atual durante carregamento, polling pausado fora da tela, tarefas, falha assíncrona e console com dublês. Esses resultados validam a fixture; não são aceites de mutação em hardware real.
+
+### TV Box
+
+O SSH foi acessado em modo diagnóstico. O host reportou Debian 13, ARMv7, Incus 6.0.4, aproximadamente 991 MiB de RAM e 765 MiB disponíveis. O serviço do painel apresentou RSS de aproximadamente 19 MiB, memória atual de 14 MiB, pico de 31 MiB e 196 segundos de CPU acumulados em cerca de 33 horas. A pool usa `dir`; a bridge gerenciada está em uso; há três containers ativos e `container-teste` já possui o snapshot `teste1`. Foram feitas apenas consultas; nenhum workload foi alterado.
+
+A sessão autenticada do painel não pôde ser aberta pelo navegador conectado, portanto o tempo real de transição de telas na TV Box não foi cronometrado. A validação DOM local confirma que a mudança reduz consultas repetidas e mantém a tela atual durante carregamento. O ciclo de criação/exclusão de snapshot e bridge e a conexão de container devem ser verificados em recursos descartáveis antes de classificar esses aceites como concluídos.

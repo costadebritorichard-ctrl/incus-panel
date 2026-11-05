@@ -27,6 +27,24 @@ try{
   assert.equal(d.querySelectorAll('#tree a.leaf').length,2);
   const routes=['instances','images','storage','networks','profiles','projects','server','tasks','alerts','settings','instance/lab-web/summary','instance/lab-web/resources','instance/lab-web/network','instance/lab-web/dns','instance/lab-web/devices','instance/lab-web/options','instance/lab-web/snapshots','instance/lab-web/backups','instance/lab-web/console','overview'];
   for(const route of routes){await navigate(route);assert.doesNotMatch(d.querySelector('#content').textContent,/Falha interna|Página não encontrada|Não foi possível atualizar/,'Route '+route);}
+  await navigate('instance/lab-web/snapshots');
+  const actionRequests=()=>requests.filter(path=>path==='/api/action').length,beforeSnapshotAction=actionRequests();
+  [...d.querySelectorAll('#content .action-button')].find(button=>button.textContent.trim()==='Criar').click();
+  d.querySelector('#submit-action').click();d.querySelector('#submit-action').click();
+  await wait(()=>!d.querySelector('#confirm').open);
+  assert.equal(actionRequests(),beforeSnapshotAction+1,'Cliques repetidos confirmam somente uma criação de snapshot.');
+  assert.match(d.querySelector('#content').textContent,/snapshot/);
+  const detailReads=()=>requests.filter(path=>path.includes('resource=instance&target=lab-web')).length;
+  await navigate('instance/lab-web/options');const cachedDetailReads=detailReads();
+  await navigate('instance/lab-web/resources');await navigate('instance/lab-web/options');
+  assert.equal(detailReads(),cachedDetailReads,'Revisitar telas usa o detalhe de container já lido.');
+  w.eval('readCache.clear()');
+  const originalFetch=w.fetch;let releaseImages;
+  w.fetch=(path,options)=>String(path).includes('resource=images')?new Promise(resolve=>{releaseImages=()=>originalFetch(path,options).then(resolve);}):originalFetch(path,options);
+  const previousGeneration=w.eval('generation'),visibleContent=d.querySelector('#content').textContent;
+  w.location.hash='images';await wait(()=>w.eval('generation')>previousGeneration&&typeof releaseImages==='function');
+  assert.equal(d.querySelector('#content').textContent,visibleContent,'A tela atual fica visível durante a carga da próxima rota.');
+  releaseImages();await wait(()=>w.eval('generation')>previousGeneration&&!d.querySelector('#content').hasAttribute('aria-busy'));w.fetch=originalFetch;
   d.querySelector('#global-search').value='lab-web';d.querySelector('#global-search').dispatchEvent(new w.Event('input'));assert.equal(d.querySelectorAll('#tree a.leaf').length,1);
   d.querySelector('#global-search').value='';d.querySelector('#global-search').dispatchEvent(new w.Event('input'));
   d.querySelector('#task-log-toggle').click();assert.equal(d.querySelector('#task-log-toggle').getAttribute('aria-expanded'),'false');d.querySelector('#task-log-toggle').click();
@@ -105,5 +123,5 @@ try{
   d.querySelector('#close-task-detail').click();
   d.querySelector('#logout').click();await wait(()=>!d.querySelector('#login').hidden);
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({routes:routes.length,wizardSteps:8,creation:'Running',limitsApplied:true,restrictedCreationWithoutHostMetrics:true,backgroundPollingPaused:true,taskPanel:true,asyncFailure:true,terminalProtocolDouble:{autoConnect:true,ansi:true,keyboard:true,resize:true,navigationCleanup:true,pendingConnectionCleanup:true},logout:true,domErrors:errors.length}));
+  console.log(JSON.stringify({routes:routes.length,wizardSteps:8,creation:'Running',limitsApplied:true,restrictedCreationWithoutHostMetrics:true,snapshotConfirmSentOnce:true,sameScopeReadCache:true,previousScreenRetainedWhileLoading:true,backgroundPollingPaused:true,taskPanel:true,asyncFailure:true,terminalProtocolDouble:{autoConnect:true,ansi:true,keyboard:true,resize:true,navigationCleanup:true,pendingConnectionCleanup:true},logout:true,domErrors:errors.length}));
 }finally{dom.window.close();}

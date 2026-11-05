@@ -68,3 +68,15 @@ class LocalAdministration(unittest.TestCase):
                 with self.assertRaises(PanelError):
                     UnixIncus({'socket_path': str(Path('incus.socket').resolve())}).request(method, path, 'default')
             connection.assert_not_called()
+
+    def test_socket_allows_only_supported_managed_bridge_write_paths(self):
+        response = Mock(status=202)
+        response.read.return_value = json.dumps({'type': 'async', 'operation': '/1.0/operations/123', 'metadata': {}}).encode()
+        paths = [('POST', '/1.0/networks'), ('PUT', '/1.0/networks/panelbr0'), ('DELETE', '/1.0/networks/panelbr0')]
+        with patch('incus_panel.unix_transport.UnixHTTPConnection') as connection:
+            connection.return_value.getresponse.return_value = response
+            client = UnixIncus({'socket_path': str(Path('incus.socket').resolve())})
+            for method, path in paths:
+                result = client.request(method, path, 'default', {})
+                self.assertEqual(result['type'], 'async')
+            self.assertEqual(connection.return_value.request.call_count, len(paths))
