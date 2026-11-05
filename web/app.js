@@ -412,13 +412,12 @@ async function render() {
     $('#content').replaceChildren(loadingView(route().page==='create'?'Carregando imagens disponíveis…':'Carregando '+title+'…'));
   const container=el('div');
   try {
-    const [serverResult, instancesResult]=await Promise.allSettled([read('server',undefined,scope),read('instance-list',undefined,scope)]);
+    const [serverResult, instancesResult,poolsForTree,networksForTree]=await Promise.allSettled([read('server',undefined,scope),read('instance-list',undefined,scope),session.host_metrics?read('pools',undefined,scope):Promise.resolve({data:[]}),read('networks',undefined,scope)]);
     if(id!==generation||!session)return;
     if(serverResult.status==='rejected')throw serverResult.reason;
     if(instancesResult.status==='rejected')throw instancesResult.reason;
     const server=serverResult.value.data, instances=instancesResult.value.data;
     inventory=instances;serverInfo=server;
-    const [poolsForTree,networksForTree]=await Promise.allSettled([session.host_metrics?read('pools',undefined,scope):Promise.resolve({data:[]}),read('networks',undefined,scope)]);
     if(id!==generation||!session)return;
     storageInventory=poolsForTree.status==='fulfilled'?poolsForTree.value.data:[];
     networkInventory=networksForTree.status==='fulfilled'?networksForTree.value.data:[];
@@ -1024,11 +1023,13 @@ async function startTerminal(target){
   if(state.cancelled||session!==owner){if(session===owner)api('/api/console/close',{console:result.console}).catch(()=>{});return;}
   consoleId=result.console;state.id=result.console;state.term.clear();
   const statusNode=$('#terminal-status');if(statusNode)statusNode.textContent='Conectado · '+target;
-  const flush=()=>{
-    if(state.cancelled||!state.pending)return;
+  const flush=async()=>{
+    if(state.cancelled||state.sending||!state.pending)return;
+    state.sending=true;
     const text=state.pending.slice(0,4096);state.pending=state.pending.slice(4096);
-    state.inputChain=state.inputChain.then(()=>state.cancelled?null:api('/api/console/input',{console:state.id,text})).catch(error=>{showTerminalError(error);closeConsole();});
-    if(state.pending)state.inputTimer=setTimeout(flush,16);
+    try{await api('/api/console/input',{console:state.id,text});if(!state.cancelled){clearTimeout(consoleTimer);pollConsole();}}
+    catch(error){if(!state.cancelled){showTerminalError(error);closeConsole();}}
+    finally{state.sending=false;if(!state.cancelled&&state.pending)state.inputTimer=setTimeout(flush,0);}
   };
   state.input=state.term.onData(data=>{state.pending+=data;clearTimeout(state.inputTimer);state.inputTimer=setTimeout(flush,16);});
   state.term.attachCustomKeyEventHandler(event=>{
@@ -1046,12 +1047,15 @@ async function startTerminal(target){
 }
 async function pollConsole(){
   const id=consoleId,state=terminalState;if(!id||!state||state.cancelled)return;
+  if(state.reading)return;
+  state.reading=true;
   try{
     const result=await api('/api/console/read?'+new URLSearchParams({console:id}));if(consoleId!==id||state.cancelled)return;
     if(result.output)state.term.write(result.output);
     if(result.closed){state.term.writeln('\r\n[Console encerrado]');state.input?.dispose();state.observer?.disconnect();consoleId=null;showTerminalError(new Error('Desconectado'));api('/api/console/close',{console:id}).catch(()=>{});return;}
     consoleTimer=setTimeout(pollConsole,document.hidden?2000:result.output?100:400);
   }catch(error){if(consoleId===id){showTerminalError(error);closeConsole();}}
+  finally{state.reading=false;}
 }
 async function openConsoleWindow(target){
   const params=new URLSearchParams({console:target,host,project});
