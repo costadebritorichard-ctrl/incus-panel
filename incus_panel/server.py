@@ -541,7 +541,7 @@ def main():
         return
     if args.demo:
         config = demo_config()
-        config.update(manage_all_instances=True, allow_remote_images=True)
+        config.update(manage_all_instances=True, manage_networks=True, allow_remote_images=True)
         password = secrets.token_urlsafe(12)
         config["users"] = [{"username": "demo", "password_hash": password_hash(password), "role": "administrador", "host_metrics": True, "scopes": {"demo": ["laboratorio", "redes"]}}]
         config["origin"] = f"http://127.0.0.1:{args.port}"

@@ -8,7 +8,7 @@ const virtualConsole=new VirtualConsole();virtualConsole.on('jsdomError',e=>erro
 const dom=await JSDOM.fromURL(origin,{resources:'usable',runScripts:'dangerously',pretendToBeVisual:true,virtualConsole,beforeParse(window){
   window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
   window.HTMLDialogElement.prototype.close=function(){this.open=false;};
-  window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
+  window.matchMedia=()=>({matches:false,addEventListener(_event,handler){this.handler=handler;},removeEventListener(){}});
   window.ResizeObserver=class{constructor(callback){this.callback=callback;window.lastResizeObserver=this;}observe(){}disconnect(){this.disconnected=true;}};
   window.fetch=async(path,options={})=>{
     requests.push(String(path));
@@ -21,12 +21,56 @@ const wait=async fn=>{for(let i=0;i<500;i++){if(fn())return;await new Promise(re
 const navigate=async hash=>{const previous=w.eval('generation');w.location.hash=hash;await wait(()=>w.eval('generation')>previous&&!d.querySelector('#content').hasAttribute('aria-busy'));};
 try{
   await wait(()=>typeof w.api==='function');
+  assert.equal(d.querySelector('.login-card').getAttribute('role'),'dialog');
+  assert.ok(d.querySelector('.login-workspace[inert][aria-hidden=true]'));
+  d.querySelector('#login-username').value='test';d.querySelector('#login-password').value='wrong-password';
+  d.querySelector('#login-form').requestSubmit();await wait(()=>!d.querySelector('#login-error').hidden);
+  assert.equal(d.querySelector('#shell').hidden,true);
+  assert.equal(d.querySelector('#login-form button').disabled,false);
+  assert.equal(w.localStorage.getItem('incus-login-username'),null,'Falha de login não salva dados.');
+  d.querySelector('#remember-username').checked=true;
   d.querySelector('[name=username]').value='test';d.querySelector('[name=password]').value='local-browser-fixture';d.querySelector('#login-form').requestSubmit();
   await wait(()=>!d.querySelector('#shell').hidden&&!d.querySelector('#content').hasAttribute('aria-busy'));
+  assert.equal(w.localStorage.getItem('incus-login-username'),'test');
+  assert.equal(d.querySelector('#login-password').value,'');
   assert.equal(w.eval('session.low_resource'),true);
+  const breakpoint=w.eval('menuBreakpoint');breakpoint.matches=true;breakpoint.handler();
+  d.querySelector('#menu-toggle').click();assert.equal(d.querySelector('#menu-toggle').getAttribute('aria-expanded'),'true');
+  for(const id of ['main-content','navigation','task-log'])assert.equal(d.getElementById(id).inert,true);
+  d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  assert.equal(d.querySelector('#menu-toggle').getAttribute('aria-expanded'),'false');assert.equal(d.querySelector('#sidebar').inert,true);
+  d.querySelector('#menu-toggle').click();breakpoint.matches=false;breakpoint.handler();
+  assert.equal(d.querySelector('#sidebar').inert,false);assert.equal(d.querySelector('#menu-backdrop').hidden,true);
+  for(const id of ['main-content','navigation','task-log'])assert.equal(d.getElementById(id).inert,false);
   assert.equal(d.querySelectorAll('#tree a.leaf').length,2);
   const routes=['instances','images','storage','networks','profiles','projects','server','tasks','alerts','settings','instance/lab-web/summary','instance/lab-web/resources','instance/lab-web/network','instance/lab-web/dns','instance/lab-web/devices','instance/lab-web/options','instance/lab-web/snapshots','instance/lab-web/backups','instance/lab-web/console','overview'];
   for(const route of routes){await navigate(route);assert.doesNotMatch(d.querySelector('#content').textContent,/Falha interna|Página não encontrada|Não foi possível atualizar/,'Route '+route);}
+  await navigate('networks');
+  const address4=d.querySelector('[name="ipv4.address"]');address4.value='none';address4.dispatchEvent(new w.Event('input'));
+  assert.equal(d.querySelector('[name="ipv4.dhcp"]').disabled,true);assert.equal(d.querySelector('[name="ipv4.nat"]').disabled,true);
+  address4.value='auto';address4.dispatchEvent(new w.Event('input'));
+  assert.equal(d.querySelector('[name="ipv4.dhcp"]').disabled,false);
+  d.querySelector('[name=network-name]').value='smoke-br';
+  d.querySelector('.network-form').requestSubmit();await wait(()=>d.querySelector('#confirm').open);
+  d.querySelector('#action-form').requestSubmit();await wait(()=>!d.querySelector('#confirm').open&&!!d.querySelector('a[href="#network/smoke-br"]'));
+  await navigate('network/smoke-br');
+  d.querySelector('[name="bridge.mtu"]').value='1400';d.querySelector('.network-form').requestSubmit();
+  await wait(()=>d.querySelector('#confirm').open);d.querySelector('#action-form').requestSubmit();await wait(()=>!d.querySelector('#confirm').open);
+  await navigate('instance/lab-web/network');
+  [...d.querySelectorAll('button')].find(b=>b.textContent==='Adicionar interface').click();
+  d.querySelector('[name=device]').value='eth2';d.querySelector('[name=network]').value='smoke-br';d.querySelector('[name=name]').value='eth2';
+  d.querySelector('.network-form').requestSubmit();await wait(()=>d.querySelector('#confirm').open);d.querySelector('#action-form').requestSubmit();await wait(()=>!d.querySelector('#confirm').open);
+  await navigate('network/smoke-br');
+  assert.match(d.querySelector('#content').textContent,/Container: lab-web/);
+  assert.equal([...d.querySelectorAll('button')].find(b=>b.textContent.includes('Excluir bridge')).disabled,true);
+  await navigate('instance/lab-web/network');
+  await wait(()=>[...d.querySelectorAll('tr')].some(row=>row.textContent.includes('eth2')&&row.querySelector('button')));
+  const nicRow=[...d.querySelectorAll('tr')].find(row=>row.textContent.includes('eth2')&&row.querySelector('button'));
+  [...nicRow.querySelectorAll('button')].find(b=>b.textContent==='Remover').click();d.querySelector('#confirmation').value='lab-web';d.querySelector('#action-form').requestSubmit();await wait(()=>!d.querySelector('#confirm').open);
+  const afterNic=(await (await w.fetch('/api/read?host=demo&project=laboratorio&resource=instance&target=lab-web')).json()).data;
+  assert.equal(afterNic.devices.eth2,undefined);
+  await navigate('network/smoke-br');[...d.querySelectorAll('button')].find(b=>b.textContent.includes('Excluir bridge')).click();
+  d.querySelector('#confirmation').value='smoke-br';d.querySelector('#action-form').requestSubmit();await wait(()=>!d.querySelector('#confirm').open&&w.location.hash==='#networks');
   await navigate('instance/lab-web/snapshots');
   const actionRequests=()=>requests.filter(path=>path==='/api/action').length,beforeSnapshotAction=actionRequests();
   [...d.querySelectorAll('#content .action-button')].find(button=>button.textContent.trim()==='Criar').click();
@@ -122,6 +166,10 @@ try{
   assert.equal((await (await w.fetch('/api/read?host=demo&project=laboratorio&resource=instance&target=lab-novo')).json()).data.status,'Stopped');
   d.querySelector('#close-task-detail').click();
   d.querySelector('#logout').click();await wait(()=>!d.querySelector('#login').hidden);
+  assert.equal(d.querySelector('#login-username').value,'test');
+  assert.equal(d.querySelector('#login-password').value,'');
+  d.querySelector('#remember-username').click();assert.equal(w.localStorage.getItem('incus-login-username'),null);
+  w.eval("prepareLogin('Sua sessão expirou. Entre novamente.')");assert.match(d.querySelector('#login-error').textContent,/sessão expirou/);
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({routes:routes.length,wizardSteps:8,creation:'Running',limitsApplied:true,restrictedCreationWithoutHostMetrics:true,snapshotConfirmSentOnce:true,sameScopeReadCache:true,previousScreenRetainedWhileLoading:true,backgroundPollingPaused:true,taskPanel:true,asyncFailure:true,terminalProtocolDouble:{autoConnect:true,ansi:true,keyboard:true,resize:true,navigationCleanup:true,pendingConnectionCleanup:true},logout:true,domErrors:errors.length}));
+  console.log(JSON.stringify({routes:routes.length,wizardSteps:8,creation:'Running',limitsApplied:true,restrictedCreationWithoutHostMetrics:true,bridgeCrudAndContainerNic:true,bridgeDependencies:true,loginErrorAndRememberUsername:true,mobileMenuAndBreakpointChange:true,snapshotConfirmSentOnce:true,sameScopeReadCache:true,previousScreenRetainedWhileLoading:true,backgroundPollingPaused:true,taskPanel:true,asyncFailure:true,terminalProtocolDouble:{autoConnect:true,ansi:true,keyboard:true,resize:true,navigationCleanup:true,pendingConnectionCleanup:true},logout:true,domErrors:errors.length}));
 }finally{dom.window.close();}

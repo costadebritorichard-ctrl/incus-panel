@@ -349,7 +349,7 @@ def main():
             os.chown(path, 0, identity.pw_gid)
             os.chmod(path, 0o640)
         password = secrets.token_urlsafe(18)
-        config = {'demo': False, 'read_only': False, 'manage_all_instances': True, 'allow_remote_images': True, 'enable_console': True, 'enable_events': False, 'low_resource': True, 'origin': origin, 'listen_host': '0.0.0.0', 'tls_certificate': str(certificate), 'tls_key': str(key), 'hosts': [{'id': 'tvbox', 'alias': 'TV Box · Incus local', 'transport': 'unix', 'socket_path': '/var/lib/incus/unix.socket'}], 'users': [{'username': 'admin', 'password_hash': password_hash(password), 'role': 'administrador', 'host_metrics': True, 'scopes': {'tvbox': scopes}}], 'mutable_instances': {}}
+        config = {'demo': False, 'read_only': False, 'manage_all_instances': True, 'manage_networks': True, 'allow_remote_images': True, 'enable_console': True, 'enable_events': False, 'low_resource': True, 'origin': origin, 'listen_host': '0.0.0.0', 'tls_certificate': str(certificate), 'tls_key': str(key), 'hosts': [{'id': 'tvbox', 'alias': 'TV Box · Incus local', 'transport': 'unix', 'socket_path': '/var/lib/incus/unix.socket'}], 'users': [{'username': 'admin', 'password_hash': password_hash(password), 'role': 'administrador', 'host_metrics': True, 'scopes': {'tvbox': scopes}}], 'mutable_instances': {}}
         descriptor = os.open(config_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o640)
         with os.fdopen(descriptor, 'w') as stream:
             json.dump(config, stream, ensure_ascii=False, indent=2)

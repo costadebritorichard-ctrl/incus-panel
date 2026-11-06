@@ -4,6 +4,8 @@ Painel em português para administrar containers Incus reais em TV boxes Linux. 
 
 A interface segue a organização do Proxmox VE: árvore de recursos à esquerda, abas do recurso selecionado, ações no topo e painel de tarefas no rodapé, recolhível e redimensionável. **Criar CT** abre um assistente com Geral, Template, Discos, CPU, Memória, Rede, DNS e Confirmar. A identidade e as operações continuam sendo do Incus; não há dependência do Proxmox.
 
+O espaço de trabalho se ajusta à largura e à altura da janela: até 1100 px, a árvore abre pelo menu; até 650 px, as abas ficam na horizontal. Tabelas têm rolagem própria. O login usa um diálogo compacto sobre uma estrutura vazia do painel, com autenticação por conta local, envio por Enter e opção de salvar apenas o nome de usuário no navegador. Senhas não são gravadas por essa opção. O idioma disponível é português brasileiro.
+
 O assistente abre sobre qualquer tela, preservando a página e os rascunhos. Nome e template são obrigatórios; cada etapa precisa estar válida antes de avançar. O progresso aparece em uma janela de tarefas. Veja a [revisão da interface, testes e limites de escopo](docs/revisao-interface.md).
 
 No assistente administrativo, escolha memória, núcleos, limite de CPU, pool, bridge, reserva IPv4 e inicialização automática. A cota de disco só é oferecida nos drivers suportados pelo assistente; `dir` utiliza a capacidade do pool. DNS é herdado da bridge. É possível criar e manter parado ou iniciar após a criação. Instalações restritas à allowlist usam a configuração do perfil `default`.
@@ -59,7 +61,7 @@ Configuração em `/etc/incus-panel/config.local.json`, contas do painel em `/va
 
 Reexecute o instalador com o código atualizado para migrar a escuta de um IP específico para todas as interfaces, preservando senha e certificado. Certificados novos incluem os IPv4 presentes na instalação; certificados antigos ou mudanças posteriores de IP podem exigir reemissão com os endereços adicionais no SAN. Veja o [guia de acesso por múltiplos IPs](docs/instalacao-local.md#acesso-por-qualquer-ipv4-da-tv-box). Mudanças de identidade ou permissões exigem revisão da configuração. Uma instalação anterior em somente leitura não é promovida silenciosamente.
 
-[Instalação e diagnóstico](docs/instalacao-local.md) · [Integração SSH](docs/tvbox.md) · [Operação e segurança](docs/operacao.md).
+[Instalação e diagnóstico](docs/instalacao-local.md) · [Integração SSH](docs/tvbox.md) · [Operação e segurança](docs/operacao.md) · [Bridges e interfaces](docs/bridges.md).
 
 ## Validação
 

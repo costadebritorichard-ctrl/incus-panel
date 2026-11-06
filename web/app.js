@@ -181,10 +181,17 @@ async function api(path, body) {
   const result = await response.json();
   if(body&&['/api/action','/api/create','/api/images/download','/api/users'].includes(path))readCache.clear();
   if (!response.ok) {
-    if (response.status===401 && path!=='/api/login') logoutLocal();
+    if (response.status===401 && path!=='/api/login' && session) logoutLocal('Sua sessão expirou. Entre novamente.');
     throw Object.assign(new Error(result.error || 'Falha na solicitação.'),{status:response.status});
   }
   return result;
+}
+let activeReads=0;
+const readWaiters=[];
+async function queuedRead(path){
+  const owner=session;
+  if(activeReads>=2)await new Promise(resolve=>readWaiters.push(resolve));else activeReads++;
+  try{if(session!==owner)throw new Error('A sessão mudou. Atualize a tela.');return await api(path);}finally{const next=readWaiters.shift();if(next)next();else activeReads--;}
 }
 async function read(resource,target,scope={host,project}) {
   const path='/api/read?'+new URLSearchParams({...scope,resource,...(target?{target}:{})});
@@ -193,11 +200,11 @@ async function read(resource,target,scope={host,project}) {
     'profiles','projects','instance','state','snapshots','backups','images',
     'creation-images','image-catalog','audit'
   ]:[])];
-  if(!cacheable.includes(resource))return api(path);
+  if(!cacheable.includes(resource))return queuedRead(path);
   const cached=readCache.get(path);
   if(cached&&Date.now()<cached.expires){readCache.delete(path);readCache.set(path,cached);return cached.promise;}
   const entry={expires:Infinity};
-  entry.promise=api(path).then(result=>{entry.expires=session?.low_resource?Infinity:Date.now()+(resource==='server'?60000:15000);return result;},error=>{if(readCache.get(path)===entry)readCache.delete(path);throw error;});
+  entry.promise=queuedRead(path).then(result=>{entry.expires=session?.low_resource?Infinity:Date.now()+(resource==='server'?60000:15000);return result;},error=>{if(readCache.get(path)===entry)readCache.delete(path);throw error;});
   readCache.set(path,entry);
   if(readCache.size>128)readCache.delete(readCache.keys().next().value);
   return entry.promise;
@@ -209,10 +216,12 @@ function actionButton(label, action, target, extra={}) { return el('button',{cla
 function openAction(action,target,extra={}) {
   if(action==='console'){startTerminal(target).catch(showTerminalError);return;}
   pendingAction={host,project,action,target,...extra};
-  $('#action-title').textContent=({start:'Iniciar container',stop:'Parar container',restart:'Reiniciar container',delete:'Excluir container permanentemente',create:'Criar container',snapshot:'Criar snapshot',backup:'Gerar backup','snapshot-restore':'Restaurar snapshot','snapshot-delete':'Excluir snapshot','backup-delete':'Excluir backup',console:'Abrir shell interativo','network-create':'Criar bridge','network-update':'Atualizar bridge','network-delete':'Excluir bridge'})[action];
-  $('#action-description').textContent=action==='network-delete'?'A bridge só será excluída se não estiver conectada a containers ou perfis.':action==='network-update'?'As opções permitidas se limitam a endereço IPv4/IPv6, DHCP, NAT e domínio DNS. Interfaces físicas externas não são alteradas.':action==='network-create'?'Será criada uma bridge privada gerenciada pelo Incus. Interfaces físicas não serão adicionadas.':action==='console'?'Este acesso abre /bin/sh, normalmente como root dentro do container. Comandos podem alterar ou apagar dados.':action==='delete'?'A exclusão remove permanentemente o container e seus snapshots.':action==='snapshot-restore'?'A restauração substitui o estado atual do container pelo snapshot selecionado. O container precisa estar parado.':action==='snapshot-delete'||action==='backup-delete'?'A exclusão remove permanentemente este arquivo de recuperação.':action==='snapshot'||action==='backup'?'A operação consome armazenamento. Blocos compartilhados não representam espaço recuperável garantido.':'Revise o destino. O resultado será confirmado pela operação Incus.';
+  $('#action-title').textContent=({start:'Iniciar container',stop:'Parar container',restart:'Reiniciar container',delete:'Excluir container permanentemente',create:'Criar container',snapshot:'Criar snapshot',backup:'Gerar backup','snapshot-restore':'Restaurar snapshot','snapshot-delete':'Excluir snapshot','backup-delete':'Excluir backup',console:'Abrir shell interativo','network-create':'Criar bridge','network-update':'Atualizar bridge','network-delete':'Excluir bridge','nic-add':'Adicionar interface','nic-update':'Editar interface','nic-delete':'Remover interface','nic-reset':'Restaurar interface do perfil'})[action];
+  $('#action-description').textContent=action.startsWith('nic-')?'Alterar a interface pode interromper a rede do container. O perfil permanece intacto.':action==='network-delete'?'A bridge só será excluída se não estiver conectada a containers ou perfis.':action==='network-update'?'Revise IPv4/IPv6, DHCP, DNS, NAT, MTU e roteamento. As mudanças podem afetar os containers conectados.':action==='network-create'?'Será criada uma bridge privada gerenciada pelo Incus. Interfaces físicas não serão adicionadas.':action==='console'?'Este acesso abre /bin/sh, normalmente como root dentro do container. Comandos podem alterar ou apagar dados.':action==='delete'?'A exclusão remove permanentemente o container e seus snapshots.':action==='snapshot-restore'?'A restauração substitui o estado atual do container pelo snapshot selecionado. O container precisa estar parado.':action==='snapshot-delete'||action==='backup-delete'?'A exclusão remove permanentemente este arquivo de recuperação.':action==='snapshot'||action==='backup'?'A operação consome armazenamento. Blocos compartilhados não representam espaço recuperável garantido.':'Revise o destino. O resultado será confirmado pela operação Incus.';
   $('#action-review').textContent=`${action.startsWith('network-')?'Bridge':'Container'}: ${target}\nServidor: ${session.hosts.find(h=>h.id===host)?.alias || host}\nProjeto: ${project}${extra.snapshot?`\nSnapshot: ${extra.snapshot}`:''}${extra.backup?`\nBackup: ${extra.backup}`:''}${extra.profiles ? '\nPerfil: '+extra.profiles.join(', ') : ''}`;
-  const needsConfirmation=['delete','snapshot-restore','snapshot-delete','backup-delete','network-delete'].includes(action);
+  const needsConfirmation=['delete','snapshot-restore','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action);
+  if(extra.device)$('#action-review').textContent+='\nInterface: '+extra.device;
+  if(extra.nic)$('#action-review').textContent+='\nOpções: '+JSON.stringify(extra.nic);
   if(extra.config)$('#action-review').textContent+='\nConfiguração solicitada: '+JSON.stringify(extra.config);
   if(extra.description)$('#action-review').textContent+='\nDescrição: '+extra.description;
   const artifact=extra.snapshot||extra.backup||'';
@@ -229,7 +238,7 @@ function openAction(action,target,extra={}) {
     while(names.has(candidate))candidate='snapshot-'+suffix++;
     $('#artifact-name').value=candidate;
   }
-  $('#submit-action').classList.toggle('danger-primary',['delete','snapshot-delete','backup-delete','network-delete'].includes(action));
+  $('#submit-action').classList.toggle('danger-primary',['delete','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action));
   $('#confirm').showModal(); (needsConfirmation?$('#confirmation'):$('#submit-action')).focus();
 }
 $('#cancel-action').onclick=()=>$('#confirm').close();
@@ -242,7 +251,7 @@ $('#action-form').onsubmit=async event=>{
     const typedValue=artifact?`${action.host}/${action.project}/${action.target}/${artifact}`:action.target;
     const artifactName=$('#artifact-name').value.trim();
     if(action.action==='snapshot'&&(action.snapshotNames||[]).includes(artifactName))throw new Error('Já existe um snapshot chamado '+artifactName+'. Atualize a lista e escolha outro nome.');
-    if(['delete','snapshot-restore','snapshot-delete','backup-delete','network-delete'].includes(action.action)&&$('#confirmation').value!==typedValue)throw new Error(`Digite ${typedValue} exatamente como exibido.`);
+    if(['delete','snapshot-restore','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action.action)&&$('#confirmation').value!==typedValue)throw new Error(`Digite ${typedValue} exatamente como exibido.`);
     if(pendingAction.action==='console'){
       const result=await api('/api/console/start',{...pendingAction,confirmation:$('#confirmation').value});
       consoleId=result.console;$('#confirm').close();pollConsole();return;
@@ -263,7 +272,7 @@ $('#action-form').onsubmit=async event=>{
   } catch(error) { $('#action-error').textContent=error.message; }
   finally { $('#cancel-action').disabled=false; $('#submit-action').disabled=false;$('#submit-action').textContent='Confirmar operação'; }
 };
-function logoutLocal() {
+function logoutLocal(message='') {
   closeCreateWizard();metricHistory.clear();resourceMenu?.remove();
   document.body.classList.add('low-resource');
   setMenu(false,{restoreFocus:false});
@@ -278,6 +287,7 @@ function logoutLocal() {
   if($('#create-dialog').open)$('#create-dialog').close();
   if($('#task-detail').open)$('#task-detail').close();
   taskLogScope='';taskLogItems=[];inventory=[];
+  prepareLogin(message);
 }
 // Menu móvel: painel sobreposto com foco contido e fechamento por Escape.
 const menuBreakpoint=window.matchMedia('(max-width: 1100px)');
@@ -294,7 +304,7 @@ function setMenu(open,{restoreFocus=true}={}){
   if(drawer&&!menuOpen)sidebar.setAttribute('aria-hidden','true');else sidebar.removeAttribute('aria-hidden');
   if(menuOpen){sidebar.setAttribute('role','dialog');sidebar.setAttribute('aria-modal','true');}
   else{sidebar.removeAttribute('role');sidebar.removeAttribute('aria-modal');}
-  for(const node of [$('#main-content'),$('#shell header'),$('#shell footer')])node.inert=menuOpen;
+  for(const node of [$('#main-content'),$('#navigation'),$('#task-log'),$('#shell header'),$('#shell footer')])node.inert=menuOpen;
   if(menuOpen)$('#menu-close').focus();
   else if(wasOpen&&restoreFocus&&drawer)$('#menu-toggle').focus();
 }
@@ -323,16 +333,39 @@ $('#logout').replaceChildren(...iconLabel('logout','Sair'));
 $('#refresh').replaceChildren(...iconLabel('refresh','Atualizar'));
 $('#theme-toggle').onclick=()=>applyTheme(theme==='dark'?'light':'dark');
 $('#logout').onclick=async()=>{try{await api('/api/logout',{});}finally{logoutLocal();}};
-$('#login-form').onsubmit=async event=>{
-  event.preventDefault(); $('#login-error').textContent=''; const form=event.target; const button=form.querySelector('button');const label=[...button.childNodes].map(node=>node.cloneNode(true));button.disabled=true;button.textContent='Entrando…';
-  try { session=await api('/api/login',Object.fromEntries(new FormData(form))); form.reset(); enter(); }
-  catch(error) { $('#login-error').textContent=error.message; }
-  finally { button.disabled=false;button.replaceChildren(...label); }
+function prepareLogin(message=''){
+  $('.skip-link').hidden=true;
+  let username='';try{username=localStorage.getItem('incus-login-username')||'';}catch{}
+  $('#login-username').value=username;
+  $('#remember-username').checked=Boolean(username);
+  $('#login-password').value='';
+  $('#login-error').textContent=message;$('#login-error').hidden=!message;
+  if(!$('#login').hidden)(username?$('#login-password'):$('#login-username')).focus();
+}
+$('#remember-username').onchange=()=>{
+  if(!$('#remember-username').checked)try{localStorage.removeItem('incus-login-username');}catch{}
 };
+$('#login-form').onsubmit=async event=>{
+  event.preventDefault();const form=event.target,button=form.querySelector('button[type=submit]');
+  if(button.disabled)return;
+  $('#login-error').textContent='';$('#login-error').hidden=true;
+  button.disabled=true;button.textContent='Entrando…';form.setAttribute('aria-busy','true');
+  const username=$('#login-username').value.trim();
+  try {
+    session=await api('/api/login',{username,password:$('#login-password').value});
+    try{if($('#remember-username').checked)localStorage.setItem('incus-login-username',username);else localStorage.removeItem('incus-login-username');}catch{}
+    $('#login-password').value='';enter();
+  }catch(error){
+    $('#login-error').textContent=error instanceof TypeError?'Não foi possível conectar ao painel. Verifique a conexão e tente novamente.':error.message;
+    $('#login-error').hidden=false;$('#login-password').focus();$('#login-password').select();
+  }finally{button.disabled=false;button.textContent='Login';form.removeAttribute('aria-busy');}
+};
+prepareLogin();
 function enter() {
   readCache.clear();document.body.classList.toggle('low-resource',Boolean(session.low_resource));
-  clearTimeout(expiryTimer); expiryTimer=setTimeout(logoutLocal,Math.max(0,session.expires*1000-Date.now()));
-  $('#login').hidden=true; $('#shell').hidden=false; $('#identity').textContent=`${session.username} · ${session.role}`;
+  clearTimeout(expiryTimer); expiryTimer=setTimeout(()=>logoutLocal('Sua sessão expirou. Entre novamente.'),Math.max(0,session.expires*1000-Date.now()));
+  $('#login').hidden=true; $('#shell').hidden=false;setMenu(false,{restoreFocus:false}); $('#identity').textContent=`${session.username} · ${session.role}`;
+  $('.skip-link').hidden=false;
   $('#mode').textContent=session.demo?'DEMONSTRAÇÃO':session.read_only?'SOMENTE LEITURA':session.manage_all_instances?'ADMINISTRAÇÃO':'LABORATÓRIO';
   $('#host').replaceChildren(...session.hosts.map(h=>el('option',{value:h.id},h.alias)));
   let remembered;try{remembered=JSON.parse(localStorage.getItem('incus-scope')||'null');}catch{remembered=null;}
@@ -547,21 +580,77 @@ async function storageDetailView(scope,target,tab='summary'){
     panel('Detalhes',el('div',{class:'panel-body'},kv([['Nome',pool.name],['Driver',pool.driver],['Estado',pool.status],['Utilizado',bytes(space?.used)],['Capacidade',bytes(space?.total)],['Coletado em',date(usage.timestamp)]]))));
 }
 function canManageNetworks(){return !session.read_only&&session.role==='administrador'&&session.manage_networks;}
+async function containerNetworksView(scope,item){
+  const [networkResult,profileResult]=await Promise.all([read('networks',undefined,scope),read('profiles',undefined,scope)]);
+  const networks=networkResult.data.filter(n=>n.managed&&n.type==='bridge'&&n.status==='Created');
+  const inherited={};for(const profileName of item.profiles||[])Object.assign(inherited,profileResult.data.find(p=>p.name===profileName)?.devices||{});
+  const devices={...item.expanded_devices};
+  for(const [key,value]of Object.entries(item.devices||{}))if(value.type==='none')devices[key]=value;
+  const editable=canManageNetworks()&&canMutate(item.name),editorHost=el('div');
+  const action=(kind,device,nic)=>openAction(kind,item.name,{device,revision:item._devices_revision,...(nic?{nic}:{})});
+  function edit(device='',current={}){
+    const deviceName=el('input',{required:'',maxlength:'63',value:device,readonly:device?'':null,name:'device'});
+    const bridge=el('select',{required:'',name:'network'},networks.map(n=>el('option',{value:n.name},n.name)));
+    if(current.network)bridge.value=current.network;
+    const inputs={network:bridge};
+    const fields=[el('label',{},'Dispositivo no Incus',deviceName),el('label',{},'Bridge',bridge)];
+    for(const [key,label,placeholder]of [['name','Interface no container','eth0'],['hwaddr','MAC (vazio: automático)',''],['mtu','MTU (vazio: herdado)','1500'],['vlan','VLAN (vazio: sem tag)','0–4094'],['ipv4.address','Reserva DHCP IPv4','Vazio: automático'],['ipv6.address','Reserva DHCP IPv6','Vazio: automático'],['limits.max','Limite de banda','100Mbit']]){
+      const input=el('input',{name:key,value:current[key]||(key==='name'?device:''),placeholder,maxlength:'128'});inputs[key]=input;fields.push(el('label',{},label,input));
+    }
+    for(const [key,label]of [['security.mac_filtering','Filtrar MAC'],['security.ipv4_filtering','Filtrar IPv4'],['security.ipv6_filtering','Filtrar IPv6']]){
+      const input=el('select',{name:key},el('option',{value:''},'Padrão'),el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));input.value=current[key]||'';inputs[key]=input;fields.push(el('label',{},label,input));
+    }
+    bridge.onchange=()=>{inputs['ipv4.address'].value='';inputs['ipv6.address'].value='';};
+    const form=el('form',{class:'network-form'},...fields,el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},device?'Salvar interface':'Adicionar interface'),el('button',{type:'button',onclick:()=>editorHost.replaceChildren()},'Cancelar')));
+    form.onsubmit=event=>{event.preventDefault();action(device?'nic-update':'nic-add',deviceName.value.trim(),Object.fromEntries(Object.entries(inputs).map(([key,input])=>[key,input.value])));};
+    editorHost.replaceChildren(panel(device?'Editar '+device:'Adicionar interface de rede',el('div',{class:'panel-body'},form,notice('Alterar bridge, MAC ou IP pode interromper a rede do container. Reservas dependem do cliente DHCP; configuração estática dentro do container deve ser ajustada no próprio sistema.'))));
+    deviceName.focus();
+  }
+  const rows=Object.entries(devices).filter(([,d])=>['nic','none'].includes(d.type)).map(([key,d])=>{
+    const actions=el('div',{class:'network-form-actions'});
+    if(editable){
+      if(d.type==='nic')actions.append(el('button',{onclick:()=>edit(key,d)},'Editar'),el('button',{class:'danger-button',onclick:()=>action('nic-delete',key)},'Remover'));
+      if(item.devices?.[key]&&inherited[key]?.type==='nic')actions.append(el('button',{onclick:()=>action('nic-reset',key)},'Restaurar perfil'));
+    }
+    return [key,d.name||key,d.network?el('a',{href:'#network/'+encodeURIComponent(d.network)},d.network):d.parent||'—',d.type==='none'?'Desativada':item.devices?.[key]?'Local':'Herdada do perfil',d['ipv4.address']||'Automático',d['ipv6.address']||'Automático',d.vlan||'—',d['limits.max']||'Sem limite',actions];
+  });
+  return el('div',{},panel('Gerenciar interfaces',el('div',{},el('div',{class:'panel-body network-form-actions'},el('button',{class:'primary',disabled:editable?null:'',onclick:()=>edit()},'Adicionar interface'),el('a',{class:'button-link',href:'#networks'},'Gerenciar bridges')),table(['DISPOSITIVO','INTERFACE','BRIDGE','ORIGEM','IPv4','IPv6','VLAN','BANDA','AÇÕES'],rows))),editorHost);
+}
 function bridgeOptions(config={}){
   const ipv4=config['ipv4.address']||'auto';
-  const address4=el('input',{name:'ipv4.address',maxlength:'64',value:ipv4});
+  const address4=el('input',{name:'ipv4.address',required:'',maxlength:'64',value:ipv4,placeholder:'10.10.0.1/24, auto ou none'});
   const dhcp4=el('select',{name:'ipv4.dhcp'},el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));
   dhcp4.value=config['ipv4.dhcp']||(ipv4==='none'?'false':'true');
   const nat4=el('select',{name:'ipv4.nat'},el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));
-  nat4.value=config['ipv4.nat']||(ipv4==='none'?'false':'true');
-  const address6=el('input',{name:'ipv6.address',maxlength:'64',value:config['ipv6.address']||'none'});
+  nat4.value=config['ipv4.nat']||'false';
+  const address6=el('input',{name:'ipv6.address',required:'',maxlength:'64',value:config['ipv6.address']||'none',placeholder:'fd42::1/64, auto ou none'});
   const dhcp6=el('select',{name:'ipv6.dhcp'},el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));
-  dhcp6.value=config['ipv6.dhcp']||'false';
+  dhcp6.value=config['ipv6.dhcp']||(address6.value==='none'?'false':'true');
   const nat6=el('select',{name:'ipv6.nat'},el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));
   nat6.value=config['ipv6.nat']||'false';
   const domain=el('input',{name:'dns.domain',maxlength:'253',value:config['dns.domain']||''});
   const fields=[el('label',{},'Endereço IPv4 (CIDR, auto ou none)',address4),el('label',{},'DHCP IPv4',dhcp4),el('label',{},'NAT IPv4',nat4),el('label',{},'Endereço IPv6 (CIDR, auto ou none)',address6),el('label',{},'DHCP IPv6',dhcp6),el('label',{},'NAT IPv6',nat6),el('label',{class:'full'},'Domínio DNS',domain)];
-  return {fields,values:()=>Object.fromEntries([address4,dhcp4,nat4,address6,dhcp6,nat6,domain].map(input=>[input.name,input.value]))};
+  const advanced=[];
+  for(const [key,label,placeholder]of [['bridge.mtu','MTU','1500'],['ipv4.dhcp.ranges','Faixas DHCP IPv4','10.0.0.10-10.0.0.200'],['ipv6.dhcp.ranges','Faixas DHCP IPv6',''],['ipv4.dhcp.expiry','Duração DHCP IPv4','1h'],['ipv6.dhcp.expiry','Duração DHCP IPv6','1h']]){
+    const input=el('input',{name:key,value:config[key]||'',placeholder,maxlength:'512'});advanced.push(input);fields.push(el('label',{},label,input));
+  }
+  for(const [key,label]of [['ipv6.dhcp.stateful','DHCP IPv6 stateful'],['ipv4.routing','Roteamento IPv4'],['ipv6.routing','Roteamento IPv6'],['ipv4.firewall','Regras de firewall IPv4'],['ipv6.firewall','Regras de firewall IPv6'],['bridge.multicast_snooping','Multicast snooping']]){
+    const input=el('select',{name:key},el('option',{value:''},'Padrão do Incus'),el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));input.value=config[key]||'';advanced.push(input);fields.push(el('label',{},label,input));
+  }
+  const dnsMode=el('select',{name:'dns.mode'},['','managed','dynamic','none'].map(value=>el('option',{value},value||'Padrão do Incus')));dnsMode.value=config['dns.mode']||'';advanced.push(dnsMode);fields.push(el('label',{},'Registro DNS',dnsMode));
+  const inputs=[address4,dhcp4,nat4,address6,dhcp6,nat6,domain,...advanced];
+  function update(){
+    for(const [family,address,dhcp,nat]of [['ipv4',address4,dhcp4,nat4],['ipv6',address6,dhcp6,nat6]]){
+      const off=address.value.trim()==='none';
+      dhcp.disabled=nat.disabled=off;
+      for(const input of advanced){
+        if(input.name.startsWith(family+'.dhcp.'))input.disabled=off||dhcp.value==='false'||(input.name==='ipv6.dhcp.ranges'&&inputs.find(i=>i.name==='ipv6.dhcp.stateful').value!=='true');
+      }
+    }
+  }
+  for(const input of inputs)input.addEventListener('input',update);
+  update();
+  return {fields,values:()=>Object.fromEntries(inputs.map(input=>[input.name,input.disabled?(input===dhcp4||input===dhcp6||input===nat4||input===nat6?'false':''):input.value.trim()]))};
 }
 function networkActionButton(label,action,target,extra={}){
   return el('button',{type:'button',class:'action-button'+(action==='network-delete'?' danger-button':''),disabled:canManageNetworks()?null:'',onclick:()=>openAction(action,target,extra)},...iconLabel(action==='network-delete'?'delete':'save',label));
@@ -572,21 +661,27 @@ async function networkDetailView(scope,target,tab='summary'){
   catch(error){return errorNode(error);}
   if(!network)return errorNode(new Error('Rede indisponível neste projeto.'));
   if(tab==='permissions')return el('div',{},await permissionsView(scope,inventory),notice('A rede é visível neste projeto conforme as permissões devolvidas pelo Incus. O painel não configura ACLs de rede separadas.'));
-  const dependencies=Array.isArray(network.used_by)?network.used_by:[];
-  const instanceNames=new Set(dependencies.filter(path=>String(path).includes('/instances/')).map(path=>decodeURIComponent(String(path).split('?')[0].split('/').pop())));
-  const attached=inventory.filter(item=>instanceNames.has(item.name));
+  const dependencies=new Set(Array.isArray(network.used_by)?network.used_by:[]);
+  const references=item=>Object.values(item.expanded_devices||item.devices||{}).some(d=>d.type==='nic'&&(d.network===network.name||d.parent===network.name));
+  const [instances,profiles]=await Promise.allSettled([read('instances',undefined,scope),read('profiles',undefined,scope)]);
+  const attached=instances.status==='fulfilled'?instances.value.data.filter(references):[];
+  for(const item of attached)dependencies.add('Container: '+item.name);
+  if(profiles.status==='fulfilled')for(const item of profiles.value.data.filter(references))dependencies.add('Perfil: '+item.name);
+  const dependencyError=instances.status==='rejected'||profiles.status==='rejected';
   const external=Boolean(network.config?.['bridge.external_interfaces']);
   const managedBridge=network.managed&&network.type==='bridge';
   const body=panel('Configuração da rede',el('div',{class:'panel-body'},kv([['Nome',network.name],['Tipo',network.type],['Gerenciada',network.managed?'Sim':'Não'],['Estado',network.status],['Gateway / CIDR IPv4',network.config?.['ipv4.address']],['Faixa DHCP IPv4',network.config?.['ipv4.dhcp.ranges']],['DHCP IPv4',network.config?.['ipv4.dhcp']],['NAT IPv4',network.config?.['ipv4.nat']],['IPv6 / CIDR',network.config?.['ipv6.address']],['Domínio DNS',network.config?.['dns.domain']],['Projeto',scope.project]]),inspectResource(network,'network')));
   const result=el('div',{class:'dashboard-view'},el('div',{class:'grid dashboard-top'},healthView(network.name,network.status==='Created',network.type+' · '+(network.managed?'gerenciada pelo Incus':'externa')),body),panel('Containers conectados',instanceTable(attached)));
-  if(dependencies.length)result.append(panel('Dependências informadas pelo Incus',table(['RECURSO'],dependencies.map(value=>[value]))));
+  if(dependencies.size)result.append(panel('Dependências da bridge',table(['RECURSO'],[...dependencies].map(value=>[value]))));
+  if(dependencyError)result.append(notice('Não foi possível conferir todas as dependências. Atualize antes de excluir a bridge.',true));
   if(canManageNetworks()&&managedBridge&&!external){
     const editor=bridgeOptions(network.config||{});
     const description=el('input',{name:'description',maxlength:'1024',value:network.description||''});
-    const remove=networkActionButton('Excluir bridge','network-delete',network.name);if(dependencies.length)remove.disabled=true;
+    const remove=networkActionButton('Excluir bridge','network-delete',network.name,{revision:network._revision});
+    if(dependencies.size||dependencyError){remove.disabled=true;remove.title='Remova as dependências da bridge e atualize antes de excluir.';}
     const form=el('form',{class:'network-form'},...editor.fields,el('label',{class:'full'},'Descrição',description),el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},...iconLabel('save','Salvar bridge')),remove));
-    form.onsubmit=event=>{event.preventDefault();openAction('network-update',network.name,{config:editor.values(),description:description.value});};
-    result.append(panel('Editar bridge gerenciada',el('div',{class:'panel-body'},form,notice('A edição altera somente endereço, DHCP, NAT e domínio DNS. Interfaces físicas não são aceitas.'))));
+    form.onsubmit=event=>{event.preventDefault();openAction('network-update',network.name,{config:editor.values(),description:description.value,revision:network._revision});};
+    result.append(panel('Editar bridge gerenciada',el('div',{class:'panel-body'},form,notice('Altere endereçamento, DHCP, NAT, DNS, MTU, roteamento e firewall. As mudanças são aplicadas ao salvar e podem interromper conexões dos containers.'))));
   }else if(!canManageNetworks())result.append(notice('A gestão de bridges exige habilitação explícita para administradores.'));
   else if(external)result.append(notice('Esta bridge usa interface externa. O painel a mantém somente para consulta.'));
   if(session.host_metrics&&managedBridge){
@@ -710,7 +805,7 @@ async function networksView(scope){
       item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',(item.used_by||[]).length,inspectResource(item,'network')
     ]))));
     if(canManageNetworks()){
-      const networkName=el('input',{name:'network-name',maxlength:'63',pattern:'[A-Za-z0-9][A-Za-z0-9_.-]{0,62}',required:'',placeholder:'Ex.: bridge-lab'});
+      const networkName=el('input',{name:'network-name',maxlength:'15',pattern:'[A-Za-z0-9][A-Za-z0-9_\\-]{0,14}',required:'',placeholder:'Ex.: bridge-lab',title:'Até 15 caracteres: letras, números, hífen ou sublinhado.'});
       const description=el('input',{name:'description',maxlength:'1024',placeholder:'Opcional'});
       const editor=bridgeOptions({'ipv4.address':'auto','ipv4.dhcp':'true','ipv4.nat':'true','ipv6.address':'none','ipv6.dhcp':'false','ipv6.nat':'false'});
       const form=el('form',{class:'network-form'},el('label',{class:'full'},'Nome da bridge',networkName),...editor.fields,el('label',{class:'full'},'Descrição',description),el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},...iconLabel('plus','Criar bridge'))));
@@ -902,6 +997,7 @@ async function detail(r,scope) {
     wrapper.append(panel('Recursos',table(['RECURSO','CONFIGURAÇÃO','USO ATUAL'],[['Memória',item.expanded_config?.['limits.memory']||'Herdado',bytes(state.memory?.usage)],['Núcleos',item.expanded_config?.['limits.cpu']||'Herdado','—'],['Limite de CPU',item.expanded_config?.['limits.cpu.allowance']||'Herdado',state.cpu?.usage==null?'n/d':fmt(state.cpu.usage/1e9)+' s acumulados'],...Object.entries(item.expanded_devices||{}).filter(([,d])=>d.type==='disk').map(([key,d])=>['Disco ('+key+')',(d.pool||'')+' · '+(d.size||'Capacidade do pool'),bytes(state.disk?.[key]?.usage)])]),el('a',{class:'button-link',href:instanceLink(r.target,'options')},'Editar')),
       panel('Dispositivos',table(['DISPOSITIVO','ORIGEM','CONFIGURAÇÃO'],Object.entries(item.expanded_devices||{}).map(([key,value])=>[key,Object.hasOwn(item.devices||{},key)?'Local':'Herdado de perfil',inspect('Ver propriedades',()=>propertyTable(value))]))));
   } else if(r.tab==='network'){
+    wrapper.append(await containerNetworksView(scope,item));
     wrapper.append(panel('Interfaces de rede',table(['NOME','TIPO','BRIDGE / REDE','MAC','ENDEREÇOS'],Object.entries(item.expanded_devices||{}).filter(([,d])=>d.type==='nic').map(([key,d])=>{const nic=state.network?.[d.name||key];return [d.name||key,d.nictype||'Gerenciada',d.network||d.parent||'n/d',nic?.hwaddr||d.hwaddr||'n/d',(nic?.addresses||[]).map(a=>a.address+(a.netmask?'/'+a.netmask:'')).join(', ')||d['ipv4.address']||'DHCP / não informado'];}))));
   } else if(r.tab==='dns'){
     const networks=(await read('networks',undefined,scope)).data;
@@ -1505,7 +1601,8 @@ for(const [id,mode] of [['task-tab','tasks'],['audit-tab','audit']])$('#'+id).on
 $('#task-log-toggle').onclick=()=>{const collapsed=document.body.classList.toggle('tasks-collapsed');$('#task-log-toggle').textContent=collapsed?'⌃':'⌄';$('#task-log-toggle').setAttribute('aria-expanded',String(!collapsed));$('#task-log-toggle').setAttribute('aria-label',collapsed?'Expandir painel de tarefas':'Recolher painel de tarefas');};
 const taskSplitter=el('div',{class:'task-splitter',role:'separator',tabindex:'0','aria-label':'Altura do painel de tarefas','aria-orientation':'horizontal','aria-valuemin':'70','aria-valuemax':'450','aria-valuenow':'178'});
 $('#task-log').prepend(taskSplitter);
-function setTaskHeight(height){const value=Math.round(Math.max(70,Math.min(Math.min(450,innerHeight*.55),height)));document.body.classList.remove('tasks-collapsed');document.documentElement.style.setProperty('--task-height',value+'px');taskSplitter.setAttribute('aria-valuenow',String(value));$('#task-log-toggle').setAttribute('aria-expanded','true');$('#task-log-toggle').textContent='⌄';}
+function setTaskHeight(height){const maximum=Math.min(450,innerHeight*(innerWidth<=650?.25:.35)),value=Math.round(Math.min(maximum,Math.max(70,height)));document.body.classList.remove('tasks-collapsed');document.documentElement.style.setProperty('--task-height',value+'px');taskSplitter.setAttribute('aria-valuemax',String(Math.round(maximum)));taskSplitter.setAttribute('aria-valuenow',String(value));$('#task-log-toggle').setAttribute('aria-expanded','true');$('#task-log-toggle').setAttribute('aria-label','Recolher painel de tarefas');$('#task-log-toggle').textContent='⌄';}
+window.addEventListener('resize',()=>{if(document.documentElement.style.getPropertyValue('--task-height')){const collapsed=document.body.classList.contains('tasks-collapsed');setTaskHeight(parseFloat(document.documentElement.style.getPropertyValue('--task-height')));if(collapsed)$('#task-log-toggle').click();}});
 taskSplitter.onkeydown=event=>{if(['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();setTaskHeight($('#task-log').offsetHeight+(event.key==='ArrowUp'?20:-20));}};
 taskSplitter.onpointerdown=event=>{event.preventDefault();taskSplitter.setPointerCapture(event.pointerId);taskSplitter.onpointermove=move=>setTaskHeight(innerHeight-move.clientY-23);taskSplitter.onpointerup=()=>{taskSplitter.onpointermove=null;};};
 api('/api/session').then(data=>{session=data;enter();}).catch(()=>{});

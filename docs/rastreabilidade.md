@@ -36,7 +36,7 @@ Gerada por `python scripts/traceability.py`. Implementação local não signific
 | RF-014 / F3 | Listar e criar snapshots controlados | Listagem, criação, restauração e exclusão; conflito de nome é verificado antes do POST e erro original do Incus é preservado; aceite em container descartável pendente. |
 | RF-015 / F3 | Exibir e gerar backup autorizado | Listagem, geração e exclusão; download/importação de backups fora do painel. |
 | RF-016 / F3 | Exibir uso real de pools e alertas | Pool resources e 93% por fixture; sem soma lógica Btrfs. |
-| RF-017 / F3 | Inspecionar bridges e dispositivos | Redes, dispositivos e leases consultáveis; CRUD restrito a bridges gerenciadas com verificação de dependências; seleção da bridge no assistente; aceite real pendente. |
+| RF-017 / F3 | Inspecionar bridges e dispositivos | CRUD de bridges gerenciadas e interfaces de CT existentes, revisões/ETag, dependências e tarefas síncronas/assíncronas. Ciclo real validado em recursos descartáveis; conectividade, VLAN e hotplug ainda não medidos. docs/bridges.md. |
 | RF-018 / F3 | Aplicar escopos de Project a leituras e mutacoes | Allowlist backend por usuário e contexto em todas as chamadas. |
 | RF-019 / F3 | Exibir configuracao de Profiles e origem dos devices | Profiles e devices expandidos; leitura sem edição. |
 | RF-020 / F4 | Executar mesma versao do painel para ARMv7, ARM64 e x86-64 | Não validado em ARMv7/ARM64/x86-64; protocolo em docs/experimentos.md. |
@@ -61,7 +61,7 @@ Gerada por `python scripts/traceability.py`. Implementação local não signific
 | TEL-13 / WBS-04.13 — Assistente de criacao de container | Parcial; aceite real pendente | Modal independente da rota, oito etapas sequenciais com validação, imagem por arquitetura, CPU/RAM, pool/cota suportada, bridge/reserva IPv4, DNS herdado e início opcional. Opções validadas no backend; modalidade restrita usa default. |
 | TEL-14 / WBS-04.14 — Imagens | Parcial | Listagem local e download de Alpine/Debian do catálogo por arquitetura, progresso e confirmação no Incus; tests/test_images.py; importação de arquivos/remoção e aceite real pendentes. |
 | TEL-15 / WBS-04.15 — Storage pools e volumes | Parcial | Pools, detalhes, volumes e alertas 80/90%; criação/configuração de armazenamento fora do painel. |
-| TEL-16 / WBS-04.16 — Redes | Parcial; aceite real pendente | Lista, detalhes, leases e CRUD controlado de bridges gerenciadas; associação já existe no assistente. Ciclo em bridge descartável pendente. |
+| TEL-16 / WBS-04.16 — Redes | Implementado no escopo de bridges gerenciadas | CRUD, DHCP/DNS/NAT/MTU e interfaces de CT existentes. Ciclo real de bridge e associação/remover/restaurar perfil validado em recursos descartáveis na TV Box; conectividade e hotplug pendentes. docs/bridges.md. |
 | TEL-17 / WBS-04.17 — Profiles | Parcial | Profiles e devices; edição/impacto e filtros aprofundados pendentes. |
 | TEL-18 / WBS-04.18 — Projects | Parcial | Escopos autorizados e seleção; resumo nativo completo de limites pendente. |
 | TEL-19 / WBS-04.19 — Tasks e operacoes | Parcial | Painel inferior recolhível/redimensionável, UUIDs, estado, detalhes e erro; persistência histórica e cancelamento pendentes. |
@@ -192,12 +192,12 @@ O inventário abaixo inclui todos os grupos, pacotes e submódulos. O estado das
 | WBS-04.15.04 | Avisos de capacidade | F3 | Parcial |
 | WBS-04.15.05 | Propriedades e limites | F3 | Parcial |
 | WBS-04.15.06 | Acao administrativa | F3 | Parcial |
-| WBS-04.16 | Redes | F3 | Parcial; aceite real pendente |
-| WBS-04.16.01 | Lista de redes | F3 | Parcial; aceite real pendente |
-| WBS-04.16.02 | Detalhe da bridge | F3 | Parcial; aceite real pendente |
-| WBS-04.16.03 | Leases e enderecos | F3 | Parcial; aceite real pendente |
-| WBS-04.16.04 | Associacoes | F3 | Parcial; aceite real pendente |
-| WBS-04.16.05 | Alteracoes | F3 | Parcial; aceite real pendente |
+| WBS-04.16 | Redes | F3 | Implementado no escopo de bridges gerenciadas |
+| WBS-04.16.01 | Lista de redes | F3 | Implementado no escopo de bridges gerenciadas |
+| WBS-04.16.02 | Detalhe da bridge | F3 | Implementado no escopo de bridges gerenciadas |
+| WBS-04.16.03 | Leases e enderecos | F3 | Implementado no escopo de bridges gerenciadas |
+| WBS-04.16.04 | Associacoes | F3 | Implementado no escopo de bridges gerenciadas |
+| WBS-04.16.05 | Alteracoes | F3 | Implementado no escopo de bridges gerenciadas |
 | WBS-04.17 | Profiles | F3 | Parcial |
 | WBS-04.17.01 | Lista | F3 | Parcial |
 | WBS-04.17.02 | Devices e configuracoes | F3 | Parcial |

@@ -1,8 +1,28 @@
 <!doctype html>
 <html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Incus Panel · Gerenciamento de containers</title><link rel="stylesheet" href="/vendor/xterm.css?v=6.0.0"><link rel="stylesheet" href="/style.css?v=20261104-task-output"><script src="/app.js?v=20261104-task-output" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Incus Panel · Gerenciamento de containers</title><link rel="stylesheet" href="/vendor/xterm.css?v=6.0.0"><link rel="stylesheet" href="/style.css?v=20261106-responsive-login"><script src="/app.js?v=20261106-responsive-login" defer></script></head>
 <body class="low-resource"><a class="skip-link" href="#main-content">Ir para o conteúdo</a>
-<section id="login" class="login"><div class="login-card"><div class="window-title">Incus Panel · Login</div><div class="login-brand"><span class="logo">i</span><strong>INCUS</strong><span>Panel</span></div><form id="login-form"><label>Usuário<input name="username" autocomplete="username" required autofocus></label><label>Senha<input name="password" type="password" autocomplete="current-password" required></label><label>Autenticação<select disabled aria-label="Autenticação"><option>Conta local do painel</option></select></label><label>Idioma<select disabled aria-label="Idioma"><option>Português (Brasil)</option></select></label><p id="login-error" role="alert"></p><div class="dialog-actions"><button class="primary" type="submit">Entrar</button></div></form><small>Na demonstração, use as credenciais temporárias exibidas no terminal.</small></div></section>
+<section id="login" class="login">
+  <div class="login-workspace" aria-hidden="true" inert>
+    <div class="login-workspace-header"><span class="brand"><span class="logo">i</span><strong>INCUS</strong><span>Panel</span></span><span class="header-label">Gerenciamento de containers</span><input placeholder="Pesquisar recursos" disabled><div class="header-right"><button disabled>Documentação</button><button class="primary" disabled>▣ Criar CT</button><button disabled>♙⌄</button></div></div>
+    <div class="login-workspace-tree"><div class="tree-heading"><select disabled><option>Visão do servidor</option></select></div><div class="login-tree-root">› ▤ &nbsp; Datacenter</div></div>
+    <div class="login-workspace-tasks"><div class="task-log-toolbar"><button class="active" disabled>Tarefas</button><button disabled>Log de auditoria</button></div><div class="table-wrap"><table><thead><tr><th>Tempo de início</th><th>Término</th><th>Nó</th><th>Nome de usuário</th><th>Descrição</th><th>Status</th></tr></thead></table></div></div>
+  </div>
+  <div class="login-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
+    <div class="window-title" id="login-title">Login Incus Panel</div>
+    <form id="login-form">
+      <div class="login-fields">
+        <label for="login-username">Nome de usuário:</label><input id="login-username" name="username" autocomplete="username" required autofocus maxlength="64" autocapitalize="none" spellcheck="false">
+        <label for="login-password">Senha:</label><input id="login-password" name="password" type="password" autocomplete="current-password" required>
+        <label for="login-realm">Domínio:</label><select id="login-realm" aria-describedby="login-realm-help"><option value="local">Autenticação local do painel</option></select>
+        <label for="login-language">Idioma:</label><select id="login-language"><option value="pt-BR">Português Brasileiro - Portuguese (Brazil)</option></select>
+      </div>
+      <span id="login-realm-help" class="sr-only">Use uma conta cadastrada no Incus Panel.</span>
+      <p id="login-error" role="alert" hidden></p>
+      <div class="dialog-actions"><label class="remember-username" for="remember-username">Salvar nome de usuário: <input id="remember-username" type="checkbox"></label><button class="primary" type="submit">Login</button></div>
+    </form>
+  </div>
+</section>
 <div id="shell" hidden>
 <header><button type="button" id="menu-toggle" class="menu-toggle" aria-label="Abrir menu" aria-controls="sidebar" aria-expanded="false">☰</button><a class="brand" href="#overview"><span class="logo">i</span><strong>INCUS</strong><span>Panel</span></a><span class="header-label">Gerenciamento de containers</span><input id="global-search" type="search" placeholder="Pesquisar recursos" aria-label="Pesquisar recursos na árvore"><div class="header-right"><span id="mode" class="badge"></span><button type="button" id="theme-toggle" aria-label="Mudar para tema escuro" aria-pressed="false" title="Tema escuro">☾</button><a class="button-link" href="https://linuxcontainers.org/incus/docs/main/" target="_blank" rel="noopener noreferrer">Documentação</a><a id="create-ct" class="button-link primary" href="#create">▣ Criar CT</a><span id="identity"></span><button id="logout">Sair</button></div></header>
 <button type="button" id="menu-backdrop" class="menu-backdrop" aria-label="Fechar menu" tabindex="-1" hidden></button>

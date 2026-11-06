@@ -3,6 +3,30 @@
 Revisão de 03/11/2026. A estrutura de barra superior, árvore, navegação por recurso,
 área de trabalho e painel de tarefas foi preservada.
 
+## Revisão de 06/11/2026
+
+O espaço de trabalho usa uma grade única para cabeçalho, árvore, navegação,
+conteúdo, tarefas e rodapé. Em janelas de até 1100 px, a árvore fica em um menu
+sobreposto; até 650 px, a navegação vira uma faixa horizontal. O conteúdo tem
+rolagem própria, as colunas dos formulários se reduzem e a altura das tarefas é
+limitada pela janela. A janela separada de console ocupa sua própria grade.
+
+O login segue o diálogo compacto da referência Proxmox, com estrutura vazia do
+painel ao fundo, campos alinhados, domínio local, idioma português e opção de
+salvar apenas o nome do usuário. Login inválido, indisponibilidade de conexão e
+expiração de sessão exibem mensagens. Não foi adicionado um provedor Linux PAM;
+as credenciais continuam sendo as contas locais do Incus Panel.
+
+A gestão de bridges inclui CRUD, endereçamento, DHCP, NAT, DNS, MTU, roteamento,
+firewall e associação de interfaces aos containers. Consulte [bridges](bridges.md)
+para permissões, configuração e limites.
+
+Validação local: 231 testes de Python (4 ignorados), sintaxe JavaScript,
+rastreabilidade e smoke DOM com 20 rotas, login, menu móvel, CRUD de bridge,
+dependências e interfaces. A verificação visual não foi concluída: a ferramenta
+de controle do navegador foi interrompida porque não conseguiu identificar com
+segurança a URL do Chrome. Não houve novo teste em Incus real nesta revisão.
+
 ## Correções
 
 - **Criar CT** abre um diálogo sobre a tela atual, preservando rota e formulários.
@@ -39,7 +63,7 @@ Revisão de 03/11/2026. A estrutura de barra superior, árvore, navegação por 
 | Datacenter/nó | Sumário, busca, notas, sistema, tarefas | Notas locais ao navegador; amostras de métricas apenas na sessão |
 | Containers | Criar, iniciar, parar, reiniciar, excluir, editar limites e descrição | Containers Incus; sem VMs, HA Proxmox, VMID, senha root ou parâmetros sem suporte |
 | Console | xterm.js e shell autenticado pelo painel | Exige Incus real, container em execução e permissão; indisponível na demonstração |
-| Rede/DNS | Interfaces, bridges, propriedades, leases e associações | Consulta; DNS do assistente herdado da bridge; não edita o convidado |
+| Rede/DNS | CRUD de bridges gerenciadas, interfaces, propriedades, leases e associações | Gestão exige administrador e `manage_networks`; interfaces físicas são consultivas; não edita o convidado |
 | Armazenamento/volumes | Pools, capacidade, conteúdo e alertas | Consulta; cota de criação apenas nos drivers aceitos pelo backend; `dir` usa o pool |
 | Templates | Imagens locais e download do catálogo compatível | Sem importação de arquivo, imagens de VM ou exclusão de imagens |
 | Snapshots | Criar, restaurar e excluir | Restaurar exige container parado e confirmação |
