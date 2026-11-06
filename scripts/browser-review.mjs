@@ -42,7 +42,7 @@ try{
   await navigate('network/labbr0/summary');
   assert.match(await evaluate("document.querySelector('#content').textContent"),/lab-web/,'Attached containers must be populated');
   assert.match(await evaluate("document.querySelector('#content').textContent"),/10\.100\.0\.10/,'Incus DHCP address must be displayed');
-  await navigate('instance/lab-web/options');await fill('description','Rascunho preservado');await openWizard();await click('#close-create');
+  await navigate('instance/lab-web/options');await click('[data-action=instance-edit]');await fill('description','Rascunho preservado');await openWizard();await click('#close-create');
   assert.equal(await evaluate("document.querySelector('#edit-description').value"),'Rascunho preservado');
   await evaluate("document.querySelector('.edit-form').requestSubmit()");await wait("document.querySelector('#feedback').textContent.includes('Alterações salvas')&&!document.querySelector('#content').hasAttribute('aria-busy')");
   assert.equal((await evaluate("read('instance','lab-web').then(r=>r.data)")).description,'Rascunho preservado');
@@ -70,7 +70,7 @@ try{
   await evaluate("applyTheme('light')");await navigate('overview');await screenshot('desktop-light');
   for(const width of [1024,768,390]){
     await viewport(width,844);
-    for(const route of routes){await navigate(route);assert.equal(await evaluate('document.documentElement.scrollWidth>innerWidth'),false,`Overflow ${width}: ${route}`);assert.equal(await evaluate('document.querySelector("main").getBoundingClientRect().left'),width<=650?0:152);}
+    for(const route of routes){await navigate(route);assert.equal(await evaluate('document.documentElement.scrollWidth>innerWidth'),false,`Overflow ${width}: ${route}`);assert.equal(await evaluate('document.querySelector("main").getBoundingClientRect().left'),width<=650?0:168);}
   }
   await evaluate("applyTheme('dark')");await navigate('overview');await screenshot('mobile-dark');
   await click('#menu-toggle');assert.equal(await evaluate('menuOpen'),true);await click('#menu-close');assert.equal(await evaluate('menuOpen'),false);

@@ -21,11 +21,14 @@ A gestão de bridges inclui CRUD, endereçamento, DHCP, NAT, DNS, MTU, roteament
 firewall e associação de interfaces aos containers. Consulte [bridges](bridges.md)
 para permissões, configuração e limites.
 
-Validação local: 231 testes de Python (4 ignorados), sintaxe JavaScript,
-rastreabilidade e smoke DOM com 20 rotas, login, menu móvel, CRUD de bridge,
-dependências e interfaces. A verificação visual não foi concluída: a ferramenta
-de controle do navegador foi interrompida porque não conseguiu identificar com
-segurança a URL do Chrome. Não houve novo teste em Incus real nesta revisão.
+Validação final: 231 testes de Python (4 ignorados), sintaxe JavaScript,
+rastreabilidade e smoke DOM com 40 rotas, login, menu móvel, CRUD de bridge,
+dependências e interfaces. Após autorização para usar um Chrome isolado,
+a revisão visual passou em 40 rotas × 18 janelas × 2 temas (1.440 verificações),
+incluindo o fundo do menu, retorno ao desktop, redimensionamento dos painéis e
+diálogos em 320 × 480 px. A revisão funcional no navegador também passou.
+O [mapeamento com o repositório do Proxmox](proxmox-interface.md) registra
+referências, telas e procedimento. Não houve novo teste em Incus real.
 
 ## Correções
 

@@ -23,6 +23,10 @@ try{
   await wait(()=>typeof w.api==='function');
   assert.equal(d.querySelector('.login-card').getAttribute('role'),'dialog');
   assert.ok(d.querySelector('.login-workspace[inert][aria-hidden=true]'));
+  for(const theme of ['light','dark']){
+    w.applyTheme(theme);
+    assert.equal(w.getComputedStyle(d.querySelector('#menu-backdrop')).backgroundColor,'rgba(0, 0, 0, 0.2)','O botão de fundo do menu não pode herdar preenchimento opaco.');
+  }
   d.querySelector('#login-username').value='test';d.querySelector('#login-password').value='wrong-password';
   d.querySelector('#login-form').requestSubmit();await wait(()=>!d.querySelector('#login-error').hidden);
   assert.equal(d.querySelector('#shell').hidden,true);
@@ -36,16 +40,23 @@ try{
   assert.equal(w.eval('session.low_resource'),true);
   const breakpoint=w.eval('menuBreakpoint');breakpoint.matches=true;breakpoint.handler();
   d.querySelector('#menu-toggle').click();assert.equal(d.querySelector('#menu-toggle').getAttribute('aria-expanded'),'true');
-  for(const id of ['main-content','navigation','task-log'])assert.equal(d.getElementById(id).inert,true);
+  for(const id of ['main-content','resource-toolbar','navigation','task-log'])assert.equal(d.getElementById(id).inert,true);
   d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
   assert.equal(d.querySelector('#menu-toggle').getAttribute('aria-expanded'),'false');assert.equal(d.querySelector('#sidebar').inert,true);
   d.querySelector('#menu-toggle').click();breakpoint.matches=false;breakpoint.handler();
   assert.equal(d.querySelector('#sidebar').inert,false);assert.equal(d.querySelector('#menu-backdrop').hidden,true);
   for(const id of ['main-content','navigation','task-log'])assert.equal(d.getElementById(id).inert,false);
   assert.equal(d.querySelectorAll('#tree a.leaf').length,2);
-  const routes=['instances','images','storage','networks','profiles','projects','server','tasks','alerts','settings','instance/lab-web/summary','instance/lab-web/resources','instance/lab-web/network','instance/lab-web/dns','instance/lab-web/devices','instance/lab-web/options','instance/lab-web/snapshots','instance/lab-web/backups','instance/lab-web/console','overview'];
+  const collapse=d.querySelector('[aria-controls="tree-group-containers"]');collapse.click();assert.equal(d.querySelector('#tree-group-containers').hidden,true);
+  d.querySelector('[aria-controls="tree-group-containers"]').click();assert.equal(d.querySelector('#tree-group-containers').hidden,false);
+  const routes=['overview','search','datacenter-notes','cluster','settings','storage','backups','permissions','networks','instances','images','profiles','projects','volumes','tasks','alerts','users','server/summary','server/search','server/notes','server/system','server/network','server/storage','server/tasks','storage/lab/summary','storage/lab/content','storage/lab/permissions','network/labbr0/summary','network/labbr0/permissions',...['summary','resources','devices','network','dns','options','history','backups','snapshots','permissions','console'].map(tab=>'instance/lab-web/'+tab)];
   for(const route of routes){await navigate(route);assert.doesNotMatch(d.querySelector('#content').textContent,/Falha interna|Página não encontrada|Não foi possível atualizar/,'Route '+route);}
+  await navigate('search');assert.match(d.querySelector('.search-results').textContent,/lab-web/,'A grade inicial lista os recursos sem exigir uma busca.');
+  const sort=d.querySelector('.search-results th button');sort.click();assert.equal(sort.closest('th').getAttribute('aria-sort'),'ascending');sort.click();assert.equal(sort.closest('th').getAttribute('aria-sort'),'descending');
+  const gridRow=d.querySelector('.search-results tbody tr');gridRow.click();assert.equal(gridRow.getAttribute('aria-selected'),'true');
+  await navigate('instance/lab-web/options');d.querySelector('[data-action=instance-edit]').click();assert.equal(d.querySelector('#editor-dialog').open,true);d.querySelector('#close-editor').click();
   await navigate('networks');
+  d.querySelector('[data-action=network-create]').click();assert.equal(d.querySelector('#editor-dialog').open,true);
   const address4=d.querySelector('[name="ipv4.address"]');address4.value='none';address4.dispatchEvent(new w.Event('input'));
   assert.equal(d.querySelector('[name="ipv4.dhcp"]').disabled,true);assert.equal(d.querySelector('[name="ipv4.nat"]').disabled,true);
   address4.value='auto';address4.dispatchEvent(new w.Event('input'));
@@ -54,6 +65,7 @@ try{
   d.querySelector('.network-form').requestSubmit();await wait(()=>d.querySelector('#confirm').open);
   d.querySelector('#action-form').requestSubmit();await wait(()=>!d.querySelector('#confirm').open&&!!d.querySelector('a[href="#network/smoke-br"]'));
   await navigate('network/smoke-br');
+  d.querySelector('[data-action=network-edit]').click();
   d.querySelector('[name="bridge.mtu"]').value='1400';d.querySelector('.network-form').requestSubmit();
   await wait(()=>d.querySelector('#confirm').open);d.querySelector('#action-form').requestSubmit();await wait(()=>!d.querySelector('#confirm').open);
   await navigate('instance/lab-web/network');

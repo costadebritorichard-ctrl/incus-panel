@@ -8,7 +8,7 @@ function applyTheme(value) {
   try { localStorage.setItem('incus-theme', theme); } catch {}
   const button = document.querySelector('#theme-toggle');
   if (button) {
-    button.textContent = theme === 'dark' ? '☼' : '☾';
+    button.textContent = theme === 'dark' ? 'Tema claro' : 'Tema escuro';
     button.setAttribute('aria-pressed', String(theme === 'dark'));
     button.setAttribute('aria-label', theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro');
     button.title = theme === 'dark' ? 'Tema claro' : 'Tema escuro';
@@ -43,6 +43,8 @@ Object.assign(iconPaths,{
   network:['M9 3h6v6H9Z','M3 16h6v5H3Z','M15 16h6v5h-6Z','M12 9v4','M6 16v-3h12v3'],
   storage:['M3 4h18v6H3Z','M3 14h18v6H3Z','M17 7h1','M17 17h1'],
   settings:['M4 6h16','M4 12h16','M4 18h16','M8 3v6','M16 9v6','M10 15v6'],
+  node:['M3 3h18v7H3Z','M3 14h18v7H3Z','M6 6h1','M6 17h1'],
+  datacenter:['M3 4h18v16H3Z','M7 8h10','M7 12h10','M7 16h10'],
   history:['M12 3a9 9 0 1 0 9 9','M12 7v5l4 2'],
   users:['M9 3a4 4 0 1 0 0 8a4 4 0 0 0 0-8','M2 21v-3a6 6 0 0 1 12 0v3','M16 4a4 4 0 0 1 0 7','M18 15a5 5 0 0 1 4 5'],
   alert:['M12 3 2 21h20Z','M12 9v5','M12 17h.01'],
@@ -78,17 +80,17 @@ const imageDownloads = new Map();
 const readCache = new Map();
 let inventory=[], serverInfo={}, storageInventory=[], networkInventory=[], taskLogScope='', taskLogItems=[], taskLogMode='tasks';
 const instanceTabs=[['summary','◫','Sumário'],['console','>_','Console'],['resources','▤','Recursos'],['network','⌘','Rede'],['dns','☷','DNS'],['options','⚙','Opções'],['history','◷','Histórico de tarefas'],['backups','▣','Backup'],['snapshots','◷','Snapshots'],['permissions','♙','Permissões']];
-const nodeTabs=[['search','⌕','Buscar'],['summary','◫','Sumário'],['notes','✎','Notas'],['system','▦','Sistema'],['network','⌘','Rede'],['storage','▤','Discos'],['tasks','◷','Histórico de tarefas']];
+const nodeTabs=[['search','⌕','Procurar'],['summary','◫','Sumário'],['notes','✎','Notas'],['system','▦','Sistema'],['network','⌘','Rede'],['storage','▤','Discos'],['tasks','◷','Histórico de tarefas']];
 const storageTabs=[['summary','◫','Sumário'],['content','▤','Conteúdo'],['permissions','♙','Permissões']];
 const networkTabs=[['summary','◫','Sumário'],['permissions','♙','Permissões']];
 function trackTask(key,task){
-  tasks.set(key,{...tasks.get(key),...task});
+  tasks.set(key,{requested_at:tasks.get(key)?.requested_at||Date.now()/1000,...tasks.get(key),...task});
   if(tasks.size>100){const completed=[...tasks].find(([id,item])=>id!==key&&item.status_code>=200);tasks.delete(completed?.[0]||tasks.keys().next().value);}
   renderTaskLog();
 }
 function watchingRun(run,page){return session===run.owner&&host===run.scope.host&&project===run.scope.project&&route().page===page&&!document.hidden;}
 function resumeRun(run,poll){if(run.status_code<200&&!run.connectionError&&!run.polling){clearTimeout(run.timer);run.timer=setTimeout(()=>poll(run),0);}}
-const pages = [ ['search','⌕','Buscar'],['overview','◫','Sumário'],['datacenter-notes','✎','Notas'],['cluster','◉','Cluster'],['settings','⚙','Opções'],['storage','▤','Armazenamento'],['backups','▣','Backup'],['permissions','♙','Permissões'],['networks','⌘','Rede'],['instances','▣','Containers'],['images','◇','Templates'],['profiles','☷','Perfis'],['projects','▱','Projetos'],['volumes','▤','Volumes'],['tasks','◷','Histórico de tarefas'],['alerts','△','Alertas'],['users','♙','Usuários'] ];
+const pages = [ ['search','⌕','Procurar'],['overview','◫','Sumário'],['datacenter-notes','✎','Notas'],['cluster','◉','Cluster'],['settings','⚙','Opções'],['storage','▤','Armazenamento'],['backups','▣','Backup'],['permissions','♙','Permissões'],['users','♙','Usuários'],['networks','⌘','Rede'],['instances','▣','Containers'],['images','◇','Templates'],['profiles','☷','Perfis'],['projects','▱','Projetos'],['volumes','▤','Volumes'],['tasks','◷','Histórico de tarefas'],['alerts','△','Alertas'] ];
 const metricHistory=new Map();
 const numberFormat = new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1});
 const fmt = n => n === null || n === undefined ? 'n/d' : numberFormat.format(n);
@@ -160,12 +162,34 @@ const panel = (title, content, action) => el('section',{class:'panel'},el('div',
 const empty = text => el('div',{class:'empty'},text);
 const kv = pairs => el('dl',{class:'key-values'},pairs.map(([k,v])=>el('div',{},el('dt',{},k),el('dd',{},v ?? 'n/d'))));
 function table(headers, rows) {
-  if(!rows.length)return empty('Nenhum recurso encontrado neste escopo.');
-  const body=el('tbody'),holder=el('div',{},el('div',{class:'table-wrap'},el('table',{},el('thead',{},el('tr',{},headers.map(h=>el('th',{},h)))),body)));
+  const heading=value=>/^[A-ZÀ-Ú0-9 /_.-]+$/.test(value)&&!['CPU','MAC','DNS','IP','MTU','VLAN','UUID','IPv4','IPv6'].includes(value)?value.slice(0,1)+value.slice(1).toLocaleLowerCase('pt-BR'):value;
+  const body=el('tbody'),header=el('tr'),grid=el('table',{},el('thead',{},header),body);
+  const holder=el('div',{class:'table-holder'},el('div',{class:'table-wrap',tabindex:'0','aria-label':'Tabela de recursos'},grid));
+  let ordered=rows.map((row,index)=>({row,index})),sortColumn=-1,ascending=true,selected=-1;
+  const columns=headers.map((value,index)=>{
+    const label=heading(String(value)),cell=el('th',{scope:'col'});
+    if(!label.trim()){header.append(cell);return cell;}
+    const marker=el('span',{class:'sort-indicator','aria-hidden':'true'});
+    const control=el('button',{type:'button',class:'column-sort',title:'Ordenar por '+label,onclick:()=>{
+      ascending=sortColumn===index?!ascending:true;sortColumn=index;page=0;
+      const values=new Map(ordered.map(item=>{const value=(typeof item.row==='function'?item.row():item.row)[index];return [item.index,value instanceof Node?value.textContent:String(value??'')];}));
+      ordered.sort((a,b)=>(ascending?1:-1)*values.get(a.index).localeCompare(values.get(b.index),'pt-BR',{numeric:true,sensitivity:'base'}));
+      columns.forEach((node,column)=>{node.setAttribute('aria-sort',column===index?(ascending?'ascending':'descending'):'none');node.querySelector('.sort-indicator')?.replaceChildren(column===index?(ascending?'↑':'↓'):'');});
+      update();
+    }},label,marker);
+    cell.setAttribute('aria-sort','none');cell.append(control);header.append(cell);return cell;
+  });
   const size=25;let page=0;
   const label=el('span',{'aria-live':'polite'}),previous=el('button',{type:'button',onclick:()=>{page--;update();}},'Anterior'),next=el('button',{type:'button',onclick:()=>{page++;update();}},'Próxima');
   function update(){
-    body.replaceChildren(...rows.slice(page*size,(page+1)*size).map(row=>el('tr',{},(typeof row==='function'?row():row).map(c=>el('td',{},c)))));
+    body.replaceChildren(...ordered.slice(page*size,(page+1)*size).map(({row,index})=>{
+      const tr=el('tr',{tabindex:'0','aria-selected':String(selected===index),class:selected===index?'selected':''},(typeof row==='function'?row():row).map(c=>el('td',{},c)));
+      const select=()=>{selected=index;for(const sibling of body.children){sibling.classList.toggle('selected',sibling===tr);sibling.setAttribute('aria-selected',String(sibling===tr));}};
+      tr.onclick=event=>{if(!event.target.closest('a,button,input,select,summary,details'))select();};
+      tr.onkeydown=event=>{if(event.target!==tr)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();select();}if(['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const sibling=event.key==='ArrowUp'?tr.previousElementSibling:tr.nextElementSibling;sibling?.focus();sibling?.click();}};
+      return tr;
+    }));
+    if(!rows.length)body.append(el('tr',{},el('td',{colspan:String(headers.length),class:'table-empty'},empty('Nenhum recurso encontrado neste escopo.'))));
     label.textContent=`${page*size+1}–${Math.min((page+1)*size,rows.length)} de ${rows.length}`;
     previous.disabled=page===0;next.disabled=(page+1)*size>=rows.length;
   }
@@ -173,6 +197,15 @@ function table(headers, rows) {
   update();return holder;
 }
 function notice(text, critical=false) { return el('div',{class:'alert'+(critical?' critical':'')},text); }
+let editorContext='';
+function closeEditor(){if($('#editor-dialog').open)$('#editor-dialog').close();$('#editor-content').replaceChildren();editorContext='';}
+function openEditor(title,content){
+  editorContext=host+'/'+project+'/'+location.hash;$('#editor-title').textContent=title;$('#editor-content').replaceChildren(content);
+  if(!$('#editor-dialog').open)$('#editor-dialog').showModal();
+  $('#editor-content').querySelector('input:not([disabled]):not([readonly]),select:not([disabled]),textarea:not([disabled])')?.focus();
+}
+$('#close-editor').onclick=closeEditor;
+$('#editor-dialog').addEventListener('cancel',event=>{event.preventDefault();closeEditor();});
 function errorNode(error) { return notice((error.status===403?'Sem permissão. ':error.status===503?'Desconectado. ':'')+error.message,true); }
 function loadingView(message) { return el('div',{class:'loading-state',role:'status','aria-live':'polite'},el('span',{class:'spinner','aria-hidden':'true'}),el('p',{},message)); }
 async function api(path, body) {
@@ -262,7 +295,7 @@ $('#action-form').onsubmit=async event=>{
     $('#submit-action').textContent='Aguardando o Incus…';
     const state=await waitOperation(data.operation,{host:action.host,project:action.project},owner);
     if(session!==owner)return;
-    $('#confirm').close();
+    $('#confirm').close();closeEditor();
     notify(state.status_code<200?'Operação em andamento. Acompanhe em Tarefas.':({start:'Container iniciado.',stop:'Container parado.',restart:'Container reiniciado.',delete:'Container excluído.',create:'Container criado.','network-create':'Bridge criada.','network-update':'Bridge atualizada.','network-delete':'Bridge excluída.'})[action.action]||'Operação concluída.');
     if(action.action==='delete'&&route().page==='instance'){location.hash='#instances';return;}
     if(action.action==='create'){openTaskDetail({...action,...state,id:data.operation,start_after_create:false});return;}
@@ -273,6 +306,7 @@ $('#action-form').onsubmit=async event=>{
   finally { $('#cancel-action').disabled=false; $('#submit-action').disabled=false;$('#submit-action').textContent='Confirmar operação'; }
 };
 function logoutLocal(message='') {
+  closeEditor();
   closeCreateWizard();metricHistory.clear();resourceMenu?.remove();
   document.body.classList.add('low-resource');
   setMenu(false,{restoreFocus:false});
@@ -304,13 +338,14 @@ function setMenu(open,{restoreFocus=true}={}){
   if(drawer&&!menuOpen)sidebar.setAttribute('aria-hidden','true');else sidebar.removeAttribute('aria-hidden');
   if(menuOpen){sidebar.setAttribute('role','dialog');sidebar.setAttribute('aria-modal','true');}
   else{sidebar.removeAttribute('role');sidebar.removeAttribute('aria-modal');}
-  for(const node of [$('#main-content'),$('#navigation'),$('#task-log'),$('#shell header'),$('#shell footer')])node.inert=menuOpen;
+  for(const node of [$('#main-content'),$('#resource-toolbar'),$('#navigation'),$('#task-log'),$('#shell header'),$('#shell footer')])node.inert=menuOpen;
   if(menuOpen)$('#menu-close').focus();
   else if(wasOpen&&restoreFocus&&drawer)$('#menu-toggle').focus();
 }
 $('#menu-toggle').onclick=()=>setMenu(!menuOpen);
 $('#menu-close').onclick=()=>setMenu(false);
 $('#menu-backdrop').onclick=()=>setMenu(false);
+$('#scope-toggle').onclick=()=>{const fields=$('#scope-fields');fields.hidden=!fields.hidden;$('#scope-toggle').setAttribute('aria-expanded',String(!fields.hidden));};
 $('#sidebar').addEventListener('click',event=>{
   if(menuOpen&&event.target.closest('a[href]')){
     setMenu(false,{restoreFocus:false});
@@ -332,6 +367,8 @@ setMenu(false,{restoreFocus:false});
 $('#logout').replaceChildren(...iconLabel('logout','Sair'));
 $('#refresh').replaceChildren(...iconLabel('refresh','Atualizar'));
 $('#theme-toggle').onclick=()=>applyTheme(theme==='dark'?'light':'dark');
+document.addEventListener('click',event=>{if(!$('#user-menu').contains(event.target))$('#user-menu').open=false;});
+$('#user-menu').addEventListener('keydown',event=>{if(event.key==='Escape'){$('#user-menu').open=false;$('#user-menu summary').focus();}});
 $('#logout').onclick=async()=>{try{await api('/api/logout',{});}finally{logoutLocal();}};
 function prepareLogin(message=''){
   $('.skip-link').hidden=true;
@@ -364,7 +401,7 @@ prepareLogin();
 function enter() {
   readCache.clear();document.body.classList.toggle('low-resource',Boolean(session.low_resource));
   clearTimeout(expiryTimer); expiryTimer=setTimeout(()=>logoutLocal('Sua sessão expirou. Entre novamente.'),Math.max(0,session.expires*1000-Date.now()));
-  $('#login').hidden=true; $('#shell').hidden=false;setMenu(false,{restoreFocus:false}); $('#identity').textContent=`${session.username} · ${session.role}`;
+  $('#login').hidden=true; $('#shell').hidden=false;setMenu(false,{restoreFocus:false}); $('#identity').textContent=session.username+'@local';$('#user-role').textContent=session.role;$('#user-menu').open=false;
   $('.skip-link').hidden=false;
   $('#mode').textContent=session.demo?'DEMONSTRAÇÃO':session.read_only?'SOMENTE LEITURA':session.manage_all_instances?'ADMINISTRAÇÃO':'LABORATÓRIO';
   $('#host').replaceChildren(...session.hosts.map(h=>el('option',{value:h.id},h.alias)));
@@ -392,7 +429,7 @@ document.addEventListener('visibilitychange',()=>{
   if(!session)return;
   for(const run of creationRuns.values())if(run.owner===session&&host===run.scope.host&&project===run.scope.project)resumeRun(run,pollCreation);
   for(const run of imageDownloads.values())if(watchingRun(run,'images'))resumeRun(run,pollImageDownload);
-  if(!session.low_resource){eventTimer=setTimeout(pollEvents,2000);if(!consoleId&&!menuOpen&&!$('#content form')&&!$('#confirm').open&&!$('#create-dialog').open&&!$('#task-detail').open){readCache.clear();render();}else scheduleRefresh();}
+  if(!session.low_resource){eventTimer=setTimeout(pollEvents,2000);if(!consoleId&&!menuOpen&&!$('#content form')&&!$('#confirm').open&&!$('#editor-dialog').open&&!$('#create-dialog').open&&!$('#task-detail').open){readCache.clear();render();}else scheduleRefresh();}
 });
 function instanceActions(item){
   const actions=el('div',{class:'row-actions'});
@@ -427,9 +464,10 @@ async function render() {
   // Compatibility for old bookmarks; creation is an overlay, never a workspace page.
   if(route().page==='create'){history.replaceState(null,'',lastWorkspaceHash);if(!$('#content').childElementCount)await render();openCreateWizard();return;}
   lastWorkspaceHash=location.hash||'#overview';
+  if(editorContext&&editorContext!==host+'/'+project+'/'+location.hash)closeEditor();
   if(createScope&&(createScope.host!==host||createScope.project!==project))closeCreateWizard();
   clearTimeout(timer); const id=++generation; const scope={host,project}; const r=route(); busy=true;
-  const title=r.page==='overview'?'Datacenter':r.page==='server'?`${serverInfo.environment?.server_name||host} · ${nodeTabs.find(([key])=>key===(r.target||'summary'))?.[2]||'Nó'}`:r.page==='storage'&&r.target?r.target:r.page==='network'&&r.target?r.target:pages.find(p=>p[0]===r.page)?.[2] || (r.page==='instance'?'Container '+r.target:r.page==='create'?'Criar CT':'Página não encontrada');
+  const title=r.page==='overview'?'Datacenter':r.page==='server'?serverInfo.environment?.server_name||host:r.page==='storage'&&r.target?r.target:r.page==='network'&&r.target?r.target:pages.find(p=>p[0]===r.page)?.[2] || (r.page==='instance'?`Container '${r.target}'`:r.page==='create'?'Criar CT':'Página não encontrada');
   $('#title').textContent=title; $('#breadcrumb').textContent=`${host} / ${project} / ${title}`;
   $('#subtitle').textContent=r.page==='instance'?`Gerencie ${r.target} e acompanhe seus recursos.`:r.page==='server'?(nodeTabs.find(([key])=>key===(r.target||'summary'))?.[2]+' do nó')||'Resumo do nó':({overview:'Resumo do datacenter, dos containers e dos recursos disponíveis.',search:'Pesquise containers, imagens, armazenamento, redes, perfis e projetos.',instances:'Encontre, acompanhe e gerencie seus containers.',create:'Escolha uma imagem. Nós cuidamos da configuração.',images:'Sistemas disponíveis para o seu próximo container.',storage:'Acompanhe o espaço disponível para seu laboratório.',networks:'Conexões que mantêm seus containers em rede.',projects:'Organize seus ambientes em projetos separados.'})[r.page]||'Gerencie os recursos do seu laboratório.';
   $('#object-actions').replaceChildren();
@@ -437,13 +475,14 @@ async function render() {
   $('#navigation').replaceChildren(...navigationItems.map(([key,symbol,label])=>{
     const active=r.page==='instance'?r.tab===key:r.page==='server'?(r.target===key||(!r.target&&key==='summary')):r.page==='storage'&&r.target?r.tab===key:r.page==='network'?r.tab===key:r.page===key;
     const href=r.page==='instance'?instanceLink(r.target,key):r.page==='server'?'#server/'+key:r.page==='storage'&&r.target?'#storage/'+encodeURIComponent(r.target)+'/'+key:r.page==='network'?'#network/'+encodeURIComponent(r.target)+'/'+key:'#'+key;
-    return el('a',{href,class:active?'active':'','aria-current':active?'page':null},icon(navIcons[symbol]||'box'),label);
+    return el('a',{href,class:(active?'active ':'')+(key==='users'?'nav-child':''),'aria-current':active?'page':null},icon(navIcons[symbol]||'box'),label);
   }));
+  const resourceLink=$('#navigation a[href="#instances"]');if(resourceLink)resourceLink.before(el('div',{class:'nav-divider'},'Recursos Incus'));
   $('#banner').hidden=!session.demo; $('#banner').textContent='DEMONSTRAÇÃO · Todos os dados e operações são simulados em memória. Nada é enviado a um servidor Incus real.';
   $('#connection').textContent='Consultando Incus…'; $('#content').setAttribute('aria-busy','true');
   if(!$('#content').childNodes.length||renderedScope!==scope.host+'/'+scope.project||renderedSession!==session)
     $('#content').replaceChildren(loadingView(route().page==='create'?'Carregando imagens disponíveis…':'Carregando '+title+'…'));
-  const container=el('div');
+  const container=el('div',{class:'workspace-view view-'+r.page,'data-tab':r.page==='server'?(r.target||'summary'):r.tab});
   try {
     const [serverResult, instancesResult,poolsForTree,networksForTree]=await Promise.allSettled([read('server',undefined,scope),read('instance-list',undefined,scope),session.host_metrics?read('pools',undefined,scope):Promise.resolve({data:[]}),read('networks',undefined,scope)]);
     if(id!==generation||!session)return;
@@ -494,6 +533,7 @@ async function render() {
       container.append(panel('Sessão e segurança',el('div',{class:'panel-body'},kv([['Identidade',session.username],['Papel',session.role],['Expira em',date(session.expires)],['Modo',session.read_only||session.role==='observador'?'Somente leitura':session.manage_all_instances?'Administração dos containers autorizados':'Alterações limitadas aos nomes autorizados'],['Autorização','Escopo no painel + '+transportLabel()],['Histórico','Auditoria temporária em memória, máximo de 200 registros']]),notice(session.low_resource?'Modo leve: inventário manual pelo botão Atualizar. Consulte Armazenamento e Alertas para verificar a capacidade dos pools.':'O inventário é atualizado a cada 15 segundos. Quando habilitados pelo administrador, eventos antecipam a atualização.'),el('button',{onclick:()=>$('#logout').click()},'Encerrar sessão')),null),panel('Auditoria desta identidade',table(['HORA','USUÁRIO','ALVO','AÇÃO','RESULTADO'],audit.slice().reverse().map(item=>[date(item.timestamp),item.identity,item.target,item.action,item.result]))));
     }
     else container.append(empty('Página não encontrada.'));
+    if(r.page==='overview'||r.page==='server'&&(!r.target||r.target==='summary')||r.page==='instance'&&r.tab==='summary'||r.page==='storage'&&r.target&&r.tab==='summary')container.prepend(summaryToolbar());
     if(id!==generation||!session)return;
     const tracked=[...tasks.values()].filter(t=>t.host===scope.host&&t.project===scope.project);
     $('#task-summary').textContent=tracked.length?tracked.map(t=>`${t.target}: ${t.status}`).join(' · '):'Operações rastreadas pelo Incus';
@@ -508,13 +548,13 @@ async function render() {
     if(id===generation){busy=false;$('#content').removeAttribute('aria-busy');scheduleRefresh();}
   }
 }
-function scheduleRefresh(){clearTimeout(timer);if(session?.low_resource)return;timer=setTimeout(()=>{if(!session)return;if(!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!$('#create-dialog').open&&!$('#task-detail').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement))render();else scheduleRefresh();},15000);}
+function scheduleRefresh(){clearTimeout(timer);if(session?.low_resource)return;timer=setTimeout(()=>{if(!session)return;if(!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!$('#editor-dialog').open&&!$('#create-dialog').open&&!$('#task-detail').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement))render();else scheduleRefresh();},15000);}
 async function pollEvents(){
   if(!session||session.low_resource||document.hidden)return;const scope=host+'/'+project;
   try{const result=await api('/api/events?'+new URLSearchParams({host,project}));if(!session||scope!==host+'/'+project)return;if(!result.enabled)return;
     const changed=result.version!==eventVersion;eventVersion=result.version;
     if(!result.connected){$('#connection').textContent='Eventos desconectados · fallback REST ativo';}
-    if(changed&&!busy&&!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!$('#create-dialog').open&&!$('#task-detail').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement)){readCache.clear();await render();}
+    if(changed&&!busy&&!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!$('#editor-dialog').open&&!$('#create-dialog').open&&!$('#task-detail').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement)){readCache.clear();await render();}
   }catch{}
   if(session)eventTimer=setTimeout(pollEvents,2000);
 }
@@ -586,7 +626,7 @@ async function containerNetworksView(scope,item){
   const inherited={};for(const profileName of item.profiles||[])Object.assign(inherited,profileResult.data.find(p=>p.name===profileName)?.devices||{});
   const devices={...item.expanded_devices};
   for(const [key,value]of Object.entries(item.devices||{}))if(value.type==='none')devices[key]=value;
-  const editable=canManageNetworks()&&canMutate(item.name),editorHost=el('div');
+  const editable=canManageNetworks()&&canMutate(item.name);
   const action=(kind,device,nic)=>openAction(kind,item.name,{device,revision:item._devices_revision,...(nic?{nic}:{})});
   function edit(device='',current={}){
     const deviceName=el('input',{required:'',maxlength:'63',value:device,readonly:device?'':null,name:'device'});
@@ -601,9 +641,9 @@ async function containerNetworksView(scope,item){
       const input=el('select',{name:key},el('option',{value:''},'Padrão'),el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));input.value=current[key]||'';inputs[key]=input;fields.push(el('label',{},label,input));
     }
     bridge.onchange=()=>{inputs['ipv4.address'].value='';inputs['ipv6.address'].value='';};
-    const form=el('form',{class:'network-form'},...fields,el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},device?'Salvar interface':'Adicionar interface'),el('button',{type:'button',onclick:()=>editorHost.replaceChildren()},'Cancelar')));
+    const form=el('form',{class:'network-form'},...fields,el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},device?'Salvar interface':'Adicionar interface'),el('button',{type:'button',onclick:closeEditor},'Cancelar')));
     form.onsubmit=event=>{event.preventDefault();action(device?'nic-update':'nic-add',deviceName.value.trim(),Object.fromEntries(Object.entries(inputs).map(([key,input])=>[key,input.value])));};
-    editorHost.replaceChildren(panel(device?'Editar '+device:'Adicionar interface de rede',el('div',{class:'panel-body'},form,notice('Alterar bridge, MAC ou IP pode interromper a rede do container. Reservas dependem do cliente DHCP; configuração estática dentro do container deve ser ajustada no próprio sistema.'))));
+    openEditor(device?'Editar: '+device:'Adicionar: interface de rede',el('div',{},form,notice('Alterar bridge, MAC ou IP pode interromper a rede do container. Reservas dependem do cliente DHCP; configuração estática dentro do container deve ser ajustada no próprio sistema.')));
     deviceName.focus();
   }
   const rows=Object.entries(devices).filter(([,d])=>['nic','none'].includes(d.type)).map(([key,d])=>{
@@ -614,7 +654,7 @@ async function containerNetworksView(scope,item){
     }
     return [key,d.name||key,d.network?el('a',{href:'#network/'+encodeURIComponent(d.network)},d.network):d.parent||'—',d.type==='none'?'Desativada':item.devices?.[key]?'Local':'Herdada do perfil',d['ipv4.address']||'Automático',d['ipv6.address']||'Automático',d.vlan||'—',d['limits.max']||'Sem limite',actions];
   });
-  return el('div',{},panel('Gerenciar interfaces',el('div',{},el('div',{class:'panel-body network-form-actions'},el('button',{class:'primary',disabled:editable?null:'',onclick:()=>edit()},'Adicionar interface'),el('a',{class:'button-link',href:'#networks'},'Gerenciar bridges')),table(['DISPOSITIVO','INTERFACE','BRIDGE','ORIGEM','IPv4','IPv6','VLAN','BANDA','AÇÕES'],rows))),editorHost);
+  return panel('Interfaces de rede',el('div',{},el('div',{class:'grid-toolbar'},el('button',{disabled:editable&&networks.length?null:'',onclick:()=>edit()},...iconLabel('plus','Adicionar interface')),el('a',{class:'button-link',href:'#networks'},'Gerenciar bridges')),table(['DISPOSITIVO','INTERFACE','BRIDGE','ORIGEM','IPv4','IPv6','VLAN','BANDA','AÇÕES'],rows)));
 }
 function bridgeOptions(config={}){
   const ipv4=config['ipv4.address']||'auto';
@@ -679,9 +719,10 @@ async function networkDetailView(scope,target,tab='summary'){
     const description=el('input',{name:'description',maxlength:'1024',value:network.description||''});
     const remove=networkActionButton('Excluir bridge','network-delete',network.name,{revision:network._revision});
     if(dependencies.size||dependencyError){remove.disabled=true;remove.title='Remova as dependências da bridge e atualize antes de excluir.';}
-    const form=el('form',{class:'network-form'},...editor.fields,el('label',{class:'full'},'Descrição',description),el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},...iconLabel('save','Salvar bridge')),remove));
+    const form=el('form',{class:'network-form'},...editor.fields,el('label',{class:'full'},'Descrição',description),el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},...iconLabel('save','Salvar bridge')),el('button',{type:'button',onclick:closeEditor},'Cancelar')));
     form.onsubmit=event=>{event.preventDefault();openAction('network-update',network.name,{config:editor.values(),description:description.value,revision:network._revision});};
-    result.append(panel('Editar bridge gerenciada',el('div',{class:'panel-body'},form,notice('Altere endereçamento, DHCP, NAT, DNS, MTU, roteamento e firewall. As mudanças são aplicadas ao salvar e podem interromper conexões dos containers.'))));
+    const edit=el('button',{type:'button','data-action':'network-edit',onclick:()=>openEditor('Editar: '+network.name,el('div',{},form,notice('Altere endereçamento, DHCP, NAT, DNS, MTU, roteamento e firewall. As mudanças são aplicadas ao salvar e podem interromper conexões dos containers.')))},...iconLabel('edit','Editar'));
+    result.prepend(el('div',{class:'grid-toolbar'},edit,remove));
   }else if(!canManageNetworks())result.append(notice('A gestão de bridges exige habilitação explícita para administradores.'));
   else if(external)result.append(notice('Esta bridge usa interface externa. O painel a mantém somente para consulta.'));
   if(session.host_metrics&&managedBridge){
@@ -703,7 +744,14 @@ function rememberMetric(key,value,sourceTimestamp){
   while(points.length>60||points[0]?.at<now-30*60*1000)points.shift();
   metricHistory.set(key,points);return points;
 }
+let chartRangeSeconds=1800;
+function summaryToolbar(){
+  const range=el('select',{'aria-label':'Período dos gráficos'},[[1800,'Últimos 30 minutos'],[900,'Últimos 15 minutos'],[300,'Últimos 5 minutos']].map(([value,label])=>el('option',{value:String(value)},label)));
+  range.value=String(chartRangeSeconds);range.onchange=()=>{chartRangeSeconds=Number(range.value);render();};
+  return el('div',{class:'summary-toolbar'},el('span',{},'Amostras coletadas nesta sessão'),range);
+}
 function metricChart(title,points,{unit='',color='#91bd20',emptyText='Aguardando a próxima coleta do Incus.'}={}){
+  points=points.filter(point=>point.at>=Date.now()-chartRangeSeconds*1000);
   const body=el('div',{class:'chart-body'});
   if(points.length){
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -808,9 +856,9 @@ async function networksView(scope){
       const networkName=el('input',{name:'network-name',maxlength:'15',pattern:'[A-Za-z0-9][A-Za-z0-9_\\-]{0,14}',required:'',placeholder:'Ex.: bridge-lab',title:'Até 15 caracteres: letras, números, hífen ou sublinhado.'});
       const description=el('input',{name:'description',maxlength:'1024',placeholder:'Opcional'});
       const editor=bridgeOptions({'ipv4.address':'auto','ipv4.dhcp':'true','ipv4.nat':'true','ipv6.address':'none','ipv6.dhcp':'false','ipv6.nat':'false'});
-      const form=el('form',{class:'network-form'},el('label',{class:'full'},'Nome da bridge',networkName),...editor.fields,el('label',{class:'full'},'Descrição',description),el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},...iconLabel('plus','Criar bridge'))));
+      const form=el('form',{class:'network-form'},el('label',{class:'full'},'Nome da bridge',networkName),...editor.fields,el('label',{class:'full'},'Descrição',description),el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},...iconLabel('plus','Criar bridge')),el('button',{type:'button',onclick:closeEditor},'Cancelar')));
       form.onsubmit=event=>{event.preventDefault();openAction('network-create',networkName.value.trim(),{config:editor.values(),description:description.value});};
-      content.append(panel('Criar bridge gerenciada pelo Incus',el('div',{class:'panel-body'},form,notice('O formulário não aceita interfaces físicas. A bridge será criada com as opções de endereço, DHCP, NAT e DNS informadas.'))));
+      content.prepend(el('div',{class:'grid-toolbar'},el('button',{type:'button','data-action':'network-create',onclick:()=>openEditor('Criar: Linux Bridge (Incus)',el('div',{},form,notice('A bridge será gerenciada pelo Incus. Interfaces físicas não são adicionadas.')))},...iconLabel('plus','Criar bridge'))));
     }else content.append(notice('A criação e edição de bridges exige manage_networks habilitado para administradores.'));
     if(session.host_metrics){
       const bridges=data.filter(item=>item.managed&&item.type==='bridge');
@@ -838,41 +886,40 @@ async function volumesView(scope) {
   }catch(error){return errorNode(error);}
 }
 async function searchView(scope,instances){
-  const initialRoute=route(),isSearchPage=initialRoute.page==='search'||(initialRoute.page==='server'&&initialRoute.target==='search');
-  const input=el('input',{id:'resource-search',type:'search',placeholder:'Nome, estado, arquitetura ou descrição','aria-label':'Pesquisar recursos'});
+  const owner=session;
+  const input=el('input',{id:'resource-search',type:'search',placeholder:'Nome, estado ou descrição','aria-label':'Pesquisar recursos'});
   input.value=$('#global-search').value;
-  const output=el('div',{class:'search-results'},empty('Digite um termo para pesquisar no escopo selecionado.'));
-  const form=el('form',{class:'toolbar search-form'},input,el('button',{type:'submit',class:'primary'},'Pesquisar'));
-  input.oninput=()=>{$('#global-search').value=input.value;renderResourceTree();};
-  form.onsubmit=async event=>{
-    event.preventDefault();const term=input.value.trim().toLocaleLowerCase('pt-BR');
-    if(term.length<2){output.replaceChildren(notice('Digite pelo menos dois caracteres para iniciar a busca.'));return;}
-    const owner=session;
-    output.replaceChildren(loadingView('Pesquisando recursos…'));
-    const resources=[['Imagens','images'],['Redes','networks'],['Perfis','profiles'],['Projetos','projects']];
-    if(session.host_metrics)resources.push(['Armazenamento','pools']);
-    const settled=await Promise.allSettled(resources.map(([,resource])=>read(resource,undefined,scope)));
-    if(session!==owner||host!==scope.host||project!==scope.project||!(route().page==='search'||(route().page==='server'&&route().target==='search')))return;
-    const records=instances.map(item=>({type:'Container',name:item.name,detail:`${item.status||'n/d'} · ${item.architecture||'n/d'}`,href:instanceLink(item.name),search:[item.name,item.status,item.architecture]}));
-    settled.forEach((result,index)=>{
-      if(result.status!=='fulfilled')return;
-      const [type]=resources[index],items=Array.isArray(result.value.data)?result.value.data:[];
-      for(const item of items){
-        if(type==='Imagens')records.push({type,name:item.properties?.description||item.aliases?.[0]?.name||item.fingerprint,detail:(item.architecture||'n/d')+' · '+bytes(item.size),href:'#images',search:[item.properties?.description,item.fingerprint,...(item.aliases||[]).map(alias=>alias.name)]});
-        else if(type==='Redes')records.push({type,name:item.name,detail:(item.type||'n/d')+' · '+(item.status||'n/d'),href:'#networks',search:[item.name,item.type,item.description]});
-        else if(type==='Perfis')records.push({type,name:item.name,detail:item.description||'Perfil Incus',href:'#profiles',search:[item.name,item.description]});
-        else if(type==='Projetos')records.push({type,name:item.name,detail:item.description||'Projeto Incus',href:'#projects',search:[item.name,item.description]});
-        else if(type==='Armazenamento')records.push({type,name:item.name,detail:(item.driver||'n/d')+' · '+(item.status||'n/d'),href:'#storage',search:[item.name,item.driver,item.status]});
-      }
-    });
-    const matches=records.filter(item=>item.search.filter(Boolean).join(' ').toLocaleLowerCase('pt-BR').includes(term)).sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
+  const types=[['','Todos os tipos'],['container','Containers'],['node','Nós'],['storage','Armazenamento'],['network','Redes'],['image','Imagens'],['profile','Perfis'],['project','Projetos']];
+  const type=el('select',{'aria-label':'Filtrar tipo de recurso'},types.map(([value,label])=>el('option',{value},label)));
+  const output=el('div',{class:'search-results'});
+  const form=el('form',{class:'toolbar search-form resource-filter'},type,el('label',{},'Procurar:',input),el('button',{type:'submit'},'Pesquisar'));
+  const resources=[['image','images'],['network','networks'],['profile','profiles'],['project','projects']];
+  if(session.host_metrics)resources.push(['storage','pools']);
+  const settled=await Promise.allSettled(resources.map(([,resource])=>read(resource,undefined,scope)));
+  if(session!==owner)return el('div');
+  const records=instances.map(item=>({type:'container',name:item.name,status:item.status,detail:item.architecture||'—',href:instanceLink(item.name)}));
+  records.push({type:'node',name:serverInfo.environment?.server_name||scope.host,status:'Conectado',detail:'Incus '+(serverInfo.environment?.server_version||''),href:'#server/summary'});
+  settled.forEach((result,index)=>{
+    if(result.status!=='fulfilled')return;
+    const [kind]=resources[index],items=Array.isArray(result.value.data)?result.value.data:[];
+    for(const item of items){
+      if(kind==='image')records.push({type:kind,name:item.properties?.description||item.aliases?.[0]?.name||item.fingerprint,status:'Disponível',detail:(item.architecture||'—')+' · '+bytes(item.size),href:'#images',search:[item.fingerprint,...(item.aliases||[]).map(alias=>alias.name)]});
+      else if(kind==='network')records.push({type:kind,name:item.name,status:item.status||'—',detail:(item.type||'—')+' · '+(item.managed?'Gerenciada':'Externa'),href:'#network/'+encodeURIComponent(item.name)});
+      else if(kind==='storage')records.push({type:kind,name:item.name,status:item.status||'—',detail:item.driver||'—',href:'#storage/'+encodeURIComponent(item.name)+'/summary'});
+      else records.push({type:kind,name:item.name,status:'Disponível',detail:item.description||'—',href:kind==='profile'?'#profiles':'#projects'});
+    }
+  });
+  const labels={container:['box','CT'],node:['node','Nó'],storage:['storage','Armazenamento'],network:['network','Rede'],image:['file','Imagem'],profile:['settings','Perfil'],project:['file','Projeto']};
+  function update(){
+    const term=input.value.trim().toLocaleLowerCase('pt-BR');
+    const matches=records.filter(item=>(!type.value||type.value===item.type)&&[item.name,item.status,item.detail,...(item.search||[])].join(' ').toLocaleLowerCase('pt-BR').includes(term));
+    output.replaceChildren(table(['TIPO','DESCRIÇÃO','ESTADO','PROJETO','DETALHES'],matches.map(item=>[el('span',{class:'container-name'},icon(labels[item.type][0]),labels[item.type][1]),el('a',{href:item.href},item.name),status(item.status),scope.project,item.detail])));
     const failures=settled.filter(result=>result.status==='rejected').length;
-    output.replaceChildren(matches.length?panel(`${matches.length} recurso(s) encontrado(s)`,table(['TIPO','RECURSO','DETALHES'],matches.map(item=>[item.type,el('a',{href:item.href},item.name),item.detail]))):empty('Nenhum recurso corresponde à busca neste escopo.'));
-    if(failures)output.append(notice(`${failures} fonte(s) não puderam ser consultadas. Os resultados exibem somente os dados autorizados.`));
-  };
-  const page=panel('Buscar recursos',el('div',{class:'panel-body'},el('p',{class:'muted'},'Busca no nó e no projeto selecionado, como a pesquisa do Datacenter no Proxmox.'),form,output));
-  if(isSearchPage&&input.value.trim().length>=2)form.requestSubmit();
-  return page;
+    if(failures)output.append(notice(`${failures} fonte(s) não puderam ser consultadas. A lista exibe somente dados autorizados.`));
+  }
+  input.oninput=()=>{$('#global-search').value=input.value;renderResourceTree();update();};type.onchange=update;
+  form.onsubmit=event=>{event.preventDefault();update();};update();
+  return el('section',{class:'panel resource-grid'},form,output);
 }
 function userScopesField(initial={}) {
   const fields=el('fieldset',{class:'user-scopes'},el('legend',{},'Hosts e Projects autorizados'));
@@ -899,7 +946,7 @@ function userForm(initial=null) {
   const form=el('form',{class:'panel-body user-form'},
     el('div',{class:'user-form-fields'},el('label',{},'Usuário',username),el('label',{},'Papel',role),el('label',{class:'user-password'},'Senha',password)),
     scopes,hostMetrics,el('small',{},'Cada conta fica limitada aos Projects selecionados. A alteração de permissões encerra as sessões existentes dessa conta.'),
-    el('div',{class:'form-actions'},save),feedback);
+    el('div',{class:'form-actions'},save,el('button',{type:'button',onclick:closeEditor},'Cancelar')),feedback);
   if(initial?.username===session.username){
     form.querySelectorAll('input,select,button').forEach(control=>control.disabled=true);
     feedback.textContent='Entre com outra conta administradora para alterar ou remover este usuário.';
@@ -913,7 +960,7 @@ function userForm(initial=null) {
       for(const checkbox of form.querySelectorAll('input[name="project"]'))if(checkbox.checked)(selected[checkbox.dataset.host]??=[]).push(checkbox.value);
       const result=await api('/api/users',{action:creating?'create':'update',username:username.value,role:role.value,scopes:selected,host_metrics:hostMetrics?.querySelector('input').checked||false,password:password.value});
       notify(creating?'Usuário criado.':`Permissões de ${result.username} atualizadas.`);
-      await render();
+      closeEditor();await render();
     }catch(error){feedback.textContent=error.message;save.disabled=false;}
   };
   return form;
@@ -923,14 +970,16 @@ async function usersView() {
   try{
     const result=await api('/api/users');
     const users=result.users||[];
-    const rows=users.map(user=>[user.username,user.role,Object.entries(user.scopes||{}).map(([host,projects])=>`${host}: ${projects.join(', ')}`).join(' · '),user.host_metrics?'Sim':'Não']);
-    const container=el('div',{},panel('Contas visíveis neste escopo',table(['USUÁRIO','PAPEL','PROJECTS','MÉTRICAS DO HOST'],rows)));
-    for(const user of users)container.append(panel('Permissões · '+user.username,userForm(user),user.username===session.username?null:el('button',{type:'button',class:'danger-button',onclick:async()=>{
-      if(!window.confirm(`Remover a conta ${user.username}? As sessões abertas serão encerradas.`))return;
-      try{await api('/api/users',{action:'delete',username:user.username});notify(`Conta ${user.username} removida.`);await render();}
-      catch(error){notify(error.message);}
-    }},'Remover conta')));
-    container.append(panel('Criar conta',userForm()));
+    function removeUser(user){
+      const target=el('input',{required:'',autocomplete:'off','aria-label':'Nome do usuário para confirmar'}),error=el('p',{class:'form-feedback',role:'alert'}),submit=el('button',{type:'submit',class:'danger-primary'},'Remover conta');
+      const form=el('form',{class:'user-form'},el('p',{},`As sessões de ${user.username} serão encerradas. Digite o nome do usuário para confirmar a remoção.`),target,el('div',{class:'form-actions'},el('button',{type:'button',onclick:closeEditor},'Cancelar'),submit),error);
+      form.onsubmit=async event=>{event.preventDefault();if(target.value!==user.username){error.textContent='Digite '+user.username+' exatamente como exibido.';return;}submit.disabled=true;
+        try{await api('/api/users',{action:'delete',username:user.username});closeEditor();notify(`Conta ${user.username} removida.`);await render();}catch(reason){error.textContent=reason.message;submit.disabled=false;}
+      };
+      openEditor('Remover: '+user.username,form);
+    }
+    const rows=users.map(user=>[user.username,user.role,Object.entries(user.scopes||{}).map(([host,projects])=>`${host}: ${projects.join(', ')}`).join(' · '),user.host_metrics?'Sim':'Não',el('div',{class:'row-actions'},el('button',{type:'button',onclick:()=>openEditor('Editar: '+user.username,userForm(user))},'Editar'),el('button',{type:'button',class:'danger-button',disabled:user.username===session.username?'':null,onclick:()=>removeUser(user)},'Remover'))]);
+    const container=el('div',{},panel('Usuários',el('div',{},el('div',{class:'grid-toolbar'},el('button',{type:'button',onclick:()=>openEditor('Adicionar: usuário',userForm())},...iconLabel('plus','Adicionar'))),table(['USUÁRIO','PAPEL','PROJECTS','MÉTRICAS DO HOST','AÇÕES'],rows))));
     container.append(notice('As permissões são aplicadas no servidor em cada requisição. Administradores só podem conceder Projects que já estejam em seu próprio escopo.'));
     return container;
   }catch(error){return errorNode(error);}
@@ -1051,7 +1100,7 @@ function editView(item,scope){
   const fields=el('fieldset',{disabled:allowed?null:''},el('div',{class:'description-field'},el('label',{for:'edit-description'},'Descrição'),description),el('div',{class:'edit-fields'},el('label',{},'Limite de memória',memory,el('small',{},'Ex.: 256MiB, 1GiB ou 50%. Vazio usa o perfil.')),el('label',{},'Limite de CPU',cpu,el('small',{},'Quantidade de núcleos. Vazio usa o perfil.'))),el('div',{class:'edit-fields'},el('label',{},'Inicialização automática',autostart),el('label',{},'Proteção contra exclusão',protection)));
   const message=el('p',{class:'form-feedback',role:'status','aria-live':'polite'});
   const save=el('button',{type:'submit',class:'primary',disabled:allowed?null:''},...iconLabel('save','Salvar alterações'));
-  const form=el('form',{class:'panel-body edit-form'},fields,el('div',{class:'form-actions'},save,el('a',{href:instanceLink(item.name),class:'button-link'},'Voltar ao resumo')),message);
+  const form=el('form',{class:'panel-body edit-form'},fields,el('div',{class:'form-actions'},save,el('button',{type:'button',onclick:closeEditor},'Cancelar')),message);
   if(!allowed)form.prepend(notice('A edição exige administrador com permissão neste container.'));
   form.onsubmit=async event=>{
     event.preventDefault();if(save.disabled)return;
@@ -1069,12 +1118,15 @@ function editView(item,scope){
       const state=await waitOperation(result.operation,scope,owner);
       if(session!==owner)return;
       notify(state.status_code<200?'Edição em andamento. Acompanhe em Tarefas.':'Alterações salvas e confirmadas pelo Incus.');
+      closeEditor();
       if(state.status_code<200){location.hash='#tasks';return;}
       if(host===scope.host&&project===scope.project&&route().target===item.name&&route().tab==='options')await render();
     }catch(error){message.textContent=error.message;message.setAttribute('role','alert');}
     finally{fields.disabled=!allowed;save.disabled=!allowed;}
   };
-  const output=el('div',{},panel('Editar container',form),el('details',{class:'panel technical-details'},el('summary',{},'Configuração técnica (somente leitura)'),el('div',{class:'panel-body inspector-sections'},el('section',{},el('h2',{},'Configuração local'),propertyTable(item.config)),el('section',{},el('h2',{},'Configuração efetiva, incluindo perfis'),propertyTable(item.expanded_config)))));
+  const effective=item.expanded_config||{};
+  const rows=[['Descrição',item.description||'—'],['Memória',effective['limits.memory']||'Herdada do perfil'],['CPU',effective['limits.cpu']||'Herdada do perfil'],['Inicialização automática',effective['boot.autostart']==='true'?'Sim':'Não'],['Proteção contra exclusão',effective['security.protection.delete']==='true'?'Sim':'Não']];
+  const output=el('div',{},panel('Opções',el('div',{},el('div',{class:'grid-toolbar'},el('button',{type:'button','data-action':'instance-edit',disabled:allowed?null:'',onclick:()=>openEditor('Editar: '+item.name,form)},...iconLabel('edit','Editar'))),table(['OPÇÃO','VALOR'],rows))),el('details',{class:'panel technical-details'},el('summary',{},'Configuração técnica (somente leitura)'),el('div',{class:'panel-body inspector-sections'},el('section',{},el('h2',{},'Configuração local'),propertyTable(item.config)),el('section',{},el('h2',{},'Configuração efetiva, incluindo perfis'),propertyTable(item.expanded_config)))));
   if(session.role==='administrador'){
     const button=actionButton('Excluir container','delete',item.name);
     const protectedDelete=(item.expanded_config?.['security.protection.delete']??config['security.protection.delete'])==='true';
@@ -1503,30 +1555,40 @@ function openCreationTaskViewer(run,show=true){
   if(output)output.scrollTop=follow?output.scrollHeight:scrollTop;
   if(!show&&focused)$('#task-detail [data-task-control="'+focused+'"]')?.focus({preventScroll:true});
 }
+const treeExpanded={datacenter:true,node:true,containers:true};
+let selectedTreeRoute;
+try{Object.assign(treeExpanded,JSON.parse(localStorage.getItem('incus-tree-expanded')||'{}'));}catch{}
 function renderResourceTree(){
   if(!session)return;
   const r=route(),term=$('#global-search').value.trim().toLowerCase();
+  if(selectedTreeRoute!==location.hash){
+    if(['instance','server','network'].includes(r.page)||r.page==='storage'&&r.target){treeExpanded.datacenter=true;treeExpanded.node=true;if(r.page==='instance')treeExpanded.containers=true;}
+    selectedTreeRoute=location.hash;
+  }
   const items=inventory.filter(i=>!term||[i.name,i.status,i.status==='Running'?'Em execução':i.status==='Stopped'?'Parado':'',i.architecture].join(' ').toLowerCase().includes(term)).sort((a,b)=>a.name.localeCompare(b.name));
   const leaves=items.slice(0,100).map(item=>{
-    const link=el('a',{href:instanceLink(item.name),role:'treeitem','aria-selected':String(r.page==='instance'&&r.target===item.name),class:'leaf '+item.status.toLowerCase()+(r.page==='instance'&&r.target===item.name?' active':''),title:item.name+' · '+item.status},el('span',{class:'tree-state','aria-hidden':'true'},'●'),icon('box'),item.name);
+    const link=el('a',{href:instanceLink(item.name),role:'treeitem','aria-level':'4','aria-selected':String(r.page==='instance'&&r.target===item.name),class:'leaf '+item.status.toLowerCase()+(r.page==='instance'&&r.target===item.name?' active':''),title:item.name+' · '+item.status},icon('box'),el('span',{class:'tree-label'},item.name),el('span',{class:'tree-state','aria-hidden':'true'},item.status==='Running'?'▶':'■'));
     link.oncontextmenu=event=>{event.preventDefault();showResourceMenu(event,item);};
     link.ondblclick=event=>{event.preventDefault();if(session.enable_console&&canMutate(item.name)&&item.status==='Running')openConsoleWindow(item.name);};
-    return link;
+    return el('div',{class:'tree-row','data-depth':'3'},el('span',{class:'tree-spacer','aria-hidden':'true'}),link);
   });
-  const link=(href,label,active,cls='')=>el('a',{href,role:'treeitem','aria-selected':String(Boolean(active)),class:(cls+' '+(active?'active':'')).trim()},label);
+  const link=(href,label,active,cls='',iconName='box',depth=2)=>el('div',{class:'tree-row','data-depth':String(depth)},el('span',{class:'tree-spacer','aria-hidden':'true'}),el('a',{href,role:'treeitem','aria-level':String(depth+1),'aria-selected':String(Boolean(active)),class:(cls+' '+(active?'active':'')).trim()},icon(iconName),el('span',{class:'tree-label'},label)));
+  const branch=(key,label,href,active,depth,iconName,children)=>{
+    const expanded=Boolean(term||treeExpanded[key]),group=el('div',{class:'tree-group',role:'group',id:'tree-group-'+key,hidden:expanded?null:''},children);
+    const toggle=el('button',{type:'button',class:'tree-expander','aria-label':(expanded?'Recolher ':'Expandir ')+label,'aria-controls':group.id,'aria-expanded':String(expanded),onclick:()=>{treeExpanded[key]=!expanded;try{localStorage.setItem('incus-tree-expanded',JSON.stringify(treeExpanded));}catch{}renderResourceTree();}},expanded?'⌄':'›');
+    return el('div',{},el('div',{class:'tree-row','data-depth':String(depth)},toggle,el('a',{href,role:'treeitem','aria-level':String(depth+1),'aria-selected':String(Boolean(active)),class:active?'active':''},icon(iconName),el('span',{class:'tree-label'},label))),group);
+  };
   const selectedProject=$('#tree-view').value==='project';
-  const tree=[
-    link('#overview','▾  Datacenter',!['server','instance'].includes(r.page)&&!(r.page==='storage'&&r.target)&&r.page!=='network','tree-root'),
-    link('#server/summary','▾  '+(serverInfo.environment?.server_name||host),r.page==='server','tree-node'),
-    ...(selectedProject?[link('#projects','▱  '+project,r.page==='projects','tree-project')]:[]),
-    link('#instances',`▾  Containers (${inventory.length})`,r.page==='instances','tree-branch'),
-    ...leaves,
-    ...(inventory.length>100?[link('#instances','Ver todos os '+inventory.length+' containers…',r.page==='instances','leaf')]:[]),
-    ...(term&&!items.length?[el('div',{class:'empty'},'Nenhum container corresponde à busca.')]:[]),
-    ...storageInventory.map(pool=>link('#storage/'+encodeURIComponent(pool.name)+'/summary','▤  '+pool.name+' ('+(serverInfo.environment?.server_name||host)+')',r.page==='storage'&&r.target===pool.name,'tree-storage')),
-    ...networkInventory.map(network=>link('#network/'+encodeURIComponent(network.name)+'/summary','⌘  '+network.name+' ('+(serverInfo.environment?.server_name||host)+')',r.page==='network'&&r.target===network.name,'tree-network'))
+  const nodeName=serverInfo.environment?.server_name||host;
+  const containers=[...leaves,...(inventory.length>100?[link('#instances','Ver todos os '+inventory.length+' containers…',false,'','box',3)]:[]),...(term&&!items.length?[el('div',{class:'empty'},'Nenhum container corresponde à busca.')]:[])];
+  const children=[
+    ...(selectedProject?[link('#projects',project,r.page==='projects','tree-project','file')]:[]),
+    branch('containers',`Containers (${inventory.length})`,'#instances',r.page==='instances',2,'box',containers),
+    ...storageInventory.map(pool=>link('#storage/'+encodeURIComponent(pool.name)+'/summary',pool.name+' ('+nodeName+')',r.page==='storage'&&r.target===pool.name,'tree-storage','storage')),
+    ...networkInventory.map(network=>link('#network/'+encodeURIComponent(network.name)+'/summary',network.name+' ('+nodeName+')',r.page==='network'&&r.target===network.name,'tree-network','network'))
   ];
-  $('#tree').replaceChildren(...tree);
+  const datacenterActive=!['server','instance'].includes(r.page)&&!(r.page==='storage'&&r.target)&&r.page!=='network';
+  $('#tree').replaceChildren(branch('datacenter','Datacenter','#search',datacenterActive,0,'datacenter',[branch('node',nodeName,'#server/summary',r.page==='server',1,'node',children)]));
 }
 let resourceMenu;
 function showResourceMenu(event,item){
@@ -1548,11 +1610,18 @@ function mergedTaskLog(){
   for(const task of tasks.values())if(task.host===host&&task.project===project)merged.set(task.id,{...merged.get(task.id),...task});
   return [...merged.values()].reverse();
 }
+function taskDescription(task){
+  const labels={start:'Iniciar CT',stop:'Desligar CT',restart:'Reiniciar CT',delete:'Remover CT',update:'Editar CT',create:'Criar CT',snapshot:'Criar snapshot',backup:'Criar backup','snapshot-restore':'Restaurar snapshot','snapshot-delete':'Remover snapshot','backup-delete':'Remover backup','network-create':'Criar bridge','network-update':'Editar bridge','network-delete':'Remover bridge','nic-add':'Adicionar interface','nic-update':'Editar interface','nic-delete':'Remover interface','nic-reset':'Restaurar interface do perfil','download-image':'Baixar imagem'};
+  if(labels[task.action])return labels[task.action]+(task.target?' · '+task.target:'');
+  const match=String(task.description||'').match(/^(POST|PUT|PATCH|DELETE) \/1\.0\/(instances|networks)(?:\/([^/]+))?(?:\/(snapshots|backups))?/);
+  if(match){const [,method,resource,target,artifact]=match;return (artifact?(method==='DELETE'?'Remover ':'Criar ')+(artifact==='snapshots'?'snapshot':'backup'):resource==='networks'?(method==='POST'?'Criar':method==='DELETE'?'Remover':'Editar')+' bridge':method==='POST'&&!target?'Criar CT':method==='DELETE'?'Remover CT':'Atualizar CT')+(target?' · '+target:'');}
+  return task.description||task.action||'Operação Incus';
+}
 function renderTaskLog(){
   if(!session||taskLogMode!=='tasks')return;
   const items=mergedTaskLog();
-  const rows=items.map(task=>()=>[localDate(task.created_at||task.timestamp||task.started_at),host,task.identity||session.username,task.target||'—',task.description||task.action||'Operação Incus',status(task.status||String(task.status_code)),el('button',{type:'button',class:'task-details-link',onclick:()=>openTaskDetail(task)},'Detalhes')]);
-  const content=table(['INÍCIO','Nó','USUÁRIO','ALVO','DESCRIÇÃO','ESTADO',''],rows);
+  const rows=items.map(task=>()=>[localDate(task.created_at||task.timestamp||task.started_at||task.requested_at),task.status_code>=200?localDate(task.updated_at||task.ended_at||task.finished_at):'—',host,task.identity||session.username,taskDescription(task),status(task.status||String(task.status_code)),el('button',{type:'button',class:'task-details-link',onclick:()=>openTaskDetail(task)},'Detalhes')]);
+  const content=table(['TEMPO DE INÍCIO','TÉRMINO','Nó','NOME DE USUÁRIO','DESCRIÇÃO','STATUS',''],rows);
   content.ondblclick=event=>{if(!event.target.closest('button'))event.target.closest('tbody tr')?.querySelector('.task-details-link')?.click();};
   $('#task-log-content').replaceChildren(content);$('#task-summary').textContent=items.length+' tarefas · '+host+' / '+project;
 }
@@ -1590,7 +1659,7 @@ async function openTaskDetail(task){
     return;
   }
   delete dialog.dataset.taskRun;
-  $('#task-detail-title').textContent='Tarefa: '+(task.description||task.action||task.id);
+  $('#task-detail-title').textContent='Tarefa: '+taskDescription(task);
   $('#task-detail-content').replaceChildren(taskDetailView(task));
   if(!dialog.open)dialog.showModal();
   if(task.status_code<200&&task.id){const scope={host,project},owner=session;try{const result=(await read('operation',task.id,scope)).data;if(session!==owner||!dialog.open)return;$('#task-detail-content').replaceChildren(taskDetailView({...task,...result}));}catch(error){if(dialog.open)$('#task-detail-content').append(errorNode(error));}}
@@ -1604,5 +1673,12 @@ $('#task-log').prepend(taskSplitter);
 function setTaskHeight(height){const maximum=Math.min(450,innerHeight*(innerWidth<=650?.25:.35)),value=Math.round(Math.min(maximum,Math.max(70,height)));document.body.classList.remove('tasks-collapsed');document.documentElement.style.setProperty('--task-height',value+'px');taskSplitter.setAttribute('aria-valuemax',String(Math.round(maximum)));taskSplitter.setAttribute('aria-valuenow',String(value));$('#task-log-toggle').setAttribute('aria-expanded','true');$('#task-log-toggle').setAttribute('aria-label','Recolher painel de tarefas');$('#task-log-toggle').textContent='⌄';}
 window.addEventListener('resize',()=>{if(document.documentElement.style.getPropertyValue('--task-height')){const collapsed=document.body.classList.contains('tasks-collapsed');setTaskHeight(parseFloat(document.documentElement.style.getPropertyValue('--task-height')));if(collapsed)$('#task-log-toggle').click();}});
 taskSplitter.onkeydown=event=>{if(['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();setTaskHeight($('#task-log').offsetHeight+(event.key==='ArrowUp'?20:-20));}};
-taskSplitter.onpointerdown=event=>{event.preventDefault();taskSplitter.setPointerCapture(event.pointerId);taskSplitter.onpointermove=move=>setTaskHeight(innerHeight-move.clientY-23);taskSplitter.onpointerup=()=>{taskSplitter.onpointermove=null;};};
+taskSplitter.onpointerdown=event=>{event.preventDefault();taskSplitter.setPointerCapture(event.pointerId);taskSplitter.onpointermove=move=>setTaskHeight(innerHeight-move.clientY-18);taskSplitter.onpointerup=()=>{taskSplitter.onpointermove=null;};};
+const treeSplitter=el('div',{class:'tree-splitter',role:'separator',tabindex:'0','aria-label':'Largura da árvore de recursos','aria-orientation':'vertical','aria-valuemin':'200','aria-valuemax':'450','aria-valuenow':'306'});
+$('#sidebar').append(treeSplitter);
+function setTreeWidth(width){if(menuBreakpoint.matches)return;const maximum=Math.min(450,innerWidth*.35),value=Math.round(Math.max(200,Math.min(maximum,width)));document.documentElement.style.setProperty('--tree-width',value+'px');treeSplitter.setAttribute('aria-valuenow',String(value));treeSplitter.setAttribute('aria-valuemax',String(Math.round(maximum)));try{localStorage.setItem('incus-tree-width',String(value));}catch{}}
+try{const width=Number(localStorage.getItem('incus-tree-width'));if(width>=200)setTreeWidth(width);}catch{}
+treeSplitter.onkeydown=event=>{if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();setTreeWidth($('#sidebar').offsetWidth+(event.key==='ArrowRight'?15:-15));}};
+treeSplitter.onpointerdown=event=>{if(menuBreakpoint.matches)return;event.preventDefault();treeSplitter.setPointerCapture(event.pointerId);treeSplitter.onpointermove=move=>setTreeWidth(move.clientX);};
+treeSplitter.onpointerup=treeSplitter.onpointercancel=()=>{treeSplitter.onpointermove=null;};
 api('/api/session').then(data=>{session=data;enter();}).catch(()=>{});

@@ -6,6 +6,8 @@ A interface segue a organização do Proxmox VE: árvore de recursos à esquerda
 
 O espaço de trabalho se ajusta à largura e à altura da janela: até 1100 px, a árvore abre pelo menu; até 650 px, as abas ficam na horizontal. Tabelas têm rolagem própria. O login usa um diálogo compacto sobre uma estrutura vazia do painel, com autenticação por conta local, envio por Enter e opção de salvar apenas o nome de usuário no navegador. Senhas não são gravadas por essa opção. O idioma disponível é português brasileiro.
 
+A revisão visual usa como referência o código oficial do Proxmox: barra do recurso, árvore recolhível e redimensionável, grades com filtros e ordenação, editores em diálogos, gráficos e tarefas. Veja o [mapeamento das telas e a verificação de responsividade](docs/proxmox-interface.md).
+
 O assistente abre sobre qualquer tela, preservando a página e os rascunhos. Nome e template são obrigatórios; cada etapa precisa estar válida antes de avançar. O progresso aparece em uma janela de tarefas. Veja a [revisão da interface, testes e limites de escopo](docs/revisao-interface.md).
 
 No assistente administrativo, escolha memória, núcleos, limite de CPU, pool, bridge, reserva IPv4 e inicialização automática. A cota de disco só é oferecida nos drivers suportados pelo assistente; `dir` utiliza a capacidade do pool. DNS é herdado da bridge. É possível criar e manter parado ou iniciar após a criação. Instalações restritas à allowlist usam a configuração do perfil `default`.
