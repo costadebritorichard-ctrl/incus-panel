@@ -48,10 +48,13 @@ Object.assign(iconPaths,{
   history:['M12 3a9 9 0 1 0 9 9','M12 7v5l4 2'],
   users:['M9 3a4 4 0 1 0 0 8a4 4 0 0 0 0-8','M2 21v-3a6 6 0 0 1 12 0v3','M16 4a4 4 0 0 1 0 7','M18 15a5 5 0 0 1 4 5'],
   alert:['M12 3 2 21h20Z','M12 9v5','M12 17h.01'],
-  file:['M5 3h10l4 4v14H5Z','M15 3v5h4','M8 12h8','M8 16h8']
+  file:['M5 3h10l4 4v14H5Z','M15 3v5h4','M8 12h8','M8 16h8'],
+  power:['M12 2v10','M7 4a9 9 0 1 0 10 0'],clone:['M8 8h13v13H8Z','M16 8V3H3v13h5'],
+  template:['M5 2h9l5 5v15H5Z','M14 2v6h5'],pause:['M8 5v14','M16 5v14']
 });
 const navIcons={'⌕':'search','◫':'summary','>_':'terminal','▤':'storage','⌘':'network','☷':'settings','⚙':'settings','◷':'history','▣':'box','♙':'users','✎':'edit','▦':'summary','◉':'network','◇':'box','▱':'file','△':'alert'};
 const solidIconPaths={
+  play:['M5 3 21 12 5 21Z'],square:['M4 4h16v16H4Z'],
   book:['M6 2h15l-4 17H5a2 2 0 0 0 0 4h13v-2H5l4-17H7L3 20a3 3 0 0 1 0-3L6 2Zm4 4-.4 2h8l.4-2h-8Zm-1 4-.4 2h8l.4-2H9Z'],
   cube:['M12 2 2 7v10l10 5 10-5V7L12 2Zm0 2.2L18.8 7 12 10.8 5.2 7 12 4.2ZM4 8.7l7 3.9v6.9l-7-3.5V8.7Zm9 10.8v-6.9l7-3.9V16l-7 3.5Z'],
   user:['M12 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm-4 11a6 6 0 0 0-5 6v3h18v-3a6 6 0 0 0-5-6l-4 2-4-2Z'],
@@ -254,13 +257,18 @@ function route() { const [page='',target='',tab='summary'] = location.hash.slice
 function instanceLink(name, tab='summary') { return '#instance/'+encodeURIComponent(name)+'/'+tab; }
 function canMutate(target) { return !session.read_only && session.role!=='observador' && (session.manage_all_instances || (session.mutable_instances?.[host]?.[project] || []).includes(target)); }
 function actionButton(label, action, target, extra={}) { return el('button',{class:'action-button'+(action==='delete'?' danger-button':''),disabled:canMutate(target)?null:'',onclick:()=>openAction(action,target,extra)},...iconLabel(iconPaths[action]?action:'plus',label)); }
+function availableName(base,names){let candidate=base.slice(0,63),suffix=1;while(names.has(candidate)){const ending='-'+suffix++;candidate=base.slice(0,63-ending.length)+ending;}return candidate;}
 function openAction(action,target,extra={}) {
   if(action==='console'){startTerminal(target).catch(showTerminalError);return;}
   pendingAction={host,project,action,target,...extra};
-  $('#action-title').textContent=({start:'Iniciar container',stop:'Parar container',restart:'Reiniciar container',delete:'Excluir container permanentemente',create:'Criar container',snapshot:'Criar snapshot',backup:'Gerar backup','snapshot-restore':'Restaurar snapshot','snapshot-delete':'Excluir snapshot','backup-delete':'Excluir backup',console:'Abrir shell interativo','network-create':'Criar bridge','network-update':'Atualizar bridge','network-delete':'Excluir bridge','nic-add':'Adicionar interface','nic-update':'Editar interface','nic-delete':'Remover interface','nic-reset':'Restaurar interface do perfil'})[action];
+  $('#cancel-action').disabled=false;$('#submit-action').disabled=false;$('#submit-action').textContent='Confirmar operação';
+  $('#action-title').textContent=({start:'Iniciar container',stop:'Desligar container','force-stop':'Parar container imediatamente',restart:'Reiniciar container',freeze:'Suspender container',unfreeze:'Retomar container',clone:'Clonar container',template:'Converter em modelo',delete:'Excluir container permanentemente',create:'Criar container',snapshot:'Criar snapshot',backup:'Gerar backup','snapshot-restore':'Restaurar snapshot','snapshot-delete':'Excluir snapshot','backup-delete':'Excluir backup',console:'Abrir shell interativo','network-create':'Criar bridge','network-update':'Atualizar bridge','network-delete':'Excluir bridge','nic-add':'Adicionar interface','nic-update':'Editar interface','nic-delete':'Remover interface','nic-reset':'Restaurar interface do perfil'})[action];
   $('#action-description').textContent=action.startsWith('nic-')?'Alterar a interface pode interromper a rede do container. O perfil permanece intacto.':action==='network-delete'?'A bridge só será excluída se não estiver conectada a containers ou perfis.':action==='network-update'?'Revise IPv4/IPv6, DHCP, DNS, NAT, MTU e roteamento. As mudanças podem afetar os containers conectados.':action==='network-create'?'Será criada uma bridge privada gerenciada pelo Incus. Interfaces físicas não serão adicionadas.':action==='console'?'Este acesso abre /bin/sh, normalmente como root dentro do container. Comandos podem alterar ou apagar dados.':action==='delete'?'A exclusão remove permanentemente o container e seus snapshots.':action==='snapshot-restore'?'A restauração substitui o estado atual do container pelo snapshot selecionado. O container precisa estar parado.':action==='snapshot-delete'||action==='backup-delete'?'A exclusão remove permanentemente este arquivo de recuperação.':action==='snapshot'||action==='backup'?'A operação consome armazenamento. Blocos compartilhados não representam espaço recuperável garantido.':'Revise o destino. O resultado será confirmado pela operação Incus.';
   $('#action-review').textContent=`${action.startsWith('network-')?'Bridge':'Container'}: ${target}\nServidor: ${session.hosts.find(h=>h.id===host)?.alias || host}\nProjeto: ${project}${extra.snapshot?`\nSnapshot: ${extra.snapshot}`:''}${extra.backup?`\nBackup: ${extra.backup}`:''}${extra.profiles ? '\nPerfil: '+extra.profiles.join(', ') : ''}`;
-  const needsConfirmation=['delete','snapshot-restore','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action);
+  if(action==='force-stop')$('#action-description').textContent='O container será interrompido imediatamente, sem aguardar o encerramento dos processos. Dados ainda não gravados podem ser perdidos.';
+  if(action==='clone')$('#action-description').textContent='Cria uma cópia no mesmo nó e projeto, inicialmente parada e sem início automático. Revise IPs estáticos e serviços antes de iniciar o clone.';
+  if(action==='template')$('#action-description').textContent='Cria uma imagem privada reutilizável em Templates, a partir deste container parado. Revise os dados e credenciais que farão parte do modelo. O container de origem será mantido.';
+  const needsConfirmation=['force-stop','delete','snapshot-restore','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action);
   if(extra.device)$('#action-review').textContent+='\nInterface: '+extra.device;
   if(extra.nic)$('#action-review').textContent+='\nOpções: '+JSON.stringify(extra.nic);
   if(extra.config)$('#action-review').textContent+='\nConfiguração solicitada: '+JSON.stringify(extra.config);
@@ -271,7 +279,10 @@ function openAction(action,target,extra={}) {
   $('#confirmation').required=needsConfirmation;
   $('#confirmation').value=''; $('#confirmation').placeholder=needsConfirmation?typedValue:`${host}/${project}/${target}`;
   $('#confirmation-label').textContent=needsConfirmation?`Digite ${typedValue} para confirmar`:'Digite o alvo completo para confirmar';
-  $('#name-label').hidden=!['snapshot','backup'].includes(action);
+  $('#name-label').hidden=!['snapshot','backup','clone','template'].includes(action);
+  $('#artifact-name-label').textContent=({clone:'Nome do novo container',template:'Nome do modelo',snapshot:'Nome do snapshot',backup:'Nome do backup'})[action]||'Nome';
+  $('#artifact-name').pattern=action==='clone'?'[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?':'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}';
+  $('#clone-options').hidden=action!=='clone';$('#clone-snapshots').checked=false;
   $('#artifact-name').required=!$('#name-label').hidden;
   $('#artifact-name').value=''; $('#action-error').textContent='';
   if(action==='snapshot'){
@@ -279,43 +290,50 @@ function openAction(action,target,extra={}) {
     while(names.has(candidate))candidate='snapshot-'+suffix++;
     $('#artifact-name').value=candidate;
   }
-  $('#submit-action').classList.toggle('danger-primary',['delete','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action));
-  $('#confirm').showModal(); (needsConfirmation?$('#confirmation'):$('#submit-action')).focus();
+  if(action==='clone')$('#artifact-name').value=availableName(target.slice(0,57)+'-clone',new Set(inventory.map(item=>item.name)));
+  if(action==='template')$('#artifact-name').value=target.slice(0,54)+'-template';
+  if(action==='backup')$('#artifact-name').value='backup-'+new Date().toISOString().replace(/\D/g,'').slice(0,14);
+  $('#submit-action').classList.toggle('danger-primary',['force-stop','delete','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action));
+  $('#confirm').showModal(); (needsConfirmation?$('#confirmation'):!$('#name-label').hidden?$('#artifact-name'):$('#submit-action')).focus();
 }
 $('#cancel-action').onclick=()=>$('#confirm').close();
 $('#confirm').addEventListener('cancel',event=>{if($('#submit-action').disabled)event.preventDefault();});
 $('#action-form').onsubmit=async event=>{
-  event.preventDefault(); $('#cancel-action').disabled=true; $('#submit-action').disabled=true;$('#submit-action').textContent='Processando…';
+  event.preventDefault();if($('#submit-action').disabled)return; $('#cancel-action').disabled=true; $('#submit-action').disabled=true;$('#submit-action').textContent='Processando…';
+  const actionOwner=pendingAction;
   try {
     const action={...pendingAction},owner=session;
     const artifact=action.snapshot||action.backup||'';
     const typedValue=artifact?`${action.host}/${action.project}/${action.target}/${artifact}`:action.target;
     const artifactName=$('#artifact-name').value.trim();
     if(action.action==='snapshot'&&(action.snapshotNames||[]).includes(artifactName))throw new Error('Já existe um snapshot chamado '+artifactName+'. Atualize a lista e escolha outro nome.');
-    if(['delete','snapshot-restore','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action.action)&&$('#confirmation').value!==typedValue)throw new Error(`Digite ${typedValue} exatamente como exibido.`);
+    if(['force-stop','delete','snapshot-restore','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action.action)&&$('#confirmation').value!==typedValue)throw new Error(`Digite ${typedValue} exatamente como exibido.`);
     if(pendingAction.action==='console'){
       const result=await api('/api/console/start',{...pendingAction,confirmation:$('#confirmation').value});
       consoleId=result.console;$('#confirm').close();pollConsole();return;
     }
     const requestAction={...action};delete requestAction.snapshotNames;
+    if(action.action==='clone')requestAction.include_snapshots=$('#clone-snapshots').checked;
     const data=await api('/api/action',{...requestAction,confirmation:`${action.host}/${action.project}/${action.target}${artifact?'/'+artifact:''}`,name:artifactName});
-    trackTask(`${action.host}/${action.project}/${data.operation}`,{...action,id:data.operation,status:'Aguardando confirmação',status_code:100,...(action.action==='create'?{start_after_create:false}:{})});
+    trackTask(`${action.host}/${action.project}/${data.operation}`,{...action,id:data.operation,status:'Aguardando confirmação',status_code:100,...(['clone','template'].includes(action.action)?{destination:artifactName}:{}),...(action.action==='create'?{start_after_create:false}:{})});
     $('#submit-action').textContent='Aguardando o Incus…';
     const state=await waitOperation(data.operation,{host:action.host,project:action.project},owner);
     if(session!==owner)return;
     $('#confirm').close();closeEditor();
-    notify(state.status_code<200?'Operação em andamento. Acompanhe em Tarefas.':({start:'Container iniciado.',stop:'Container parado.',restart:'Container reiniciado.',delete:'Container excluído.',create:'Container criado.','network-create':'Bridge criada.','network-update':'Bridge atualizada.','network-delete':'Bridge excluída.'})[action.action]||'Operação concluída.');
+    notify(state.status_code<200?'Operação em andamento. Acompanhe em Tarefas.':({start:'Container iniciado.',stop:'Container desligado.','force-stop':'Container parado.',restart:'Container reiniciado.',freeze:'Container suspenso.',unfreeze:'Container retomado.',clone:'Clone criado: '+artifactName+'.',template:'Modelo criado: '+artifactName+'. Disponível em Templates.',delete:'Container excluído.',create:'Container criado.','network-create':'Bridge criada.','network-update':'Bridge atualizada.','network-delete':'Bridge excluída.'})[action.action]||'Operação concluída.');
+    if(state.status_code>=200&&action.action==='clone'){location.hash=instanceLink(artifactName);return;}
+    if(state.status_code>=200&&action.action==='template'){location.hash='#images';return;}
     if(action.action==='delete'&&route().page==='instance'){location.hash='#instances';return;}
     if(action.action==='create'){openTaskDetail({...action,...state,id:data.operation,start_after_create:false});return;}
     if(action.action==='network-delete'){location.hash='#networks';return;}
     if(state.status_code<200){location.hash='#tasks';return;}
     await render();
   } catch(error) { $('#action-error').textContent=error.message; }
-  finally { $('#cancel-action').disabled=false; $('#submit-action').disabled=false;$('#submit-action').textContent='Confirmar operação'; }
+  finally { if(pendingAction===actionOwner){$('#cancel-action').disabled=false; $('#submit-action').disabled=false;$('#submit-action').textContent='Confirmar operação';} }
 };
 function logoutLocal(message='') {
   closeEditor();
-  closeCreateWizard();metricHistory.clear();resourceMenu?.remove();
+  closeCreateWizard();metricHistory.clear();closeResourceMenu();
   document.body.classList.add('low-resource');
   setMenu(false,{restoreFocus:false});
   closeConsole();
@@ -443,7 +461,7 @@ function instanceActions(item){
   const actions=el('div',{class:'row-actions'});
   const edit=el('a',{class:'button-link',href:instanceLink(item.name,'options'),title:'Editar '+item.name,'aria-label':'Editar '+item.name},icon('edit'));
   if(session.role==='administrador'&&canMutate(item.name))actions.append(edit);
-  for(const [action,label] of (item.status==='Running'?[['stop','Parar'],['restart','Reiniciar']]:item.status==='Stopped'?[['start','Iniciar']]:[])){
+  for(const [action,label] of (item.status==='Running'?[['stop','Desligar'],['restart','Reiniciar']]:item.status==='Stopped'?[['start','Iniciar']]:[])){
     const button=actionButton(label,action,item.name);button.replaceChildren(icon(action));button.title=label+' '+item.name;button.setAttribute('aria-label',button.title);actions.append(button);
   }
   if(session.role==='administrador'){
@@ -701,7 +719,7 @@ function bridgeOptions(config={}){
   return {fields,values:()=>Object.fromEntries(inputs.map(input=>[input.name,input.disabled?(input===dhcp4||input===dhcp6||input===nat4||input===nat6?'false':''):input.value.trim()]))};
 }
 function networkActionButton(label,action,target,extra={}){
-  return el('button',{type:'button',class:'action-button'+(action==='network-delete'?' danger-button':''),disabled:canManageNetworks()?null:'',onclick:()=>openAction(action,target,extra)},...iconLabel(action==='network-delete'?'delete':'save',label));
+  return el('button',{type:'button','data-action':action,class:'action-button'+(action==='network-delete'?' danger-button':''),disabled:canManageNetworks()?null:'',onclick:()=>openAction(action,target,extra)},...iconLabel(action==='network-delete'?'delete':'save',label));
 }
 async function networkDetailView(scope,target,tab='summary'){
   let network;
@@ -1576,7 +1594,6 @@ function renderResourceTree(){
   const items=inventory.filter(i=>!term||[i.name,i.status,i.status==='Running'?'Em execução':i.status==='Stopped'?'Parado':'',i.architecture].join(' ').toLowerCase().includes(term)).sort((a,b)=>a.name.localeCompare(b.name));
   const leaves=items.slice(0,100).map(item=>{
     const link=el('a',{href:instanceLink(item.name),role:'treeitem','aria-level':'4','aria-selected':String(r.page==='instance'&&r.target===item.name),class:'leaf '+item.status.toLowerCase()+(r.page==='instance'&&r.target===item.name?' active':''),title:item.name+' · '+item.status},icon('box'),el('span',{class:'tree-label'},item.name),el('span',{class:'tree-state','aria-hidden':'true'},item.status==='Running'?'▶':'■'));
-    link.oncontextmenu=event=>{event.preventDefault();showResourceMenu(event,item);};
     link.ondblclick=event=>{event.preventDefault();if(session.enable_console&&canMutate(item.name)&&item.status==='Running')openConsoleWindow(item.name);};
     return el('div',{class:'tree-row','data-depth':'3'},el('span',{class:'tree-spacer','aria-hidden':'true'}),link);
   });
@@ -1599,17 +1616,175 @@ function renderResourceTree(){
   $('#tree').replaceChildren(branch('datacenter','Datacenter','#search',datacenterActive,0,'datacenter',[branch('node',nodeName,'#server/summary',r.page==='server',1,'node',children)]));
 }
 let resourceMenu;
-function showResourceMenu(event,item){
-  resourceMenu?.remove();
-  const menu=el('div',{class:'context-menu',role:'menu','aria-label':'Ações de '+item.name});resourceMenu=menu;
-  menu.append(el('button',{type:'button',role:'menuitem',onclick:()=>{location.hash=instanceLink(item.name);menu.remove();}},'Resumo'));
-  const console=el('button',{type:'button',role:'menuitem',disabled:!session.enable_console||!canMutate(item.name)||item.status!=='Running'?'':null,onclick:()=>{openConsoleWindow(item.name);menu.remove();}},'>_ Console');menu.append(console);
-  for(const [action,label] of item.status==='Running'?[['stop','Desligar'],['restart','Reiniciar']]:[['start','Iniciar']]){const button=actionButton(label,action,item.name);button.setAttribute('role','menuitem');button.addEventListener('click',()=>menu.remove());menu.append(button);}
-  menu.append(el('button',{type:'button',role:'menuitem',onclick:()=>{location.hash=instanceLink(item.name,'options');menu.remove();}},'Opções'));
-  document.body.append(menu);menu.style.left=Math.max(4,Math.min(event.clientX,innerWidth-menu.offsetWidth-5))+'px';menu.style.top=Math.max(4,Math.min(event.clientY,innerHeight-menu.offsetHeight-5))+'px';menu.querySelector('button').focus();
+function closeResourceMenu(restoreFocus=false){
+  const trigger=resourceMenu?.trigger;resourceMenu?.remove();resourceMenu=null;
+  if(restoreFocus&&trigger?.isConnected)trigger.focus({preventScroll:true});
 }
-document.addEventListener('pointerdown',event=>{if(resourceMenu&&!resourceMenu.contains(event.target)){resourceMenu.remove();resourceMenu=null;}});
-document.addEventListener('keydown',event=>{if(event.key==='Escape')resourceMenu?.remove();});
+function freshResource(resource,target,scope){return queuedRead('/api/read?'+new URLSearchParams({...scope,resource,...(target?{target}:{})}));}
+function showResourceMenu(event,item,kind='instance',trigger=event.target?.closest('a,tr')){
+  closeResourceMenu();
+  const owner=session,scope={host,project},current=()=>session===owner&&host===scope.host&&project===scope.project;
+  const title=kind==='instance'?'CT '+item.name:kind==='node'?`Nó '${item.name}'`:kind==='datacenter'?'Datacenter':kind==='containers'?'Containers':kind==='storage'?'Armazenamento '+item.name:kind==='network'?'Rede '+item.name:'Projeto '+item.name;
+  const menu=el('div',{class:'context-menu',role:'menu','aria-labelledby':'resource-menu-title'},el('div',{id:'resource-menu-title',class:'context-menu-title'},title));
+  menu.trigger=trigger;resourceMenu=menu;
+  const add=(key,label,symbol,handler,disabled=false)=>{
+    const button=el('button',{type:'button',role:'menuitem',tabindex:'-1','data-menu-action':key,disabled:disabled?'':null,onclick:()=>{
+      closeResourceMenu();if(current())Promise.resolve().then(handler).catch(error=>{if(current())notify(error.message);});
+    }},...iconLabel(symbol,label));menu.append(button);return button;
+  };
+  const separator=()=>menu.append(el('div',{class:'context-menu-separator',role:'separator'}));
+  const go=hash=>()=>{location.hash=hash;};
+  if(kind==='instance'){
+    const buttons={};
+    buttons.start=add('start',item.status==='Frozen'?'Retomar':'Iniciar','play',()=>openAction(item.status==='Frozen'?'unfreeze':'start',item.name));
+    buttons.stop=add('stop','Desligar','power',()=>openAction('stop',item.name));
+    buttons['force-stop']=add('force-stop','Parar','square',()=>openAction('force-stop',item.name));
+    buttons.restart=add('restart','Reiniciar','refresh',()=>openAction('restart',item.name));
+    separator();
+    buttons.clone=add('clone','Clonar','clone',()=>openAction('clone',item.name));
+    buttons.template=add('template','Converter em modelo','template',()=>openAction('template',item.name));
+    separator();
+    buttons.snapshot=add('snapshot','Tirar um Snapshot','history',async()=>{
+      const result=await freshResource('snapshots',item.name,scope);
+      if(current())openAction('snapshot',item.name,{snapshotNames:result.data.map(value=>typeof value==='string'?value:value.name)});
+    });
+    buttons.backup=add('backup','Backup Agora','save',()=>openAction('backup',item.name));
+    separator();
+    buttons.console=add('console','Console','terminal',()=>openConsoleWindow(item.name));
+    const update=()=>{
+      const write=current()&&canMutate(item.name),running=item.status==='Running',stopped=item.status==='Stopped',frozen=item.status==='Frozen';
+      buttons.start.querySelector('span').textContent=frozen?'Retomar':'Iniciar';
+      const enabled={start:write&&(stopped||frozen),stop:write&&running,'force-stop':write&&(running||frozen),restart:write&&running,
+        clone:write&&session.role==='administrador',template:write&&session.role==='administrador'&&stopped,
+        snapshot:write&&(running||stopped),backup:write&&(running||stopped),console:write&&session.enable_console&&running};
+      for(const [action,button]of Object.entries(buttons))button.disabled=!enabled[action];
+      buttons['force-stop'].title='Interromper imediatamente o container';
+      buttons.template.title=stopped?'Criar uma imagem privada reutilizável':'Desligue o container para criar o modelo';
+    };
+    update();
+    freshResource('instance',item.name,scope).then(result=>{if(resourceMenu===menu&&current()){Object.assign(item,result.data);update();}}).catch(error=>{
+      if(resourceMenu!==menu)return;for(const button of Object.values(buttons)){button.disabled=true;button.title=error.message;}
+    });
+  }else if(['node','datacenter','containers','project'].includes(kind)){
+    add('create','Criar CT','cube',()=>openCreateWizard(),!canCreate());
+    separator();
+    const bulkButtons={};
+    for(const [action,label,symbol,state]of [['start','Iniciar em massa','play','Stopped'],['stop','Desligar em massa','power','Running'],['freeze','Suspender em massa','pause','Running']]){
+      bulkButtons[action]=add('bulk-'+action,label,symbol,()=>openBulkAction(action),!inventory.some(value=>canMutate(value.name)&&value.status===state));
+    }
+    bulkButtons.unfreeze=add('bulk-unfreeze','Retomar em massa','play',()=>openBulkAction('unfreeze'),!inventory.some(value=>canMutate(value.name)&&value.status==='Frozen'));
+    bulkButtons.unfreeze.hidden=!inventory.some(value=>value.status==='Frozen');
+    freshResource('instance-list',undefined,scope).then(result=>{
+      if(resourceMenu!==menu||!current())return;
+      for(const [action,state]of Object.entries({start:'Stopped',stop:'Running',freeze:'Running',unfreeze:'Frozen'}))bulkButtons[action].disabled=!result.data.some(value=>canMutate(value.name)&&value.status===state);
+      bulkButtons.unfreeze.hidden=!result.data.some(value=>value.status==='Frozen');
+      menu.style.top=Math.max(4,Math.min(parseFloat(menu.style.top),innerHeight-menu.offsetHeight-4))+'px';
+    }).catch(error=>{if(resourceMenu===menu)for(const button of Object.values(bulkButtons)){button.disabled=true;button.title=error.message;}});
+    separator();
+    add('summary','Sumário','summary',go(kind==='node'?'#server/summary':'#overview'));
+    add('search','Procurar','search',go(kind==='node'?'#server/search':'#search'));
+    add('notes','Notas','edit',go(kind==='node'?'#server/notes':'#datacenter-notes'));
+  }else if(kind==='storage'){
+    add('summary','Sumário','summary',go('#storage/'+encodeURIComponent(item.name)+'/summary'));
+    add('content','Conteúdo','storage',go('#storage/'+encodeURIComponent(item.name)+'/content'));
+    separator();add('permissions','Permissões','shield',go('#storage/'+encodeURIComponent(item.name)+'/permissions'));
+  }else if(kind==='network'){
+    add('summary','Sumário','summary',go('#network/'+encodeURIComponent(item.name)+'/summary'));
+    separator();
+    const editable=canManageNetworks()&&item.managed&&item.type==='bridge'&&!item.config?.['bridge.external_interfaces'];
+    const operate=async action=>{
+      readCache.delete('/api/read?'+new URLSearchParams({...scope,resource:'network',target:item.name}));
+      const view=await networkDetailView(scope,item.name);if(!current())return;
+      const button=view.querySelector('[data-action="'+action+'"]');
+      if(!button||button.disabled)throw new Error(button?.title||'A operação não está disponível para esta rede.');
+      button.click();
+    };
+    const edit=add('edit','Editar','edit',()=>operate('network-edit'),!editable);
+    const remove=add('delete','Excluir bridge','delete',()=>operate('network-delete'),true);
+    if(canManageNetworks())Promise.allSettled([freshResource('network',item.name,scope),freshResource('instances',undefined,scope),freshResource('profiles',undefined,scope)]).then(results=>{
+      if(resourceMenu!==menu||!current())return;
+      const [network,instances,profiles]=results;
+      const managed=network.status==='fulfilled'&&network.value.data.managed&&network.value.data.type==='bridge'&&!network.value.data.config?.['bridge.external_interfaces'];
+      edit.disabled=!managed;
+      const attached=values=>values.some(value=>Object.values(value.expanded_devices||value.devices||{}).some(device=>device.type==='nic'&&(device.network===item.name||device.parent===item.name)));
+      remove.disabled=!managed||Boolean(network.value.data.used_by?.length)||instances.status!=='fulfilled'||profiles.status!=='fulfilled'||attached(instances.value.data)||attached(profiles.value.data);
+      if(remove.disabled)remove.title='A exclusão exige uma bridge sem dependências de containers ou perfis.';
+    });
+    separator();add('permissions','Permissões','shield',go('#network/'+encodeURIComponent(item.name)+'/permissions'));
+  }
+  menu.addEventListener('keydown',key=>{
+    const buttons=[...menu.querySelectorAll('button:not(:disabled):not([hidden])')],index=buttons.indexOf(document.activeElement);
+    if(['ArrowDown','ArrowUp','Home','End'].includes(key.key)){
+      key.preventDefault();const next=key.key==='Home'?0:key.key==='End'?buttons.length-1:(index+(key.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length;buttons[next]?.focus();
+    }else if(key.key==='Tab')closeResourceMenu(true);
+    else if(key.key.length===1&&!key.ctrlKey&&!key.altKey){const next=buttons.slice(index+1).concat(buttons.slice(0,index+1)).find(button=>button.textContent.toLocaleLowerCase('pt-BR').startsWith(key.key.toLocaleLowerCase('pt-BR')));if(next){key.preventDefault();next.focus();}}
+  });
+  document.body.append(menu);
+  menu.style.left=Math.max(4,Math.min(event.clientX,innerWidth-menu.offsetWidth-4))+'px';
+  menu.style.top=Math.max(4,Math.min(event.clientY,innerHeight-menu.offsetHeight-4))+'px';
+  menu.querySelector('button:not(:disabled):not([hidden])')?.focus({preventScroll:true});
+}
+function resourceMenuTarget(event){
+  const row=event.target.closest('#content tr');
+  const link=event.target.closest('#tree a[href],#content a[href]')||row?.querySelector('a[href^="#instance/"],a[href^="#server/"],a[href^="#network/"],a[href^="#storage/"]');
+  if(!link)return null;
+  const [page,target]=link.getAttribute('href').slice(1).split('/').map(decodeURIComponent);
+  if(page==='instance'&&target)return {kind:'instance',item:{...inventory.find(value=>value.name===target),name:target},trigger:row||link};
+  if(page==='server')return {kind:'node',item:{name:serverInfo.environment?.server_name||host},trigger:row||link};
+  if(page==='storage'&&target)return {kind:'storage',item:{name:target},trigger:row||link};
+  if(page==='network'&&target)return {kind:'network',item:{...networkInventory.find(value=>value.name===target),name:target},trigger:row||link};
+  if(link.closest('#tree')&&['search','instances','projects'].includes(page))return {kind:page==='search'?'datacenter':page==='instances'?'containers':'project',item:{name:project},trigger:link};
+  return null;
+}
+for(const type of ['contextmenu','keydown'])document.addEventListener(type,event=>{
+  if(!session||type==='keydown'&&event.key!=='ContextMenu'&&!(event.shiftKey&&event.key==='F10'))return;
+  const target=resourceMenuTarget(event);if(!target)return;event.preventDefault();
+  const rect=target.trigger.getBoundingClientRect();
+  showResourceMenu(type==='keydown'?{clientX:rect.left+20,clientY:rect.bottom}:event,target.item,target.kind,target.trigger);
+});
+document.addEventListener('pointerdown',event=>{if(resourceMenu&&!resourceMenu.contains(event.target))closeResourceMenu();});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&resourceMenu){event.preventDefault();closeResourceMenu(true);}});
+document.addEventListener('scroll',event=>{if(resourceMenu&&!resourceMenu.contains(event.target))closeResourceMenu();},true);
+window.addEventListener('resize',()=>closeResourceMenu());
+window.addEventListener('hashchange',()=>closeResourceMenu());
+for(const selector of ['#host','#project'])$(selector).addEventListener('change',()=>closeResourceMenu());
+async function openBulkAction(action){
+  const owner=session,scope={host,project},states={start:'Stopped',stop:'Running',freeze:'Running',unfreeze:'Frozen'};
+  const labels={start:'Iniciar em massa',stop:'Desligar em massa',freeze:'Suspender em massa',unfreeze:'Retomar em massa'};
+  const body=el('div',{class:'panel-body'},'Consultando os containers…');openEditor(labels[action],body);
+  const current=()=>session===owner&&host===scope.host&&project===scope.project;
+  try{
+    const result=await freshResource('instance-list',undefined,scope);
+    if(!current()||!body.isConnected)return;
+    const items=result.data.filter(item=>canMutate(item.name)&&item.status===states[action]);
+    if(!items.length){body.replaceChildren(notice('Nenhum container autorizado está no estado necessário para esta ação.'));return;}
+    const choices=items.map(item=>el('input',{type:'checkbox',name:'target',value:item.name,checked:''}));
+    const list=el('div',{class:'bulk-instance-list'},items.map((item,index)=>el('label',{},choices[index],el('span',{},item.name),el('span',{},item.status))));
+    const output=el('pre',{class:'bulk-results',role:'status','aria-live':'polite'}),submit=el('button',{type:'submit',class:'primary'},labels[action]);
+    const cancel=el('button',{type:'button',onclick:closeEditor},'Fechar');
+    const form=el('form',{class:'bulk-action-form'},el('p',{},'Selecione os containers deste projeto. Cada operação será executada e registrada separadamente em Tarefas.'),list,output,el('div',{class:'dialog-actions'},cancel,submit));
+    form.onsubmit=async event=>{
+      event.preventDefault();if(submit.disabled)return;
+      const selected=choices.filter(input=>input.checked).map(input=>input.value);
+      if(!selected.length){output.textContent='Selecione pelo menos um container.';return;}
+      submit.disabled=true;for(const input of choices)input.disabled=true;
+      const lines=[];let failed=0;
+      for(const target of selected){
+        if(!current()){lines.push('A sessão ou o projeto mudou; as próximas operações foram canceladas.');break;}
+        try{
+          const result=await api('/api/action',{...scope,action,target,confirmation:`${scope.host}/${scope.project}/${target}`});
+          trackTask(`${scope.host}/${scope.project}/${result.operation}`,{...scope,id:result.operation,target,action,status:'Em andamento',status_code:100});
+          const state=await waitOperation(result.operation,scope,owner);
+          lines.push(target+': '+(state.status_code<200?'Em andamento; consulte Tarefas.':'Concluído.'));
+        }catch(error){failed++;lines.push(target+': '+error.message);}
+        output.textContent=lines.join('\n');
+      }
+      output.textContent=lines.join('\n');submit.textContent=failed?'Concluído com erros':'Concluído';
+      if(current()){readCache.clear();await render();}
+    };
+    body.replaceWith(form);
+  }catch(error){if(body.isConnected)body.replaceChildren(errorNode(error));}
+}
 $('#global-search').oninput=()=>renderResourceTree();
 $('#global-search').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();const input=$('#resource-search'),current=route();if((current.page==='search'||(current.page==='server'&&current.target==='search'))&&input){input.value=event.currentTarget.value;input.form.requestSubmit();}else location.hash='#search';}};
 $('#tree-view').onchange=()=>renderResourceTree();
@@ -1619,8 +1794,8 @@ function mergedTaskLog(){
   return [...merged.values()].reverse();
 }
 function taskDescription(task){
-  const labels={start:'Iniciar CT',stop:'Desligar CT',restart:'Reiniciar CT',delete:'Remover CT',update:'Editar CT',create:'Criar CT',snapshot:'Criar snapshot',backup:'Criar backup','snapshot-restore':'Restaurar snapshot','snapshot-delete':'Remover snapshot','backup-delete':'Remover backup','network-create':'Criar bridge','network-update':'Editar bridge','network-delete':'Remover bridge','nic-add':'Adicionar interface','nic-update':'Editar interface','nic-delete':'Remover interface','nic-reset':'Restaurar interface do perfil','download-image':'Baixar imagem'};
-  if(labels[task.action])return labels[task.action]+(task.target?' · '+task.target:'');
+  const labels={start:'Iniciar CT',stop:'Desligar CT','force-stop':'Parar CT',restart:'Reiniciar CT',freeze:'Suspender CT',unfreeze:'Retomar CT',clone:'Clonar CT',template:'Criar modelo',delete:'Remover CT',update:'Editar CT',create:'Criar CT',snapshot:'Criar snapshot',backup:'Criar backup','snapshot-restore':'Restaurar snapshot','snapshot-delete':'Remover snapshot','backup-delete':'Remover backup','network-create':'Criar bridge','network-update':'Editar bridge','network-delete':'Remover bridge','nic-add':'Adicionar interface','nic-update':'Editar interface','nic-delete':'Remover interface','nic-reset':'Restaurar interface do perfil','download-image':'Baixar imagem'};
+  if(labels[task.action])return labels[task.action]+(task.target?' · '+task.target:'')+(task.destination?' → '+task.destination:'');
   const match=String(task.description||'').match(/^(POST|PUT|PATCH|DELETE) \/1\.0\/(instances|networks)(?:\/([^/]+))?(?:\/(snapshots|backups))?/);
   if(match){const [,method,resource,target,artifact]=match;return (artifact?(method==='DELETE'?'Remover ':'Criar ')+(artifact==='snapshots'?'snapshot':'backup'):resource==='networks'?(method==='POST'?'Criar':method==='DELETE'?'Remover':'Editar')+' bridge':method==='POST'&&!target?'Criar CT':method==='DELETE'?'Remover CT':'Atualizar CT')+(target?' · '+target:'');}
   return task.description||task.action||'Operação Incus';

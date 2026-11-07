@@ -186,6 +186,7 @@ dialog::backdrop{background:rgba(0,0,0,.25)}
 .window-title{display:flex;align-items:center;justify-content:space-between;gap:8px;position:sticky;top:0;z-index:2;min-height:36px;padding:6px 9px;color:#39a7e4;background:var(--panel);border-bottom:1px solid var(--border);font-size:14px;font-weight:400}
 .window-title button{min-height:24px;width:24px;padding:0;border:0;font-size:20px;background:transparent}
 #action-form>p,#action-form>pre,#action-form>label{margin:12px 14px}
+.action-checkbox{display:flex;align-items:center;gap:7px}
 .dialog-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:7px;padding:7px;margin-top:12px;border-top:1px solid var(--border);background:var(--panel)}
 #create-dialog{width:min(820px,calc(100vw - 24px))}.wizard-form{display:flex;flex-direction:column;min-height:370px}
 #editor-dialog{width:min(820px,calc(100vw - 24px))}#editor-content{padding:12px}#editor-content .panel-body{padding:0}
@@ -215,8 +216,19 @@ dialog::backdrop{background:rgba(0,0,0,.25)}
 .task-splitter{position:absolute;inset:-5px 0 auto;height:5px;z-index:6;touch-action:none;cursor:ns-resize}
 .task-details-link{min-height:18px;padding:0 4px;font-size:10px}
 body.tasks-collapsed{--task-height:37px}body.tasks-collapsed #task-log-content{display:none}
-.context-menu{position:fixed;z-index:120;display:grid;min-width:160px;max-width:calc(100vw - 16px);padding:3px;background:var(--panel);border:1px solid var(--border);box-shadow:0 3px 9px #0006}
-.context-menu button{justify-content:flex-start;padding:6px;border:0;background:transparent}.context-menu button:hover{background:var(--row-hover)}
+.context-menu{position:fixed;z-index:120;display:flex;flex-direction:column;width:max-content;min-width:158px;max-width:min(300px,calc(100vw - 8px));max-height:calc(100dvh - 8px);overflow:auto;padding:0;background:var(--panel);border:1px solid var(--border);box-shadow:0 3px 9px #0009}
+.context-menu-title{min-height:28px;padding:5px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--selection);color:#fff;font-size:12px;line-height:18px}
+.context-menu button{flex-shrink:0;justify-content:flex-start;width:100%;min-height:24px;gap:5px;padding:3px 4px;border:0;border-radius:0;background:transparent;font-weight:400;text-align:left}
+.context-menu button>span{overflow:hidden;text-overflow:ellipsis}
+.context-menu button:hover:disabled{background:transparent}
+.context-menu button:not(:disabled):hover,.context-menu button:focus-visible{background:var(--tree-selected);outline:0}
+.context-menu-separator{flex-shrink:0;height:1px;margin:3px 1px;background:var(--border)}
+html[data-theme="dark"] .context-menu{background:#303030;border-color:#444}
+html[data-theme="dark"] .context-menu-separator{background:#666}
+html[data-theme="dark"] .context-menu button:not(:disabled):hover,html[data-theme="dark"] .context-menu button:focus-visible{background:#555}
+.bulk-action-form{display:grid;gap:12px;padding:14px}.bulk-instance-list{display:grid;gap:7px;max-height:260px;overflow:auto;padding:8px;border:1px solid var(--border)}
+.bulk-instance-list label{display:flex;align-items:center;gap:7px}.bulk-instance-list label>span:last-child{margin-left:auto;color:var(--muted)}
+.bulk-results{max-height:180px;overflow:auto}.bulk-action-form .dialog-actions{margin:0;padding:6px 0 0}
 .loading-state{display:flex;justify-content:center;align-items:center;gap:10px;min-height:150px;color:var(--muted)}
 .spinner{width:17px;height:17px;border:2px solid var(--border);border-top-color:var(--focus);border-radius:50%}
 

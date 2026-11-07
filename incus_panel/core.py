@@ -299,13 +299,15 @@ class Demo:
                     result = instance[parts[3]]
         else:
             if path == '/1.0/images' and method == 'POST':
-                alias = body['source']['alias']
+                publishing = body['source']['type'] == 'instance'
+                alias = body['aliases'][0]['name'] if publishing else body['source']['alias']
                 fingerprint = hashlib.sha256(alias.encode()).hexdigest()
                 if not any(image['fingerprint'] == fingerprint for image in self.images.get(project, [])):
                     self.images.setdefault(project, []).append({
                         'fingerprint': fingerprint, 'architecture': 'armv7l', 'type': 'container',
                         'aliases': copy.deepcopy(body.get('aliases', [])),
-                        'properties': {'description': alias + ' • fixture local'}, 'size': 25000000})
+                        'properties': copy.deepcopy(body.get('properties', {'description': alias + ' • fixture local'})),
+                        'public': body.get('public', False), 'size': 25000000})
             elif path == '/1.0/networks' and method == 'POST':
                 if any(item['name'] == body.get('name') for item in self.networks.setdefault(project, [])):
                     raise PanelError(409, 'Uma rede com esse nome já existe neste Project.')
@@ -325,6 +327,11 @@ class Demo:
                 if key in self.instances:
                     raise PanelError(409, "Nome já existe neste Project.")
                 self.instances[key] = {"name": body["name"], "type": "container", "architecture": "armv7l", "status": "Stopped", "profiles": body["profiles"], "description": body.get("description", ""), "config": copy.deepcopy(body.get("config", {})), "expanded_config": copy.deepcopy(body.get("config", {})), "devices": copy.deepcopy(body.get("devices", {})), "expanded_devices": copy.deepcopy(body.get("devices", {})), "snapshots": [], "backups": []}
+                if body['source']['type'] == 'copy':
+                    original = self.instances[project, body['source']['source']]
+                    self.instances[key]['expanded_devices'] = copy.deepcopy(original['expanded_devices'])
+                    if not body['source']['instance_only']:
+                        self.instances[key]['snapshots'] = [dict(snapshot, name=body['name'] + '/' + snapshot['name'].rsplit('/', 1)[-1]) for snapshot in original['snapshots']]
             elif len(parts) >= 3 and parts[1] == "instances":
                 key = (project, parts[2])
                 if key not in self.instances:
@@ -355,7 +362,7 @@ class Demo:
                     instance["devices"] = copy.deepcopy(body.get("devices", instance.get("devices", {})))
                     instance['expanded_devices'] = {**{'root': {'type': 'disk', 'path': '/', 'pool': 'lab'}, 'eth0': {'type': 'nic', 'network': 'labbr0'}}, **copy.deepcopy(instance['devices'])}
                 elif parts[-1] == "state":
-                    instance["status"] = "Stopped" if body["action"] == "stop" else "Running"
+                    instance["status"] = {'stop': 'Stopped', 'freeze': 'Frozen'}.get(body['action'], 'Running')
                 elif len(parts) == 5 and parts[3] in ("snapshots", "backups") and method == "DELETE":
                     collection = instance[parts[3]]
                     artifact = parts[4]
@@ -423,7 +430,7 @@ class Service:
         if resource == 'creation-images':
             arch = client.request('GET', '/1.0', project)['metadata'].get('environment', {}).get('kernel_architecture')
             local = client.request('GET', '/1.0/images', project)['metadata']
-            images = [{'id': 'local:' + i['fingerprint'], 'image': i['fingerprint'], 'label': (i.get('properties', {}).get('description') or i['fingerprint'][:12]) + ' (baixada)'}
+            images = [{'id': 'local:' + i['fingerprint'], 'image': i['fingerprint'], 'label': (i.get('properties', {}).get('description') or i['fingerprint'][:12]) + ' (local)'}
                       for i in local if i.get('type', 'container') == 'container' and architecture(i.get('architecture')) == architecture(arch)]
             warning = None
             if self.config.get('allow_remote_images') and not self.config.get('demo'):
@@ -872,10 +879,47 @@ class Service:
                 write_etag = instance_response.get('_etag')
                 if not isinstance(write_etag, str) or not write_etag:
                     raise PanelError(502, 'O Incus não forneceu uma revisão segura para editar. Recarregue ou confira a versão do servidor.')
-            elif action in ("start", "stop", "restart"):
-                if (action == "start" and instance["status"] != "Stopped") or (action != "start" and instance["status"] != "Running"):
+            elif action in ("start", "stop", "restart", "force-stop", "freeze", "unfreeze"):
+                states = {'start': ('Stopped',), 'stop': ('Running',), 'restart': ('Running',),
+                          'force-stop': ('Running', 'Frozen'), 'freeze': ('Running',), 'unfreeze': ('Frozen',)}
+                if instance['status'] not in states[action]:
                     raise PanelError(409, "Estado mudou ou ação incompatível; atualize.")
-                method, path, payload = "PUT", path + "/state", {"action": action, "timeout": 30, "force": False}
+                method, path, payload = "PUT", path + "/state", {"action": 'stop' if action == 'force-stop' else action,
+                    "timeout": 0 if action == 'force-stop' else 30, "force": action == 'force-stop'}
+            elif action == 'clone':
+                if user['role'] != 'administrador':
+                    raise PanelError(403, 'Clonar containers exige administrador.')
+                destination = name(body.get('name'))
+                if not re.fullmatch(r'[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?', destination):
+                    raise PanelError(400, 'Use letras, números e hífens no nome do clone.')
+                if not self.can_manage(user, host, project, destination):
+                    raise PanelError(403, 'O nome do clone está fora da lista de containers autorizados.')
+                include_snapshots = body.get('include_snapshots', False)
+                if not isinstance(include_snapshots, bool):
+                    raise PanelError(400, 'A opção de incluir snapshots deve ser booleana.')
+                if any(item['name'] == destination for item in client.request('GET', '/1.0/instances', project)['metadata']):
+                    raise PanelError(409, 'Já existe um container com o nome do clone neste projeto.')
+                if self.low_resource and not self.config.get('demo') and any(h['id'] == host and h.get('transport') == 'unix' for h in self.config['hosts']):
+                    from .resources import check_creation_memory
+                    check_creation_memory()
+                path = '/1.0/instances'
+                payload = {'name': destination, 'type': 'container', 'ephemeral': False,
+                           'source': {'type': 'copy', 'source': target, 'project': project, 'live': False, 'instance_only': not include_snapshots},
+                           'profiles': instance.get('profiles', []), 'devices': copy.deepcopy(instance.get('devices', {})),
+                           'description': instance.get('description', ''),
+                           'config': {**{key: value for key, value in instance.get('config', {}).items() if not key.startswith('volatile.')}, 'boot.autostart': 'false'}}
+            elif action == 'template':
+                if user['role'] != 'administrador':
+                    raise PanelError(403, 'Criar modelos exige administrador.')
+                if instance['status'] != 'Stopped':
+                    raise PanelError(409, 'Desligue o container antes de criar o modelo.')
+                alias = name(body.get('name'))
+                images = client.request('GET', '/1.0/images', project)['metadata']
+                if any(entry.get('name') == alias for image in images for entry in image.get('aliases', [])):
+                    raise PanelError(409, 'Já existe uma imagem com esse nome neste projeto.')
+                path = '/1.0/images'
+                payload = {'source': {'type': 'instance', 'name': target}, 'public': False,
+                           'aliases': [{'name': alias}], 'properties': {'description': alias}}
             elif action in ("snapshot", "backup"):
                 artifact_name = name(body.get("name"))
                 if action == 'snapshot':
@@ -914,6 +958,8 @@ class Service:
             else:
                 raise PanelError(400, "Ação não permitida.")
         record = {"identity": user["username"], "host": host, "project": project, "target": target, "action": action, "timestamp": time.time(), "result": "solicitada"}
+        if action in ('clone', 'template'):
+            record['destination'] = body['name']
         with self.lock:
             self.audit.append(record)
             self.audit[:] = self.audit[-200:]

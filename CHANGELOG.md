@@ -1,5 +1,12 @@
 # Changelog
 
+## Menus de contexto e ações de containers — 2026-11-07
+
+- Menu de containers com organização do Proxmox: título azul, ícones, separadores, estados desabilitados e navegação por teclado, na árvore e nas grades.
+- Distinção entre desligamento normal e parada imediata com confirmação; clonagem local com snapshots opcionais e criação de modelos como imagens privadas reutilizáveis do Incus.
+- Menus para nó, datacenter, armazenamento e redes; operações em massa sobre seleção de containers autorizados, incluindo suspender e retomar.
+- Validação de estado, escopo, papel, confirmação e colisões de nomes no backend; clonagem e modelos preservam o container de origem.
+
 ## Tema, contas locais e recuperação de snapshots — 2026-11-02
 
 - Tema escuro com alternância acessível, respeito à preferência do sistema e escolha persistida no navegador.

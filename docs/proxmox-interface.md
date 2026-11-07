@@ -20,6 +20,8 @@ e JavaScript locais e as operações reais do Incus.
 | Login | `www/manager6/window/LoginWindow.js` | Diálogo compacto sobre a estrutura vazia do painel, campos alinhados e salvar nome de usuário |
 | Criar CT | `www/manager6/window/Wizard.js` | Janela com etapas, validação sequencial, botões de avanço e confirmação |
 | Tarefas e auditoria | `www/manager6/panel/StatusPanel.js` | Abas inferiores, tabela compacta, redimensionamento e visualizador com saída/status |
+| Menu de contexto do container | `www/manager6/lxc/CmdMenu.js` | Cabeçalho azul, ícones, grupos e estados desabilitados; iniciar, desligar, parar imediatamente, reiniciar, clonar, criar modelo, snapshot, backup e console |
+| Menu do nó e datacenter | `www/manager6/node/CmdMenu.js` e `dc/CmdMenu.js` | Criar CT, operações em massa com seleção explícita e atalhos para sumário, busca e notas; armazenamento e rede têm menus específicos |
 | Usuários, permissões, projetos e perfis | Componentes compartilhados de grade e configuração | Listas, propriedades, formulários e janelas uniformes; usuários editados em diálogos |
 | Notas, opções, cluster, volumes, imagens, backups e alertas | Componentes compartilhados de painéis e grades | Mesmos controles, tipografia, bordas, espaçamento, estados vazios e temas |
 
@@ -27,6 +29,37 @@ As diferenças funcionais refletem o Incus. Não há VMID, autenticação PAM,
 gestão de VMs ou operações Proxmox fictícias. Contas usam o domínio local;
 o painel mantém os papéis, Projects e permissões aplicados pelo backend.
 O log de auditoria não é apresentado como um log de cluster.
+
+## Menus de contexto e operações Incus
+
+O menu funciona na árvore e nas linhas das grades, inclusive por **Shift+F10**
+ou pela tecla de menu. Setas, Home/End e letras percorrem ações habilitadas;
+Escape fecha o menu e devolve o foco. O posicionamento respeita as bordas
+da janela nos dois temas. O estado e as dependências são consultados novamente
+ao abrir, e as permissões e o estado são revalidados pelo backend.
+
+**Desligar** usa encerramento normal (`stop`, `force: false`, 30 segundos).
+**Parar** exige confirmação digitada e envia `stop`, `force: true`.
+Clonar usa a cópia local do Incus, no mesmo projeto, com snapshots opcionais;
+o clone nasce parado, sem autostart e sem reutilizar campos voláteis de identidade.
+Origem e destino precisam estar autorizados; clonagem e modelos exigem administrador.
+
+**Converter em modelo** corresponde à publicação de uma imagem privada do
+container parado, com alias, para uso no assistente Criar CT. O container de
+origem é preservado; o painel não simula uma flag de template do Proxmox.
+Referências oficiais: [criar imagens](https://linuxcontainers.org/incus/docs/main/howto/images_create/),
+[API de cópia no Incus 6.0.4](https://github.com/lxc/incus/blob/v6.0.4/shared/api/instance.go)
+e [ações de estado](https://github.com/lxc/incus/blob/v6.0.4/shared/api/instance_state.go).
+
+As ações em massa atuam somente nos containers selecionados do projeto atual,
+com operações individuais rastreadas em Tarefas. Suspender/retomar usa
+`freeze`/`unfreeze`, sem salvar estado em disco. Não há shell do hospedeiro,
+VMs, migração entre servidores ou operações de cluster fictícias.
+
+`scripts/context-menu-review.mjs` verifica menus, teclado, dois temas,
+limites de janela, permissões e os fluxos de clonagem, modelo, snapshot,
+backup e operações em massa na fixture local. Os contratos do backend ficam
+em `tests/test_context_actions.py`.
 
 ## Correções de responsividade
 
