@@ -52,7 +52,9 @@ try{
     await wait("document.querySelector('#confirm').open");
     if(name)await evaluate(`document.querySelector('#artifact-name').value=${JSON.stringify(name)}`);
     if(confirmation)await evaluate(`document.querySelector('#confirmation').value=${JSON.stringify(confirmation)}`);
+    const snapshotTask=await evaluate('snapshotOperations.includes(pendingAction.action)');
     await evaluate("document.querySelector('#action-form').requestSubmit()");await wait("!document.querySelector('#confirm').open&&!document.querySelector('#content').hasAttribute('aria-busy')");
+    if(snapshotTask){await wait("[...snapshotRuns.values()].at(-1)?.status_code>=200&&!document.querySelector('#content').hasAttribute('aria-busy')");await evaluate("document.querySelector('#task-detail').close();document.querySelector('#snapshot-progress').close()");}
   }
   await navigate('instance/lab-db/summary');await action('Iniciar');await action('Reiniciar');await action('Desligar');
   assert.equal((await evaluate("read('instance','lab-db').then(r=>r.data)")).status,'Stopped');

@@ -74,6 +74,7 @@ try{
   await evaluate("document.querySelector('#submit-action').click();document.querySelector('#submit-action').click()");
   await wait("!document.querySelector('#confirm').open");
   assert.equal(mutations,beforeSnapshot+1,'Double clicks must submit only once.');
+  await wait("[...snapshotRuns.values()].at(-1)?.status_code>=200");await click('#close-task-detail');
   assert.equal(await evaluate("read('snapshots','lab-web').then(result=>result.data.some(value=>value.name==='menu-snapshot'))"),true);
   await context(web);await menuAction('backup');await confirm({name:'menu-backup'});
   assert.equal(await evaluate("read('backups','lab-web').then(result=>result.data.some(value=>value.name==='menu-backup'))"),true);

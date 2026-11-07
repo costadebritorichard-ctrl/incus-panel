@@ -92,6 +92,7 @@ try{
   await wait(()=>!d.querySelector('#confirm').open);
   assert.equal(actionRequests(),beforeSnapshotAction+1,'Cliques repetidos confirmam somente uma criação de snapshot.');
   await wait(()=>!!d.querySelector('.snapshot-table [data-snapshot="snapshot"]'));
+  d.querySelector('#close-task-detail').click();
   assert.match(d.querySelector('#content').textContent,/snapshot/);
   const detailReads=()=>requests.filter(path=>path.includes('resource=instance&target=lab-web')).length;
   await navigate('instance/lab-web/options');const cachedDetailReads=detailReads();

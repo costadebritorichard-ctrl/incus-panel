@@ -421,6 +421,19 @@ class Service:
             raise PanelError(403, "Host ou Project fora do escopo autorizado.")
         return self.hosts[host]
 
+    def snapshot_task_context(self, host, project, operation):
+        if not isinstance(operation, dict):
+            return operation
+        with self.lock:
+            record = next((item for item in reversed(self.audit)
+                if item.get('operation') == operation.get('id') and item['host'] == host
+                and item['project'] == project and item['action'] in ('snapshot', 'snapshot-restore', 'snapshot-delete')), None)
+            if record is None:
+                return operation
+            return {**operation, 'host': host, 'project': project, 'action': record['action'],
+                    'target': record['target'], 'snapshot': record.get('snapshot'),
+                    'identity': record['identity'], 'requested_at': record['timestamp']}
+
     def can_manage(self, user, host, project, target):
         self.context(user, host, project)
         return (user['role'] == 'administrador' and self.config.get('manage_all_instances', False)) or target in self.config.get('mutable_instances', {}).get(host, {}).get(project, [])
@@ -481,6 +494,7 @@ class Service:
         data = client.request("GET", path, project)["metadata"]
         if resource == 'operation':
             self.snapshot_metadata.settle(client, host, project, target, data)
+            data = self.snapshot_task_context(host, project, data)
         if resource in ('instances', 'instance-list'):
             data = [item for item in data if item.get('type') == 'container']
         if resource == 'instance' and data.get('type') != 'container':
@@ -510,7 +524,8 @@ class Service:
             data = copy.deepcopy(data)
             data['_revision'] = network_revision(data)
         if resource == 'operations' and isinstance(data, dict):
-            data = copy.deepcopy(data)
+            data = {key: [self.snapshot_task_context(host, project, item) for item in value]
+                    if isinstance(value, list) else copy.deepcopy(value) for key, value in data.items()}
             with self.lock:
                 data['panel'] = [redact(copy.deepcopy(job)) for job in self.launches.values()
                                  if job['host'] == host and job['project'] == project and job['identity'] == user['username']]
@@ -993,6 +1008,8 @@ class Service:
             else:
                 raise PanelError(400, "Ação não permitida.")
         record = {"identity": user["username"], "host": host, "project": project, "target": target, "action": action, "timestamp": time.time(), "result": "solicitada"}
+        if action in ('snapshot', 'snapshot-restore', 'snapshot-delete'):
+            record['snapshot'] = artifact_name if action == 'snapshot' else artifact
         if action in ('clone', 'template'):
             record['destination'] = body['name']
         with self.lock:

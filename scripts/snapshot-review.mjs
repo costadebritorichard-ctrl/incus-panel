@@ -26,8 +26,12 @@ async function navigate(target='lab-db'){
 }
 async function action(name){$(`[data-action="${name}"]`).click();await wait(()=>$('#confirm').open);}
 async function save(){
+  const action=w.eval('pendingAction.action');
   $('#action-form').requestSubmit();
+  if(['snapshot','snapshot-restore','snapshot-delete'].includes(action))await wait(()=>w.eval('[...snapshotRuns.values()].at(-1)?.status_code>=200'));
   await wait(()=>!$('#confirm').open&&!$('#content').hasAttribute('aria-busy'));
+  if($('#task-detail').open)$('#close-task-detail').click();
+  if($('#snapshot-progress').open)$('#close-snapshot-progress').click();
 }
 function select(name){$(`[data-snapshot="${name}"]`).click();}
 async function snapshotHtml(name){
@@ -60,6 +64,7 @@ try{
   const before=mutations.length;$('#submit-action').click();$('#submit-action').click();
   await wait(()=>!$('#confirm').open&&!$('#content').hasAttribute('aria-busy')&&!!$('[data-snapshot="review-snapshot"]'));
   assert.equal(mutations.length,before+1);assert.equal(mutations.at(-1).description,'Antes da atualização\nPonto seguro');
+  $('#close-task-detail').click();
   assert.match($('.snapshot-table').textContent,/Antes da atualização/);select('review-snapshot');
   assert.equal($('[data-action=snapshot-restore]').disabled,false);await snapshotHtml('grid-dark');
   await action('snapshot-edit');assert.equal($('#artifact-name').readOnly,true);

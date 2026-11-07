@@ -1,5 +1,12 @@
 # Changelog
 
+## Fluxo de tarefas de snapshot no padrão Proxmox — 2026-11-07
+
+- Máscara Aguarde no carregamento e envio; criação abre diretamente o visualizador com Saída/Status, Download e resultado confirmado.
+- Remoção e reversão usam confirmação Sim/Não e janela compacta de progresso com Detalhes; falhas permanecem no visualizador.
+- Acompanhamento de operações longas, reabertura pelo rodapé, reconexão sem reenvio e consultas pausadas quando a tela fica oculta ou fora do escopo.
+- Percentuais somente quando fornecidos pelo Incus; saída de estados e metadados reais, sem logs de armazenamento simulados. Novo ensaio DOM do fluxo completo e dos erros.
+
 ## Snapshots no padrão Proxmox — 2026-11-07
 
 - Barra Tirar um Snapshot/Reverter/Editar/Remover, colunas Nome/Data/Status/Descrição e linha AGORA; criação em janela compacta com nome e descrição.

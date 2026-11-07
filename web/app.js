@@ -88,6 +88,7 @@ let session, host, project, generation = 0, pendingAction, timer, expiryTimer, b
 let eventTimer,eventVersion;
 const tasks = new Map();
 const creationRuns = new Map();
+const snapshotRuns = new Map();
 const imageDownloads = new Map();
 const readCache = new Map();
 let inventory=[], serverInfo={}, storageInventory=[], networkInventory=[], taskLogScope='', taskLogItems=[], taskLogMode='tasks';
@@ -265,7 +266,9 @@ function instanceLink(name, tab='summary') { return '#instance/'+encodeURICompon
 function canMutate(target) { return !session.read_only && session.role!=='observador' && (session.manage_all_instances || (session.mutable_instances?.[host]?.[project] || []).includes(target)); }
 function actionButton(label, action, target, extra={}) { return el('button',{class:'action-button'+(action==='delete'?' danger-button':''),disabled:canMutate(target)?null:'',onclick:()=>openAction(action,target,extra)},...iconLabel(iconPaths[action]?action:'plus',label)); }
 function availableName(base,names){let candidate=base.slice(0,63),suffix=1;while(names.has(candidate)){const ending='-'+suffix++;candidate=base.slice(0,63-ending.length)+ending;}return candidate;}
-function actionSubmitLabel(action){return action==='snapshot'?'Tirar um Snapshot':action==='snapshot-edit'?'OK':'Confirmar operação';}
+const snapshotOperations=['snapshot','snapshot-restore','snapshot-delete'];
+const snapshotConfirmations=['snapshot-restore','snapshot-delete'];
+function actionSubmitLabel(action){return action==='snapshot'?'Tirar um Snapshot':action==='snapshot-edit'?'OK':snapshotConfirmations.includes(action)?'Sim':'Confirmar operação';}
 function openAction(action,target,extra={}) {
   if(action==='console'){startTerminal(target).catch(showTerminalError);return;}
   pendingAction={host,project,action,target,...extra};
@@ -274,18 +277,24 @@ function openAction(action,target,extra={}) {
   $('#action-description').textContent=action.startsWith('nic-')?'Alterar a interface pode interromper a rede do container. O perfil permanece intacto.':action==='network-delete'?'A bridge só será excluída se não estiver conectada a containers ou perfis.':action==='network-update'?'Revise IPv4/IPv6, DHCP, DNS, NAT, MTU e roteamento. As mudanças podem afetar os containers conectados.':action==='network-create'?'Será criada uma bridge privada gerenciada pelo Incus. Interfaces físicas não serão adicionadas.':action==='console'?'Este acesso abre /bin/sh, normalmente como root dentro do container. Comandos podem alterar ou apagar dados.':action==='delete'?'A exclusão remove permanentemente o container e seus snapshots.':action==='snapshot-restore'?'A restauração substitui o estado atual do container pelo snapshot selecionado. O container precisa estar parado.':action==='snapshot-delete'||action==='backup-delete'?'A exclusão remove permanentemente este arquivo de recuperação.':action==='snapshot'||action==='backup'?'A operação consome armazenamento. Blocos compartilhados não representam espaço recuperável garantido.':'Revise o destino. O resultado será confirmado pela operação Incus.';
   $('#action-review').textContent=`${action.startsWith('network-')?'Bridge':'Container'}: ${target}\nServidor: ${session.hosts.find(h=>h.id===host)?.alias || host}\nProjeto: ${project}${extra.snapshot?`\nSnapshot: ${extra.snapshot}`:''}${extra.backup?`\nBackup: ${extra.backup}`:''}${extra.profiles ? '\nPerfil: '+extra.profiles.join(', ') : ''}`;
   const snapshotEditor=action==='snapshot'||action==='snapshot-edit';
-  $('#confirm').dataset.actionType=snapshotEditor?'snapshot':action;
+  const snapshotConfirmation=snapshotConfirmations.includes(action);
+  $('#confirm').dataset.actionType=snapshotEditor?'snapshot':snapshotConfirmation?'snapshot-confirm':action;
+  $('#cancel-action').textContent=snapshotConfirmation?'Não':'Cancelar';
   $('#snapshot-description-label').hidden=!snapshotEditor;
   $('#snapshot-description').value=extra.description||'';
   $('#artifact-name').readOnly=action==='snapshot-edit';
-  if(snapshotEditor){
+  if(snapshotEditor||snapshotConfirmation){
     $('#action-title').textContent=action==='snapshot'?`Criar: CT ${target} Snapshot`:`Editar: CT ${target} Snapshot ${extra.snapshot}`;
     $('#close-action').replaceChildren(icon('close-circle'));
   }else $('#close-action').textContent='×';
   if(action==='force-stop')$('#action-description').textContent='O container será interrompido imediatamente, sem aguardar o encerramento dos processos. Dados ainda não gravados podem ser perdidos.';
   if(action==='clone')$('#action-description').textContent='Cria uma cópia no mesmo nó e projeto, inicialmente parada e sem início automático. Revise IPs estáticos e serviços antes de iniciar o clone.';
   if(action==='template')$('#action-description').textContent='Cria uma imagem privada reutilizável em Templates, a partir deste container parado. Revise os dados e credenciais que farão parte do modelo. O container de origem será mantido.';
-  const needsConfirmation=['force-stop','delete','snapshot-restore','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action);
+  if(snapshotConfirmation){
+    $('#action-title').textContent='Confirmar';
+    $('#action-description').replaceChildren(icon('alert'),el('span',{},action==='snapshot-delete'?`Tem certeza que deseja remover a entrada '${extra.snapshot}'?`:`Tem certeza que deseja reverter para o snapshot '${extra.snapshot}'? O estado atual do container será substituído.`));
+  }
+  const needsConfirmation=['force-stop','delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action);
   if(extra.device)$('#action-review').textContent+='\nInterface: '+extra.device;
   if(extra.nic)$('#action-review').textContent+='\nOpções: '+JSON.stringify(extra.nic);
   if(extra.config)$('#action-review').textContent+='\nConfiguração solicitada: '+JSON.stringify(extra.config);
@@ -307,8 +316,8 @@ function openAction(action,target,extra={}) {
   if(action==='clone')$('#artifact-name').value=availableName(target.slice(0,57)+'-clone',new Set(inventory.map(item=>item.name)));
   if(action==='template')$('#artifact-name').value=target.slice(0,54)+'-template';
   if(action==='backup')$('#artifact-name').value='backup-'+new Date().toISOString().replace(/\D/g,'').slice(0,14);
-  $('#submit-action').classList.toggle('danger-primary',['force-stop','delete','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action));
-  $('#confirm').showModal(); (action==='snapshot-edit'?$('#snapshot-description'):needsConfirmation?$('#confirmation'):!$('#name-label').hidden?$('#artifact-name'):$('#submit-action')).focus();
+  $('#submit-action').classList.toggle('danger-primary',['force-stop','delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action));
+  $('#confirm').showModal(); (snapshotConfirmation?$('#cancel-action'):action==='snapshot-edit'?$('#snapshot-description'):needsConfirmation?$('#confirmation'):!$('#name-label').hidden?$('#artifact-name'):$('#submit-action')).focus();
 }
 $('#cancel-action').onclick=()=>$('#confirm').close();
 $('#close-action').onclick=()=>{if(!$('#submit-action').disabled)$('#confirm').close();};
@@ -322,7 +331,7 @@ $('#action-form').onsubmit=async event=>{
     const typedValue=artifact?`${action.host}/${action.project}/${action.target}/${artifact}`:action.target;
     const artifactName=$('#artifact-name').value.trim();
     if(action.action==='snapshot'&&(action.snapshotNames||[]).includes(artifactName))throw new Error('Já existe um snapshot chamado '+artifactName+'. Escolha outro nome.');
-    if(['force-stop','delete','snapshot-restore','snapshot-delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action.action)&&$('#confirmation').value!==typedValue)throw new Error(`Digite ${typedValue} exatamente como exibido.`);
+    if(['force-stop','delete','backup-delete','network-delete','nic-delete','nic-reset'].includes(action.action)&&$('#confirmation').value!==typedValue)throw new Error(`Digite ${typedValue} exatamente como exibido.`);
     if(pendingAction.action==='console'){
       const result=await api('/api/console/start',{...pendingAction,confirmation:$('#confirmation').value});
       consoleId=result.console;$('#confirm').close();pollConsole();return;
@@ -330,7 +339,14 @@ $('#action-form').onsubmit=async event=>{
     const requestAction={...action};delete requestAction.snapshotNames;
     if(['snapshot','snapshot-edit'].includes(action.action))requestAction.description=$('#snapshot-description').value;
     if(action.action==='clone')requestAction.include_snapshots=$('#clone-snapshots').checked;
+    if(snapshotOperations.includes(action.action)||action.action==='snapshot-edit')snapshotLoading($('#action-form'),true);
     const data=await api('/api/action',{...requestAction,confirmation:`${action.host}/${action.project}/${action.target}${artifact?'/'+artifact:''}`,name:artifactName});
+    if(session!==owner)return;
+    if(snapshotOperations.includes(action.action)){
+      $('#confirm').close();
+      startSnapshotTask({...action,snapshot:artifact||artifactName},data.operation,owner);
+      return;
+    }
     trackTask(`${action.host}/${action.project}/${data.operation}`,{...action,id:data.operation,status:'Aguardando confirmação',status_code:100,...(['clone','template'].includes(action.action)?{destination:artifactName}:{}),...(action.action==='create'?{start_after_create:false}:{})});
     $('#submit-action').textContent='Aguardando o Incus…';
     const state=await waitOperation(data.operation,{host:action.host,project:action.project},owner);
@@ -345,7 +361,7 @@ $('#action-form').onsubmit=async event=>{
     if(state.status_code<200){location.hash='#tasks';return;}
     await render();
   } catch(error) { $('#action-error').textContent=error.message; }
-  finally { if(pendingAction===actionOwner){$('#cancel-action').disabled=false;$('#close-action').disabled=false; $('#submit-action').disabled=false;$('#submit-action').textContent=actionSubmitLabel(actionOwner.action);} }
+  finally { snapshotLoading($('#action-form'),false);if(pendingAction===actionOwner){$('#cancel-action').disabled=false;$('#close-action').disabled=false; $('#submit-action').disabled=false;$('#submit-action').textContent=actionSubmitLabel(actionOwner.action);} }
 };
 function logoutLocal(message='') {
   closeEditor();
@@ -355,6 +371,8 @@ function logoutLocal(message='') {
   closeConsole();
   for(const run of creationRuns.values())clearTimeout(run.timer);
   creationRuns.clear();
+  for(const run of snapshotRuns.values()){clearTimeout(run.timer);clearTimeout(run.closeTimer);}
+  snapshotRuns.clear();$('#snapshot-progress').close();
   for(const run of imageDownloads.values())clearTimeout(run.timer);
   imageDownloads.clear();readCache.clear();
   $('#feedback').hidden=true;
@@ -467,8 +485,9 @@ $('#project').onchange=()=>{closeConsole();readCache.clear();project=$('#project
 $('#refresh').onclick=()=>{closeConsole();readCache.clear();render();}; $('#tree-view').onchange=()=>render();
 window.addEventListener('hashchange',()=>{setMenu(false,{restoreFocus:false});closeConsole();if(session)render();});
 document.addEventListener('visibilitychange',()=>{
-  if(document.hidden){clearTimeout(timer);clearTimeout(eventTimer);for(const run of [...creationRuns.values(),...imageDownloads.values()])clearTimeout(run.timer);return;}
+  if(document.hidden){clearTimeout(timer);clearTimeout(eventTimer);for(const run of [...creationRuns.values(),...imageDownloads.values(),...snapshotRuns.values()])clearTimeout(run.timer);return;}
   if(!session)return;
+  resumeSnapshotTasks();
   for(const run of creationRuns.values())if(run.owner===session&&host===run.scope.host&&project===run.scope.project)resumeRun(run,pollCreation);
   for(const run of imageDownloads.values())if(watchingRun(run,'images'))resumeRun(run,pollImageDownload);
   if(!session.low_resource){eventTimer=setTimeout(pollEvents,2000);if(!consoleId&&!menuOpen&&!$('#content form')&&!$('#confirm').open&&!$('#editor-dialog').open&&!$('#create-dialog').open&&!$('#task-detail').open){readCache.clear();render();}else scheduleRefresh();}
@@ -509,6 +528,10 @@ async function render() {
   if(editorContext&&editorContext!==host+'/'+project+'/'+location.hash)closeEditor();
   if(createScope&&(createScope.host!==host||createScope.project!==project))closeCreateWizard();
   clearTimeout(timer); const id=++generation; const scope={host,project}; const r=route(); busy=true;
+  for(const dialog of [$('#snapshot-progress'),$('#task-detail')]){
+    const run=snapshotRuns.get(dialog.dataset.snapshotRun);
+    if(run&&(run.scope.host!==host||run.scope.project!==project))dialog.close();
+  }
   const title=r.page==='overview'?'Datacenter':r.page==='server'?serverInfo.environment?.server_name||host:r.page==='storage'&&r.target?r.target:r.page==='network'&&r.target?r.target:pages.find(p=>p[0]===r.page)?.[2] || (r.page==='instance'?`Container '${r.target}'`:r.page==='create'?'Criar CT':'Página não encontrada');
   $('#title').textContent=title; $('#breadcrumb').textContent=`${host} / ${project} / ${title}`;
   $('#subtitle').textContent=r.page==='instance'?`Gerencie ${r.target} e acompanhe seus recursos.`:r.page==='server'?(nodeTabs.find(([key])=>key===(r.target||'summary'))?.[2]+' do nó')||'Resumo do nó':({overview:'Resumo do datacenter, dos containers e dos recursos disponíveis.',search:'Pesquise containers, imagens, armazenamento, redes, perfis e projetos.',instances:'Encontre, acompanhe e gerencie seus containers.',create:'Escolha uma imagem. Nós cuidamos da configuração.',images:'Sistemas disponíveis para o seu próximo container.',storage:'Acompanhe o espaço disponível para seu laboratório.',networks:'Conexões que mantêm seus containers em rede.',projects:'Organize seus ambientes em projetos separados.'})[r.page]||'Gerencie os recursos do seu laboratório.';
@@ -584,6 +607,7 @@ async function render() {
     $('#updated').textContent='Inventário '+new Date(instancesResult.value.timestamp*1000).toLocaleTimeString('pt-BR');
     if(taskLogScope!==host+'/'+project){taskLogScope=host+'/'+project;taskLogItems=[];refreshTaskLog();}else renderTaskLog();
     if(r.page==='instance'&&r.tab==='console')mountTerminal(r.target,scope,id);
+    resumeSnapshotTasks();
   } catch(error) {
     if(id===generation&&session){$('#content').replaceChildren(errorNode(error),notice('Não foi possível atualizar este escopo. A falha de conexão não indica que os containers estejam parados.'));$('#connection').textContent=error.status===403?'Sem permissão':'Conexão degradada';}
   } finally {
@@ -1155,10 +1179,143 @@ function instanceSummaryView(scope,item,state,stateResultTimestamp){
   ];
   return el('div',{class:'dashboard-view'},el('div',{class:'grid dashboard-top'},statePanel,notes),el('div',{class:'grid instance-charts'},charts),el('small',{},'Os gráficos mantêm amostras coletadas nesta sessão. O Incus não fornece histórico persistente de métricas.'));
 }
+function snapshotLoading(target,show){
+  target.querySelector(':scope > .snapshot-loading-mask')?.remove();
+  target.classList.toggle('snapshot-loading',show);
+  if(show){
+    target.setAttribute('aria-busy','true');
+    target.append(el('div',{class:'snapshot-loading-mask',role:'status'},el('div',{class:'snapshot-loading-message'},el('span',{class:'snapshot-task-spinner','aria-hidden':'true'}),'Aguarde...')));
+  }else target.removeAttribute('aria-busy');
+}
+function snapshotTaskTitle(run){return `CT ${run.target} - ${({'snapshot':'Snapshot','snapshot-delete':'Excluir Snapshot','snapshot-restore':'Reverter Snapshot'})[run.action]||'Snapshot'}`;}
+function snapshotMillis(value){return typeof value==='number'?(value>1e12?value:value*1000):Date.parse(value);}
+function snapshotTaskSuccess(run){return run.status_code===200&&!run.err;}
+function appendSnapshotLog(run,text){
+  text=String(text).slice(0,2000);run.output??=[];
+  if(run.output.at(-1)!==text)run.output.push(text);
+  if(run.output.length>200)run.output.shift();
+}
+function snapshotTaskOutput(run){
+  const lines=[...(run.output||[])];
+  if(snapshotTaskSuccess(run))lines.push('TASK OK');
+  else if(run.status_code>=200)lines.push('TASK ERROR: '+(run.err||run.status||'A operação não foi concluída.'));
+  return lines.join('\n')||'Aguardando a resposta do Incus...';
+}
+function snapshotTaskRecord(run){
+  return {...run.scope,id:run.operation,action:run.action,target:run.target,snapshot:run.snapshot,
+    identity:run.identity,requested_at:run.requested_at,created_at:run.created_at,ended_at:run.ended_at,
+    status:run.status,status_code:run.status_code,err:run.err,metadata:run.metadata,output:[...run.output]};
+}
+function watchingSnapshotTask(run){
+  if(session!==run.owner||host!==run.scope.host||project!==run.scope.project||document.hidden)return false;
+  const r=route();
+  return ($('#snapshot-progress').open&&$('#snapshot-progress').dataset.snapshotRun===run.key)||
+    ($('#task-detail').open&&$('#task-detail').dataset.snapshotRun===run.key)||
+    (r.page==='instance'&&r.target===run.target&&['snapshots','history'].includes(r.tab))||r.page==='tasks';
+}
+function resumeSnapshotTasks(){
+  for(const run of snapshotRuns.values())if(watchingSnapshotTask(run)&&run.status_code<200&&!run.polling&&!run.connectionError){clearTimeout(run.timer);run.timer=setTimeout(()=>pollSnapshotTask(run),0);}
+}
+function retrySnapshotTask(run){run.connectionError=null;appendSnapshotLog(run,'Consultando novamente a operação no Incus.');pollSnapshotTask(run);}
+function updateSnapshotTaskWindows(run){
+  if($('#task-detail').open&&$('#task-detail').dataset.snapshotRun===run.key)openSnapshotTaskViewer(run,false);
+  if($('#snapshot-progress').open&&$('#snapshot-progress').dataset.snapshotRun===run.key)renderSnapshotProgress(run);
+}
+function renderSnapshotProgress(run){
+  const text=run.connectionError?'Conexão interrompida':snapshotTaskSuccess(run)?'Concluído':run.status_code>=200?'Falhou':'running...';
+  const progress=Object.entries(run.metadata||{}).find(([key,value])=>/progress/i.test(key)&&typeof value==='string'&&/\d+(?:\.\d+)?\s*%/.test(value))?.[1];
+  const percent=progress?Math.max(0,Math.min(100,Number(progress.match(/(\d+(?:\.\d+)?)\s*%/)[1]))):null;
+  const bar=el('div',{class:'snapshot-progress-bar',role:'progressbar','aria-label':text,'aria-valuemin':'0','aria-valuemax':'100',...(run.status_code>=200?{'aria-valuenow':snapshotTaskSuccess(run)?'100':'0'}:percent!==null?{'aria-valuenow':String(percent)}:{'aria-valuetext':'Progresso não informado pelo Incus'})},
+    el('span',{class:'snapshot-progress-fill'+(run.status_code<200&&percent===null&&!run.connectionError?' indeterminate':''),style:`width:${snapshotTaskSuccess(run)?100:percent??10}%`}),el('span',{class:'snapshot-progress-text'},text));
+  const footer=el('div',{class:'snapshot-progress-footer'},run.connectionError?el('button',{type:'button',onclick:()=>retrySnapshotTask(run)},'Consultar novamente'):null,
+    el('button',{type:'button',class:'primary','data-action':'snapshot-task-details',onclick:()=>openSnapshotTaskViewer(run)},'Detalhes'));
+  $('#snapshot-progress-title').textContent='Tarefa: '+snapshotTaskTitle(run);
+  $('#snapshot-progress-content').replaceChildren(el('div',{class:'snapshot-progress-body'},bar),footer);
+}
+function openSnapshotTaskViewer(run,show=true){
+  const dialog=$('#task-detail');
+  const previous=dialog.querySelector('.task-view-output'),scrollTop=previous?.scrollTop||0,follow=!previous||previous.scrollHeight-previous.clientHeight-scrollTop<24;
+  const focused=dialog.contains(document.activeElement)?document.activeElement.dataset.snapshotControl:null;
+  if(show){run.viewerTab='output';$('#snapshot-progress').close();}
+  delete dialog.dataset.taskRun;dialog.dataset.snapshotRun=run.key;
+  $('#task-detail-title').textContent='Task viewer: '+snapshotTaskTitle(run);
+  $('#close-task-detail').replaceChildren(icon('close-circle'));
+  const active=run.viewerTab||'output',tabs=el('div',{class:'task-view-tabs',role:'tablist','aria-label':'Detalhes da tarefa de snapshot'});
+  for(const [key,label] of [['output','Saída'],['status','Status']])tabs.append(el('button',{id:'snapshot-task-tab-'+key,type:'button',role:'tab',class:active===key?'active':'','data-snapshot-control':key,'aria-selected':String(active===key),'aria-controls':'snapshot-task-page',tabindex:active===key?'0':'-1',onclick:()=>{run.viewerTab=key;openSnapshotTaskViewer(run,false);}},label));
+  tabs.onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();run.viewerTab=event.key==='Home'?'output':event.key==='End'?'status':active==='output'?'status':'output';openSnapshotTaskViewer(run,false);$('#snapshot-task-tab-'+run.viewerTab).focus();}};
+  const toolbar=el('div',{class:'task-view-toolbar snapshot-task-toolbar'},el('button',{type:'button',disabled:'',title:'Interrupção de tarefas de snapshot indisponível neste painel.'},'Parar'));
+  if(run.connectionError)toolbar.append(el('button',{type:'button','data-snapshot-control':'retry',onclick:()=>retrySnapshotTask(run)},'Consultar novamente'));
+  if(active==='output')toolbar.append(el('button',{type:'button','data-snapshot-control':'download',disabled:run.status_code<200?'':null,onclick:()=>{
+    const url=URL.createObjectURL(new Blob([snapshotTaskOutput(run)+'\n'],{type:'text/plain;charset=utf-8'}));
+    el('a',{href:url,download:`ct-${run.target}-${run.action}-${run.snapshot||run.operation}.log`}).click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }},...iconLabel('download','Download')));
+  const body=el('div',{id:'snapshot-task-page',class:'task-view-body',role:'tabpanel','aria-labelledby':'snapshot-task-tab-'+active});
+  if(active==='output')body.append(el('pre',{class:'task-view-output',tabindex:'0','data-snapshot-control':'log','aria-label':'Saída da tarefa de snapshot','aria-live':'polite'},snapshotTaskOutput(run)));
+  else body.append(el('div',{class:'task-view-status'},kv([
+    ['Status',run.connectionError?'Conexão interrompida':run.status_code<200?'running':snapshotTaskSuccess(run)?'stopped: OK':'stopped: ERROR'],
+    ['Tipo de tarefa',snapshotTaskTitle(run)],['Nome de usuário',run.identity||session?.username],['Nó',run.scope.host],['Projeto',run.scope.project],['Container',run.target],['Snapshot',run.snapshot||'—'],
+    ['Tempo de início',localDate(run.created_at||run.requested_at)],['Término',run.status_code>=200?localDate(run.ended_at):'—'],
+    ['Duração',Math.max(0,Math.round(((snapshotMillis(run.ended_at)||Date.now())-(snapshotMillis(run.created_at||run.requested_at)||Date.now()))/1000))+' s'],
+    ['ID da tarefa',run.operation],['Resultado',run.connectionError||run.err||(snapshotTaskSuccess(run)?'TASK OK':'Aguardando o Incus.')]
+  ])));
+  $('#task-detail-content').replaceChildren(el('div',{class:'task-viewer snapshot-task-viewer'},tabs,toolbar,body));
+  if(show&&!dialog.open)dialog.showModal();
+  const output=dialog.querySelector('.task-view-output');if(output)output.scrollTop=follow?output.scrollHeight:scrollTop;
+  if(!show&&focused)dialog.querySelector(`[data-snapshot-control="${focused}"]`)?.focus({preventScroll:true});
+  if(show){$('#snapshot-task-tab-output').focus();if(run.status_code<200&&!run.connectionError)resumeSnapshotTasks();}
+}
+function startSnapshotTask(action,operation,owner){
+  const scope={host:action.host,project:action.project},key=`${scope.host}/${scope.project}/${operation}`;
+  const run={key,scope,owner,operation,action:action.action,target:action.target,snapshot:action.snapshot,
+    identity:owner.username,requested_at:Date.now()/1000,status_code:100,status:'Running',metadata:{},output:[]};
+  appendSnapshotLog(run,`Container: ${run.target} · Snapshot: ${run.snapshot}`);
+  appendSnapshotLog(run,`Operação ${operation} aceita pelo Incus.`);
+  snapshotRuns.set(key,run);
+  if(snapshotRuns.size>100){const old=[...snapshotRuns].find(([id,item])=>id!==key&&item.status_code>=200);if(old){clearTimeout(old[1].timer);clearTimeout(old[1].closeTimer);snapshotRuns.delete(old[0]);}}
+  trackTask(key,snapshotTaskRecord(run));
+  if(action.action==='snapshot')openSnapshotTaskViewer(run);
+  else{
+    const dialog=$('#snapshot-progress');dialog.dataset.snapshotRun=key;renderSnapshotProgress(run);
+    $('#close-snapshot-progress').replaceChildren(icon('close-circle'));dialog.showModal();
+  }
+  pollSnapshotTask(run);
+  return run;
+}
+async function pollSnapshotTask(run){
+  if(!watchingSnapshotTask(run)||run.status_code>=200||run.polling)return;
+  clearTimeout(run.timer);run.polling=true;
+  try{
+    const state=(await read('operation',run.operation,run.scope)).data;
+    if(session!==run.owner)return;
+    if(state.status_code!==run.status_code)appendSnapshotLog(run,'Incus: '+(state.status||state.status_code));
+    Object.assign(run,state,{connectionError:null});
+    for(const [key,value] of Object.entries(state.metadata||{}))if(/progress/i.test(key)&&typeof value==='string')appendSnapshotLog(run,key+': '+value);
+    if(run.status_code>=200){
+      run.ended_at=state.updated_at||Date.now()/1000;
+      appendSnapshotLog(run,snapshotTaskSuccess(run)?({'snapshot':'Snapshot criado e confirmado pelo Incus.','snapshot-delete':'Remoção do snapshot confirmada pelo Incus.','snapshot-restore':'Reversão confirmada pelo Incus.'})[run.action]:run.err||'A operação terminou com erro.');
+      readCache.clear();
+    }
+    trackTask(run.key,snapshotTaskRecord(run));updateSnapshotTaskWindows(run);
+    if(run.status_code>=200){
+      if($('#snapshot-progress').open&&$('#snapshot-progress').dataset.snapshotRun===run.key){
+        if(snapshotTaskSuccess(run))run.closeTimer=setTimeout(()=>{if($('#snapshot-progress').dataset.snapshotRun===run.key)$('#snapshot-progress').close();},1000);
+        else openSnapshotTaskViewer(run);
+      }
+      if(host===run.scope.host&&project===run.scope.project&&route().page==='instance'&&route().target===run.target&&route().tab==='snapshots')await render();
+    }
+  }catch(error){
+    if(session!==run.owner)return;
+    run.connectionError=error.message;appendSnapshotLog(run,'Não foi possível consultar a operação: '+error.message);updateSnapshotTaskWindows(run);
+  }finally{
+    run.polling=false;
+    if(watchingSnapshotTask(run)&&run.status_code<200&&!run.connectionError)run.timer=setTimeout(()=>pollSnapshotTask(run),run.owner.low_resource?5000:1000);
+  }
+}
+$('#close-snapshot-progress').onclick=()=>$('#snapshot-progress').close();
 async function snapshotsView(scope,item){
   const result=await freshResource('snapshots',item.name,scope),owner=session;
   const snapshots=result.data.slice().sort((a,b)=>(Date.parse(a.created_at)||0)-(Date.parse(b.created_at)||0)||a.name.localeCompare(b.name));
-  let selected=null;
+  let selected=null,requesting=false;
   const allowed=canMutate(item.name),admin=allowed&&session.role==='administrador';
   const feedback=el('p',{class:'snapshot-feedback',role:'alert',hidden:''});
   const buttons={};
@@ -1166,7 +1323,7 @@ async function snapshotsView(scope,item){
   async function activate(action){
     const selection=selected;
     if(action!=='snapshot'&&!selection)return;
-    const trigger=buttons[action];trigger.disabled=true;
+    requesting=true;update();snapshotLoading(toolbar.parentElement,true);
     try{
       const [latest,instance]=await Promise.all([freshResource('snapshots',item.name,scope),freshResource('instance',item.name,scope)]);
       if(!current())return;
@@ -1179,7 +1336,7 @@ async function snapshotsView(scope,item){
       }
       feedback.hidden=true;
     }catch(error){if(current()){feedback.textContent=error.message;feedback.hidden=false;}}
-    finally{update();}
+    finally{requesting=false;snapshotLoading(toolbar.parentElement,false);update();}
   }
   function update(){
     buttons.snapshot.disabled=!allowed||!['Running','Stopped'].includes(item.status);
@@ -1187,6 +1344,7 @@ async function snapshotsView(scope,item){
     buttons['snapshot-restore'].title=item.status!=='Stopped'?'Pare o container antes de reverter para um snapshot.':'Reverter para o snapshot selecionado';
     buttons['snapshot-edit'].disabled=!admin||!selected;
     buttons['snapshot-delete'].disabled=!admin||!selected;
+    if(requesting)for(const button of Object.values(buttons))button.disabled=true;
   }
   const toolbar=el('div',{class:'snapshot-toolbar',role:'toolbar','aria-label':'Ações de snapshots'});
   for(const [action,label] of [['snapshot','Tirar um Snapshot'],['snapshot-restore','Reverter'],['snapshot-edit','Editar'],['snapshot-delete','Remover']]){
@@ -1764,6 +1922,7 @@ function creationTaskViewer(run){
 }
 function openCreationTaskViewer(run,show=true){
   const dialog=$('#task-detail');
+  delete dialog.dataset.snapshotRun;$('#close-task-detail').textContent='×';
   const previous=$('#task-detail .task-view-output'),scrollTop=previous?.scrollTop||0,follow=!previous||previous.scrollHeight-previous.clientHeight-scrollTop<24;
   const focused=$('#task-detail-content').contains(document.activeElement)?document.activeElement.dataset.taskControl:null;
   if(show)run.viewerTab='output';
@@ -1988,6 +2147,7 @@ function mergedTaskLog(){
   return [...merged.values()].reverse();
 }
 function taskDescription(task){
+  if(snapshotOperations.includes(task.action))return snapshotTaskTitle(task);
   if(task.action==='snapshot-edit')return 'Editar snapshot'+(task.target?' · '+task.target:'');
   const labels={start:'Iniciar CT',stop:'Desligar CT','force-stop':'Parar CT',restart:'Reiniciar CT',freeze:'Suspender CT',unfreeze:'Retomar CT',clone:'Clonar CT',template:'Criar modelo',delete:'Remover CT',update:'Editar CT',create:'Criar CT',snapshot:'Criar snapshot',backup:'Criar backup','snapshot-restore':'Restaurar snapshot','snapshot-delete':'Remover snapshot','backup-delete':'Remover backup','network-create':'Criar bridge','network-update':'Editar bridge','network-delete':'Remover bridge','nic-add':'Adicionar interface','nic-update':'Editar interface','nic-delete':'Remover interface','nic-reset':'Restaurar interface do perfil','download-image':'Baixar imagem'};
   if(labels[task.action])return labels[task.action]+(task.target?' · '+task.target:'')+(task.destination?' → '+task.destination:'');
@@ -1998,7 +2158,8 @@ function taskDescription(task){
 function renderTaskLog(){
   if(!session||taskLogMode!=='tasks')return;
   const items=mergedTaskLog();
-  const rows=items.map(task=>()=>[localDate(task.created_at||task.timestamp||task.started_at||task.requested_at),task.status_code>=200?localDate(task.updated_at||task.ended_at||task.finished_at):'—',host,task.identity||session.username,taskDescription(task),status(task.status||String(task.status_code)),el('button',{type:'button',class:'task-details-link',onclick:()=>openTaskDetail(task)},'Detalhes')]);
+  const running=()=>el('span',{class:'snapshot-task-spinner',role:'status','aria-label':'Em execução'});
+  const rows=items.map(task=>()=>[localDate(task.created_at||task.timestamp||task.started_at||task.requested_at),task.status_code>=200?localDate(task.updated_at||task.ended_at||task.finished_at):snapshotOperations.includes(task.action)?running():'—',host,task.identity||session.username,taskDescription(task),snapshotOperations.includes(task.action)?task.status_code<200?running():snapshotTaskSuccess(task)?'OK':status('Erro'):status(task.status||String(task.status_code)),el('button',{type:'button',class:'task-details-link',onclick:()=>openTaskDetail(task)},'Detalhes')]);
   const content=table(['TEMPO DE INÍCIO','TÉRMINO','Nó','NOME DE USUÁRIO','DESCRIÇÃO','STATUS',''],rows);
   content.ondblclick=event=>{if(!event.target.closest('button'))event.target.closest('tbody tr')?.querySelector('.task-details-link')?.click();};
   $('#task-log-content').replaceChildren(content);$('#task-summary').textContent=items.length+' tarefas · '+host+' / '+project;
@@ -2029,6 +2190,13 @@ function taskDetailView(task){
 }
 async function openTaskDetail(task){
   const dialog=$('#task-detail');
+  if(snapshotOperations.includes(task.action)){
+    const scope={host:task.host||host,project:task.project||project},key=`${scope.host}/${scope.project}/${task.id}`;
+    let run=snapshotRuns.get(key);
+    if(!run){run={...task,key,scope,owner:session,operation:task.id,requested_at:task.requested_at||Date.now()/1000,ended_at:task.ended_at||(task.status_code>=200?task.updated_at:undefined),status_code:task.status_code??100,metadata:task.metadata||{},output:task.output||[]};snapshotRuns.set(key,run);}
+    openSnapshotTaskViewer(run);return;
+  }
+  delete dialog.dataset.snapshotRun;$('#close-task-detail').textContent='×';
   if(task.action==='create'||/^CT .+ - Criar$/.test(task.description||'')){
     const run=[...creationRuns.values()].find(item=>item.operation===task.id)||{key:'task-'+task.id,owner:session,operation:task.id,scope:{host:task.host||host,project:task.project||project},target:task.target||'container',status_code:task.status_code??100,start_after_create:task.start_after_create,metadata:task.metadata||{},phase:task.phase,err:task.err||'',started_at:task.created_at||task.timestamp||Date.now(),updated_at:Date.now(),output:[]};
     appendCreationLog(run,run.err|| (run.status_code>=200?'Tarefa '+creationTaskStatus(run)+'.':'Tarefa enviada ao Incus.'));

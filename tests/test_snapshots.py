@@ -62,6 +62,16 @@ class SnapshotContracts(unittest.TestCase):
         self.assertEqual(self.read()[0]['description'], 'Persistido')
         self.assertEqual(self.service.snapshot_metadata.data['pending'], {})
 
+    def test_task_details_and_task_list_keep_snapshot_context(self):
+        operation = self.act('snapshot', name='before')['operation']
+        task = self.read('operation', operation)
+        self.assertEqual((task['action'], task['target'], task['snapshot']), ('snapshot', 'lab-db', 'before'))
+        tasks = self.read('operations', None)
+        listed = next(item for group in tasks.values() for item in group if item['id'] == operation)
+        self.assertEqual(listed['action'], 'snapshot')
+        self.assertEqual(listed['identity'], self.user['username'])
+        self.assertEqual((listed['host'], listed['project']), ('demo', 'laboratorio'))
+
     def test_external_deletion_does_not_leave_snapshot_page_blocked(self):
         self.act('snapshot', name='before')
         self.client.instances['laboratorio', 'lab-db']['snapshots'].clear()
