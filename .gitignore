@@ -4,6 +4,7 @@ __pycache__/
 config.local.json
 *.users.json
 users.json
+snapshots.json
 *.pem
 *.key
 *.crt

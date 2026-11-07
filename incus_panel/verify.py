@@ -51,7 +51,41 @@ def wait(service, user, host, project, operation, timeout=1800):
     raise TimeoutError('Operação Incus ainda não concluída; confira o host antes de repetir.')
 
 
-def verify(config, container=False):
+def verify_snapshots(service, user, host, project, target):
+    """Only called for the disposable panel-check container created by verify()."""
+    confirmation = f'{host}/{project}/{target}'
+    def action(action, **body):
+        artifact = body.get('snapshot')
+        operation = service.mutate(user, host, project, action, target, {
+            'confirmation': confirmation + ('/' + artifact if artifact else ''), **body})
+        wait(service, user, host, project, operation['operation'])
+    def exec_check(command):
+        return subprocess.run(['incus', 'exec', 'local:' + target, '--project', project,
+                               '--', '/bin/sh', '-c', command], check=True, capture_output=True,
+                              text=True, timeout=30).stdout.strip()
+    exec_check('printf before > /root/panel-snapshot-check')
+    action('snapshot', name='before', description='Antes da alteração')
+    item = next((item for item in service.read(user, host, project, 'snapshots', target) if item['name'] == 'before'), None)
+    if not item or item.get('description') != 'Antes da alteração':
+        raise RuntimeError('Snapshot ou descrição não confirmado pelo painel.')
+    action('snapshot-edit', snapshot='before', description='Ponto de recuperação', revision=item['_revision'])
+    if service.read(user, host, project, 'snapshots', target)[0].get('description') != 'Ponto de recuperação':
+        raise RuntimeError('A edição da descrição não foi confirmada.')
+    exec_check('printf after > /root/panel-snapshot-check')
+    action('stop')
+    action('snapshot-restore', snapshot='before')
+    action('start')
+    if exec_check('cat /root/panel-snapshot-check') != 'before':
+        raise RuntimeError('A reversão não recuperou o conteúdo do snapshot.')
+    action('stop')
+    action('snapshot-delete', snapshot='before')
+    if service.read(user, host, project, 'snapshots', target):
+        raise RuntimeError('O snapshot de teste não foi removido.')
+    action('start')
+    print('Snapshot real: criação, descrição, edição, reversão do conteúdo e remoção confirmadas.', flush=True)
+
+
+def verify(config, container=False, snapshots=False):
     if config.get('demo') or any(h.get('transport') != 'unix' for h in config['hosts']):
         raise ValueError('Verificação exige Incus real pelo socket local.')
     service = Service(config)
@@ -77,6 +111,8 @@ def verify(config, container=False):
         wait(service, user, host, project, result['operation'])
         if service.read(user, host, project, 'instance', target)['status'] != 'Running':
             raise RuntimeError('Container não iniciou.')
+        if snapshots:
+            verify_snapshots(service, user, host, project, target)
         for action in ('restart', 'stop', 'delete'):
             operation = service.mutate(user, host, project, action, target, confirmation)
             wait(service, user, host, project, operation['operation'])
@@ -99,13 +135,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True)
     parser.add_argument('--container', action='store_true')
+    parser.add_argument('--snapshots', action='store_true', help='Testa snapshots e reversão de conteúdo em um container descartável novo.')
     args = parser.parse_args()
-    verify(json.loads(Path(args.config).read_text(encoding='utf-8')), args.container)
+    verify(json.loads(Path(args.config).read_text(encoding='utf-8')), args.container or args.snapshots, args.snapshots)
 
 
 if __name__ == '__main__':
     try:
         main()
-    except (RuntimeError, OSError, ValueError, PanelError) as exc:
+    except (RuntimeError, OSError, ValueError, PanelError, subprocess.SubprocessError) as exc:
         print(f'Verificação Incus falhou: {exc}', file=sys.stderr)
         sys.exit(1)

@@ -358,6 +358,11 @@ class Demo:
                         raise PanelError(404, "Snapshot não encontrado.")
                     if snapshot is not None:
                         instance["restored_to"] = snapshot
+                        saved = next(item for item in instance['snapshots'] if item['name'].rsplit('/', 1)[-1] == snapshot)
+                        for field in ('config', 'devices', 'profiles', 'description', 'ephemeral'):
+                            if field in saved:
+                                instance[field] = copy.deepcopy(saved[field])
+                        instance['expanded_config'] = copy.deepcopy(saved.get('expanded_config', instance['config']))
                     instance["config"] = copy.deepcopy(body.get("config", instance.get("config", {})))
                     instance["devices"] = copy.deepcopy(body.get("devices", instance.get("devices", {})))
                     instance['expanded_devices'] = {**{'root': {'type': 'disk', 'path': '/', 'pool': 'lab'}, 'eth0': {'type': 'nic', 'network': 'labbr0'}}, **copy.deepcopy(instance['devices'])}
@@ -371,7 +376,8 @@ class Demo:
                         raise PanelError(404, "Snapshot ou backup não encontrado.")
                     collection.remove(match)
                 elif parts[-1] in ("snapshots", "backups"):
-                    instance[parts[-1]].append({"name": parts[2] + "/" + body["name"], "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+                    saved = {field: copy.deepcopy(instance[field]) for field in ('config', 'expanded_config', 'devices', 'profiles', 'description', 'ephemeral') if field in instance} if parts[-1] == 'snapshots' else {}
+                    instance[parts[-1]].append({**saved, "name": parts[2] + "/" + body["name"], "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
                 else:
                     raise PanelError(501, "Operação não disponível na demonstração.")
             else:
@@ -387,7 +393,7 @@ class Demo:
 
 
 class Service:
-    def __init__(self, config, clients=None):
+    def __init__(self, config, clients=None, snapshot_metadata_path=None):
         self.config = config
         self.low_resource = config.get('low_resource', True)
         self.creation_lock = threading.Lock()
@@ -407,6 +413,8 @@ class Service:
         self.audit = []
         self.launches = {}
         self.lock = threading.RLock()
+        from .snapshots import SnapshotMetadata
+        self.snapshot_metadata = SnapshotMetadata(snapshot_metadata_path)
 
     def context(self, user, host, project):
         if host not in self.hosts or project not in user.get("scopes", {}).get(host, []):
@@ -471,13 +479,18 @@ class Service:
         if resource in ("resources", "host-summary", "pools", "pool-resources", "volumes", "network-leases") and not user.get("host_metrics", False):
             raise PanelError(403, "Métricas globais não autorizadas para esta identidade.")
         data = client.request("GET", path, project)["metadata"]
+        if resource == 'operation':
+            self.snapshot_metadata.settle(client, host, project, target, data)
         if resource in ('instances', 'instance-list'):
             data = [item for item in data if item.get('type') == 'container']
         if resource == 'instance' and data.get('type') != 'container':
             raise PanelError(403, 'Somente containers são permitidos neste painel.')
-        if resource in ('snapshots', 'backups'):
-            data = [({**item, 'name': str(item.get('name', '')).rsplit('/', 1)[-1]}
-                     if isinstance(item, dict) else str(item).rsplit('/', 1)[-1]) for item in data]
+        if resource == 'snapshots':
+            self.snapshot_metadata.reconcile(client, host, project, target, data)
+            data = self.snapshot_metadata.annotate(host, project, target, data)
+        if resource == 'backups':
+            from .snapshots import artifact_name
+            data = [({**item, 'name': artifact_name(item)} if isinstance(item, dict) else artifact_name(item)) for item in data]
         if resource == 'instance-list':
             # Lists need identity/state and the effective deletion guard, never full configs/devices.
             data = [{**{k: item[k] for k in ('name', 'type', 'status', 'architecture') if k in item},
@@ -824,7 +837,7 @@ class Service:
         if not self.can_manage(user, host, project, target):
             raise PanelError(403, "Alvo fora da lista explícita de containers de teste.")
         expected = f"{host}/{project}/{target}"
-        if action in ("snapshot-restore", "snapshot-delete"):
+        if action in ("snapshot-restore", "snapshot-delete", "snapshot-edit"):
             expected += "/" + name(body.get("snapshot"))
         elif action == "backup-delete":
             expected += "/" + name(body.get("backup"))
@@ -924,34 +937,55 @@ class Service:
             elif action in ("snapshot", "backup"):
                 artifact_name = name(body.get("name"))
                 if action == 'snapshot':
+                    description = body.get('description', '')
+                    if not isinstance(description, str) or len(description) > 1024:
+                        raise PanelError(400, 'A descrição deve ter no máximo 1024 caracteres.')
                     current = client.request('GET', path + '/snapshots', project)['metadata']
-                    known = {str(item.get('name', '') if isinstance(item, dict) else item).rsplit('/', 1)[-1] for item in current}
+                    from .snapshots import artifact_name as snapshot_name
+                    known = {snapshot_name(item) for item in current}
                     if artifact_name in known:
                         raise PanelError(409, f'Já existe um snapshot chamado {artifact_name} neste container. Escolha outro nome.')
+                    # Fail before requesting a disk operation if annotations cannot be persisted.
+                    self.snapshot_metadata.update(lambda data: None)
                 path += "/snapshots" if action == "snapshot" else "/backups"
                 payload = {"name": artifact_name}
                 if action == "snapshot":
                     payload["stateful"] = False
-            elif action in ("snapshot-restore", "snapshot-delete", "backup-delete"):
+            elif action in ("snapshot-restore", "snapshot-delete", "snapshot-edit", "backup-delete"):
                 if user["role"] != "administrador":
                     raise PanelError(403, "Gerenciar ou restaurar snapshots e backups exige administrador.")
                 artifact = name(body.get("snapshot" if action.startswith("snapshot-") else "backup"))
                 collection = "snapshots" if action.startswith("snapshot-") else "backups"
                 current = client.request("GET", path + "/" + collection, project)["metadata"]
-                known = {str(item.get("name", "") if isinstance(item, dict) else item).rsplit("/", 1)[-1] for item in current}
+                from .snapshots import artifact_name as snapshot_name
+                known = {snapshot_name(item) for item in current}
                 if artifact not in known:
                     raise PanelError(404, "Snapshot ou backup não encontrado neste container.")
-                if action == "snapshot-restore":
+                if action == 'snapshot-edit':
+                    description = body.get('description', '')
+                    if not isinstance(description, str) or len(description) > 1024:
+                        raise PanelError(400, 'A descrição deve ter no máximo 1024 caracteres.')
+                    self.snapshot_metadata.reconcile(client, host, project, target, current)
+                    item = next(item for item in current if snapshot_name(item) == artifact)
+                    if not isinstance(item, dict) or not item.get('created_at'):
+                        raise PanelError(409, 'O Incus não retornou os detalhes do snapshot. Atualize antes de editar.')
+                    self.snapshot_metadata.edit(host, project, target, item, description, body.get('revision'))
+                    operation_id = self.completed_operation(user, host, project, action, target)
+                    with self.lock:
+                        self.audit.append(dict(identity=user['username'], host=host, project=project,
+                            target=target, action=action, timestamp=time.time(), result='confirmada', operation=operation_id))
+                        self.audit[:] = self.audit[-200:]
+                    return {'operation': operation_id}
+                elif action == "snapshot-restore":
                     if instance.get("status") != "Stopped":
                         raise PanelError(409, "Pare o container antes de restaurar um snapshot.")
                     method = "PUT"
-                    payload = {"architecture": instance.get("architecture", ""), "config": instance.get("config", {}),
-                               "devices": instance.get("devices", {}), "ephemeral": instance.get("ephemeral", False),
-                               "profiles": instance.get("profiles", []), "restore": artifact,
-                               "stateful": False, "description": instance.get("description", "")}
+                    payload = {"restore": artifact, "stateful": False}
                 else:
                     path += "/" + collection + "/" + artifact
                     method = "DELETE"
+                    if action == 'snapshot-delete':
+                        self.snapshot_metadata.update(lambda data: None)
             elif action == "delete":
                 if user["role"] != "administrador" or instance["status"] != "Stopped" or instance.get("expanded_config", {}).get("security.protection.delete", instance.get("config", {}).get("security.protection.delete")) == "true":
                     raise PanelError(403, "Exclusão exige administrador, container parado e sem proteção.")
@@ -999,6 +1033,13 @@ class Service:
                 raise PanelError(502, "Incus não retornou uma operação rastreável; verifique o estado antes de repetir.")
             record["result"] = "aceita; aguardando Incus"
             record["operation"] = operation.rsplit("/", 1)[-1]
+            if action in ('snapshot', 'snapshot-delete'):
+                try:
+                    self.snapshot_metadata.register(record['operation'], host, project, target, action,
+                        artifact_name if action == 'snapshot' else artifact, body.get('description', ''))
+                except PanelError as exc:
+                    raise PanelError(503, 'O Incus aceitou a operação ' + record['operation'] +
+                        ', mas os metadados não puderam ser salvos. Consulte Tarefas e atualize a lista antes de repetir.') from exc
             return {"operation": record["operation"]}
         except PanelError:
             record["result"] = "falha ou resultado incerto; consultar Incus"

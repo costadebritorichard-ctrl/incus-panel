@@ -46,7 +46,7 @@ class Application:
         self.validate(config)
         self.config = config
         self.config_path = Path(config_path).resolve() if config_path else None
-        self.service = Service(config, clients)
+        self.service = Service(config, clients, self.config_path.with_name('snapshots.json') if self.config_path else None)
         self.sessions = {}
         self.consoles = {}
         self.events = {}

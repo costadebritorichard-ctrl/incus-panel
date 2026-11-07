@@ -56,8 +56,9 @@ try{
   }
   await navigate('instance/lab-db/summary');await action('Iniciar');await action('Reiniciar');await action('Desligar');
   assert.equal((await evaluate("read('instance','lab-db').then(r=>r.data)")).status,'Stopped');
-  await navigate('instance/lab-db/snapshots');await action('Criar',{name:'review-snapshot'});assert.match(await evaluate("document.querySelector('#content').textContent"),/review-snapshot/);
-  await action('Restaurar',{confirmation:'demo/laboratorio/lab-db/review-snapshot'});await action('Excluir',{confirmation:'demo/laboratorio/lab-db/review-snapshot'});
+  await navigate('instance/lab-db/snapshots');await action('Tirar um Snapshot',{name:'review-snapshot'});assert.match(await evaluate("document.querySelector('#content').textContent"),/review-snapshot/);
+  await click('[data-snapshot="review-snapshot"]');await action('Reverter',{confirmation:'demo/laboratorio/lab-db/review-snapshot'});
+  await click('[data-snapshot="review-snapshot"]');await action('Remover',{confirmation:'demo/laboratorio/lab-db/review-snapshot'});
   assert.equal((await evaluate("read('snapshots','lab-db').then(r=>r.data)")).length,0);
   await navigate('instance/lab-db/backups');await action('Criar',{name:'review-backup'});await navigate('backups');assert.match(await evaluate("document.querySelector('#content').textContent"),/review-backup/);
   await navigate('instance/lab-db/backups');await action('Excluir',{confirmation:'demo/laboratorio/lab-db/review-backup'});

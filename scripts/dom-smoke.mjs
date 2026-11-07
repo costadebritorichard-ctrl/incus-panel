@@ -86,10 +86,12 @@ try{
   d.querySelector('#confirmation').value='smoke-br';d.querySelector('#action-form').requestSubmit();await wait(()=>!d.querySelector('#confirm').open&&w.location.hash==='#networks');
   await navigate('instance/lab-web/snapshots');
   const actionRequests=()=>requests.filter(path=>path==='/api/action').length,beforeSnapshotAction=actionRequests();
-  [...d.querySelectorAll('#content .action-button')].find(button=>button.textContent.trim()==='Criar').click();
+  d.querySelector('[data-action=snapshot]').click();await wait(()=>d.querySelector('#confirm').open);
+  d.querySelector('#artifact-name').value='snapshot';
   d.querySelector('#submit-action').click();d.querySelector('#submit-action').click();
   await wait(()=>!d.querySelector('#confirm').open);
   assert.equal(actionRequests(),beforeSnapshotAction+1,'Cliques repetidos confirmam somente uma criação de snapshot.');
+  await wait(()=>!!d.querySelector('.snapshot-table [data-snapshot="snapshot"]'));
   assert.match(d.querySelector('#content').textContent,/snapshot/);
   const detailReads=()=>requests.filter(path=>path.includes('resource=instance&target=lab-web')).length;
   await navigate('instance/lab-web/options');const cachedDetailReads=detailReads();

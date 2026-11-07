@@ -212,6 +212,28 @@ progress{width:100%;height:12px;accent-color:#1788bd}.usage-meter{height:8px;bor
 .nic-editor-feedback:empty{display:none}.nic-editor-feedback{padding:0 10px 9px;color:var(--danger);font-size:11px;line-height:1.5}
 @media(max-width:650px){.nic-editor-columns{grid-template-columns:minmax(0,1fr);gap:12px}.nic-field{grid-template-columns:90px minmax(0,1fr)}.nic-editor-fields{padding:10px}.nic-editor-footer{gap:5px}}
 
+/* Snapshots: PVE toolbar, current-state row and compact name/description editor. */
+#main-content:has(.snapshot-workspace){padding:0;scrollbar-gutter:auto}
+#content:has(>.snapshot-workspace),.snapshot-workspace{height:100%}
+.snapshot-grid{min-height:100%;background:var(--panel)}
+.snapshot-toolbar{display:flex;align-items:center;gap:8px;min-height:36px;padding:5px 8px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.snapshot-toolbar button{padding:3px 8px}
+.snapshot-grid .table-wrap{border:0}.snapshot-table{width:100%;table-layout:fixed}
+.snapshot-table th:first-child{width:200px}.snapshot-table th:nth-child(2){width:150px}
+.snapshot-table th{height:30px}.snapshot-table td{height:24px;padding:3px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.snapshot-table tbody tr{cursor:pointer}.snapshot-name{display:flex;align-items:center;gap:7px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.snapshot-description{white-space:pre;overflow:hidden;text-overflow:ellipsis}.snapshot-current-description{color:var(--link)}
+.snapshot-feedback{padding:10px;color:var(--danger)}
+#confirm[data-action-type="snapshot"]{width:min(450px,calc(100vw - 24px))}
+#confirm[data-action-type="snapshot"] #action-description,#confirm[data-action-type="snapshot"] #action-review,#confirm[data-action-type="snapshot"] #cancel-action{display:none}
+#confirm[data-action-type="snapshot"] #name-label,#confirm[data-action-type="snapshot"] #snapshot-description-label{display:grid;grid-template-columns:100px minmax(0,1fr);gap:6px;align-items:start;margin:10px}
+#confirm[data-action-type="snapshot"] label>span{padding-top:4px;font-weight:600}
+#confirm[data-action-type="snapshot"] textarea{height:60px;min-height:60px;resize:none}
+#confirm[data-action-type="snapshot"] .dialog-actions{margin-top:14px}
+#confirm[data-action-type="snapshot"] #action-error:empty{display:none}
+#confirm[data-action-type="snapshot"] .window-title button{color:#39a7e4}
+@media(max-width:650px){.snapshot-table th:first-child{width:135px}.snapshot-table th:nth-child(2){width:140px}.snapshot-table{min-width:440px}#confirm[data-action-type="snapshot"] #name-label,#confirm[data-action-type="snapshot"] #snapshot-description-label{grid-template-columns:80px minmax(0,1fr)}}
+
 /* Modal windows, wizards and task viewers. */
 dialog{padding:0;width:min(620px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;border:1px solid var(--border);border-radius:3px;color:var(--text);background:var(--panel);box-shadow:0 6px 20px #0009}
 dialog::backdrop{background:rgba(0,0,0,.25)}

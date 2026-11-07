@@ -1,5 +1,12 @@
 # Changelog
 
+## Snapshots no padrão Proxmox — 2026-11-07
+
+- Barra Tirar um Snapshot/Reverter/Editar/Remover, colunas Nome/Data/Status/Descrição e linha AGORA; criação em janela compacta com nome e descrição.
+- Lista e estado consultados novamente ao abrir a aba e antes das ações, corrigindo leituras antigas no modo leve; normalização de URLs com projeto na detecção de nomes duplicados.
+- Descrições persistentes no diretório de estado do painel, revisão contra edição concorrente e confirmação da criação/remoção pela operação e inventário Incus.
+- Testes de backend e DOM para o ciclo de snapshots; verificador de reversão de conteúdo em Incus real adicionado à CI. Esse ciclo real permanece sem execução nesta sessão Windows.
+
 ## Rede de containers no padrão Proxmox — 2026-11-07
 
 - Tabela única, colunas da referência, ações Adicionar/Remover/Editar no topo e abertura do editor ao clicar na linha; removidos os botões por linha e a tabela duplicada.
