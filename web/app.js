@@ -8,7 +8,7 @@ function applyTheme(value) {
   try { localStorage.setItem('incus-theme', theme); } catch {}
   const button = document.querySelector('#theme-toggle');
   if (button) {
-    button.textContent = theme === 'dark' ? 'Tema claro' : 'Tema escuro';
+    button.querySelector('.button-label').textContent = theme === 'dark' ? 'Tema claro' : 'Tema escuro';
     button.setAttribute('aria-pressed', String(theme === 'dark'));
     button.setAttribute('aria-label', theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro');
     button.title = theme === 'dark' ? 'Tema claro' : 'Tema escuro';
@@ -51,13 +51,21 @@ Object.assign(iconPaths,{
   file:['M5 3h10l4 4v14H5Z','M15 3v5h4','M8 12h8','M8 16h8']
 });
 const navIcons={'⌕':'search','◫':'summary','>_':'terminal','▤':'storage','⌘':'network','☷':'settings','⚙':'settings','◷':'history','▣':'box','♙':'users','✎':'edit','▦':'summary','◉':'network','◇':'box','▱':'file','△':'alert'};
+const solidIconPaths={
+  book:['M6 2h15l-4 17H5a2 2 0 0 0 0 4h13v-2H5l4-17H7L3 20a3 3 0 0 1 0-3L6 2Zm4 4-.4 2h8l.4-2h-8Zm-1 4-.4 2h8l.4-2H9Z'],
+  cube:['M12 2 2 7v10l10 5 10-5V7L12 2Zm0 2.2L18.8 7 12 10.8 5.2 7 12 4.2ZM4 8.7l7 3.9v6.9l-7-3.5V8.7Zm9 10.8v-6.9l7-3.9V16l-7 3.5Z'],
+  user:['M12 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm-4 11a6 6 0 0 0-5 6v3h18v-3a6 6 0 0 0-5-6l-4 2-4-2Z'],
+  paintbrush:['M20 2c1.5-1 3 1 2 2L12 16l-4-4L20 2ZM7 13c-4 0-2 5-6 6 6 4 11 0 9-4l-3-2Z']
+};
 function icon(name) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
-  for(const [key,value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round',class:'icon','aria-hidden':'true',focusable:'false'}))svg.setAttribute(key,value);
-  for(const d of iconPaths[name]||iconPaths.box){const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',d);svg.append(path);}
+  const solid=solidIconPaths[name];
+  for(const [key,value] of Object.entries({viewBox:'0 0 24 24',fill:solid?'currentColor':'none',stroke:solid?'none':'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round',class:'icon','aria-hidden':'true',focusable:'false'}))svg.setAttribute(key,value);
+  for(const d of solid||iconPaths[name]||iconPaths.box){const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',d);svg.append(path);}
   return svg;
 }
 function iconLabel(name,label){return [icon(name),el('span',{},label)];}
+document.querySelectorAll('[data-header-icon]').forEach(node=>node.prepend(icon(node.dataset.headerIcon)));
 function notify(message){$('#feedback').textContent=message;$('#feedback').hidden=false;}
 async function waitOperation(operation,scope,owner){
   let state;
@@ -1327,7 +1335,7 @@ async function pollImageDownload(run){
 }
 let lastWorkspaceHash='#overview',createRequest=0,createScope;
 function canCreate(){return session&&!session.read_only&&session.role!=='observador'&&(session.manage_all_instances||(session.mutable_instances?.[host]?.[project]||[]).length>0);}
-const createTrigger=el('button',{id:'create-ct',class:'primary',type:'button',onclick:()=>openCreateWizard()},...iconLabel('plus','Criar CT'));
+const createTrigger=el('button',{id:'create-ct',class:'primary',type:'button',onclick:()=>openCreateWizard()},...iconLabel('cube','Criar CT'));
 $('#create-ct').replaceWith(createTrigger);
 document.addEventListener('click',event=>{
   if(event.target.closest('a[href="#create"]')){event.preventDefault();openCreateWizard();}

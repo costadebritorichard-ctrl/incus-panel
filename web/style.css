@@ -49,12 +49,30 @@ pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 Consolas,
 .logo{display:inline-grid;place-items:center;width:28px;height:28px;background:#0877b9;color:#fff;border-radius:2px;font:bold 26px Georgia,serif}
 .header-label{color:var(--muted);white-space:nowrap;font-size:14px}
 #global-search{flex:1;min-width:80px;max-width:480px;margin:0 auto}
-.header-right{display:flex;align-items:center;gap:5px;margin-left:auto;flex-shrink:0}#mode{font-size:9px}
-.user-menu{position:relative}.user-menu>summary{list-style:none;gap:6px}.user-menu>summary::-webkit-details-marker{display:none}
-#identity{max-width:130px;overflow:hidden;text-overflow:ellipsis}
-.user-menu-content{position:absolute;top:calc(100% + 4px);right:0;z-index:110;display:grid;width:210px;padding:4px;border:1px solid var(--border);background:var(--panel);box-shadow:0 3px 9px #0006}
-.user-menu-content>span{padding:6px;border-bottom:1px solid var(--border)}
-.user-menu-content>button{border:0;justify-content:flex-start;background:transparent;border-radius:0;padding:6px}.user-menu-content>button:hover{background:var(--row-hover)}
+.header-right{display:flex;align-items:center;gap:5px;margin-left:auto;min-width:0;line-height:16px}
+/* PVE header controls: compact, aligned icons and distinct neutral/primary surfaces. */
+.header-right>.button-link,.header-right>button,.user-menu>summary{height:24px;min-height:24px;padding:3px 6px;gap:5px;border-color:#b5b5b5;border-radius:3px;font-size:12px;line-height:16px}
+.header-right>.button-link,.header-right>button{flex-shrink:0}
+.header-right .icon{width:14px;height:14px;flex-basis:14px}
+.header-right .documentation-link{background:#ddd;border-color:#b5b5b5;color:#111;font-weight:400}
+.header-right .documentation-link:hover{background:#e9e9e9;border-color:#999}
+.header-right .primary{background:#0069a6;border-color:#0069a6;color:#fff;font-weight:600}
+.header-right .primary:hover{background:#007abf;border-color:#007abf}
+.header-right .primary:active{background:#00598d;border-color:#00598d}
+.header-right>#mode{padding:0 4px;border:0;background:transparent;font-size:10px;line-height:16px}
+.user-menu{position:relative;min-width:0}.user-menu>summary{max-width:100%;list-style:none;font-weight:600}.user-menu>summary::-webkit-details-marker{display:none}
+.menu-chevron{width:6px;height:6px;flex:0 0 6px;margin:0 3px 3px 5px;border-right:1px solid currentColor;border-bottom:1px solid currentColor;transform:rotate(45deg);opacity:.8}
+.user-menu[open]>summary{background:var(--button-hover);border-color:var(--focus)}
+#identity{min-width:0;max-width:130px;overflow:hidden;text-overflow:ellipsis}
+.user-menu-content{position:absolute;top:calc(100% + 2px);right:0;z-index:110;display:grid;width:210px;max-width:calc(100vw - 10px);padding:3px;border:1px solid var(--border);border-radius:2px;background:var(--panel);box-shadow:0 2px 6px #0006}
+.user-menu-content>span{padding:6px 8px;margin-bottom:3px;border-bottom:1px solid var(--border);font-size:11px}
+.user-menu-content>button{min-height:28px;border:1px solid transparent;justify-content:flex-start;gap:8px;background:transparent;border-radius:0;padding:4px 7px}.user-menu-content>button:hover{background:var(--row-hover);border-color:var(--border)}
+html[data-theme="dark"] .header-right .documentation-link{background:#aaa;border-color:#aaa;color:#111}
+html[data-theme="dark"] .header-right .documentation-link:hover{background:#bcbcbc;border-color:#bcbcbc}
+html[data-theme="dark"] .user-menu>summary{background:#414949;border-color:#777}
+html[data-theme="dark"] .user-menu>summary:hover,html[data-theme="dark"] .user-menu[open]>summary{background:#505a5a;border-color:#999}
+html[data-theme="dark"] .user-menu-content{background:#2b2b2b;border-color:#555}
+html[data-theme="dark"] .user-menu-content>button:hover{background:#414949;border-color:#666}
 #sidebar{position:relative;grid-area:tree;overflow:auto;background:var(--panel);border-right:5px solid var(--header)}
 .tree-splitter{position:absolute;top:0;right:0;bottom:0;width:5px;cursor:col-resize;touch-action:none;z-index:5}
 .tree-heading{display:flex;gap:5px;padding:0 0 5px 2px}.tree-heading select{width:100%;min-height:24px;font-weight:600}
