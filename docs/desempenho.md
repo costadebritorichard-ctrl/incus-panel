@@ -24,9 +24,31 @@ mostra até 25 containers. A busca considera todos os itens do inventário.
 Configurações JSON nas listas são formatadas somente quando abertas.
 
 Criação e download continuam no Incus ao sair da tela ou ocultar a aba; a consulta
-de progresso pausa e retoma ao voltar à tela ou à aba. O console usa intervalos de 1–3 segundos no
-modo leve, com 5 segundos na aba oculta. Sombras, desfoques, transições e rotação
+de progresso pausa e retoma ao voltar à tela ou à aba. O console usa uma conexão
+WebSocket contínua para teclado, redimensionamento e saída. Quando a conexão é
+bloqueada pelo proxy, mantém compatibilidade HTTP com consultas a cada 100–400 ms
+e 2 segundos na aba oculta. Sombras, desfoques, transições e rotação
 contínua do indicador de carregamento são desativados.
+
+O campo **Comando** edita a linha localmente e só a envia ao pressionar Enter
+ou Enviar, sem requisições durante a digitação. O terminal conserva teclado
+interativo para Tab, Ctrl+C, senhas e programas de tela cheia. Não há histórico
+de comandos salvo pelo campo no navegador. O caminho contínuo elimina as
+requisições HTTP por lote de teclado e as consultas periódicas de saída.
+
+A saída tem controle de fluxo: no máximo quatro blocos aguardam a confirmação
+de processamento pelo xterm, e o buffer do PTY tem 65.536 caracteres. O produtor
+aguarda espaço em vez de descartar saída antiga. A conexão revalida sessão e
+permissões, verifica Origin/CSRF, responde a ping/pong e não ocupa os slots
+reservados para outras requisições HTTP. Referências: [fluxo do xterm.js](https://xtermjs.org/docs/guides/flowcontrol/)
+e [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455.html).
+
+`python tests/console_fixture.py` e `node scripts/console-review.mjs` verificam
+o transporte real do painel com um PTY de eco explícito, sem executar comandos.
+Cobrem envio somente com Enter, Unicode, teclado interativo, seis layouts e
+fallback HTTP. A latência dessa fixture local não representa a rede ou o Incus
+da TV box. Os contratos de frames, autorização, sessão, fluxo e concorrência
+ficam em `tests/test_console_stream.py`.
 
 O servidor comprime os três arquivos públicos uma vez no início do processo e
 usa ETag para responder 304 sem reenviar o conteúdo. A API autenticada continua

@@ -312,7 +312,7 @@ class Application:
             self.consoles[console_id] = {"token": token, "console": console, "host": host, "project": project}
             self.service.audit.append({"identity": user["username"], "host": host, "project": project, "target": target, "action": "console", "timestamp": time.time(), "operation": getattr(console, "operation", None), "result": "canais abertos"})
             self.service.audit[:] = self.service.audit[-200:]
-            return {"console": console_id}
+            return {"console": console_id, "stream": True}
 
     def console(self, token, console_id):
         session = self.session(token)
@@ -504,6 +504,10 @@ class Handler(BaseHTTPRequestHandler):
                 elif path == "/api/console/read":
                     query = parse_qs(parsed.query)
                     self.send(200, self.app.console(token, query.get("console", [""])[0]).read())
+                elif path == '/api/console/stream':
+                    from .console_stream import relay
+                    query = parse_qs(parsed.query)
+                    relay(self, token, session, query.get('console', [''])[0])
                 elif path == "/api/events":
                     query = parse_qs(parsed.query)
                     self.send(200, self.app.event_status(token, session, query.get("host", [""])[0], query.get("project", [""])[0]))
@@ -593,6 +597,7 @@ class PanelHTTPServer(ThreadingHTTPServer):
     def __init__(self, address, handler, tls=None, max_workers=4):
         self.tls = tls
         self.workers = threading.BoundedSemaphore(max_workers)
+        self.worker_state = threading.local()
         self.next_reap = 0
         super().__init__(address, handler)
 
@@ -617,6 +622,7 @@ class PanelHTTPServer(ThreadingHTTPServer):
             raise
 
     def process_request_thread(self, request, client_address):
+        self.worker_state.held = True
         try:
             request.settimeout(self.handshake_timeout)
             if self.tls:
@@ -630,6 +636,13 @@ class PanelHTTPServer(ThreadingHTTPServer):
             self.handle_error(request, client_address)
         finally:
             self.shutdown_request(request)
+            if self.worker_state.held:
+                self.workers.release()
+
+    def release_stream_worker(self):
+        """A validated console has its own four-console limit, independent of HTTP slots."""
+        if self.worker_state.held:
+            self.worker_state.held = False
             self.workers.release()
 
 

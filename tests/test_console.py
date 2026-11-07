@@ -80,6 +80,7 @@ class InteractiveTerminal(unittest.TestCase):
         result = object.__new__(Console)
         result.closed = False
         result.lock = threading.RLock()
+        result.available = threading.Condition(result.lock)
         result.last_access = 0
         result.output = ''
         result.channels = []

@@ -117,6 +117,8 @@ class Console:
         self.output = ""
         self.closed = False
         self.lock = threading.RLock()
+        self.available = threading.Condition(self.lock)
+        self.stream_lock = threading.Lock()
         self.channels = []
         if not hasattr(client, "context") and not hasattr(client, "path"):
             raise PanelError(501, "A demonstração não emula shell. Use um container Incus de teste.")
@@ -145,17 +147,28 @@ class Console:
                 chunk = decoder.decode(self.data.receive())
                 # Preserve terminal escape sequences for the local xterm renderer.
                 # Output is JSON data and is never inserted as HTML.
-                with self.lock:
-                    self.output = (self.output + chunk)[-65536:]
+                offset = 0
+                with self.available:
+                    while offset < len(chunk) and not self.closed:
+                        self.available.wait_for(lambda: self.closed or len(self.output) < 65536)
+                        if self.closed:
+                            return
+                        count = min(65536 - len(self.output), len(chunk) - offset)
+                        self.output += chunk[offset:offset + count]
+                        offset += count
+                        self.available.notify_all()
         except Exception:
             pass
         finally:
             self.close()
 
-    def read(self):
-        with self.lock:
+    def read(self, timeout=0):
+        with self.available:
             self.last_access = time.time()
+            if timeout:
+                self.available.wait_for(lambda: self.output or self.closed, timeout=timeout)
             output, self.output = self.output, ""
+            self.available.notify_all()
             return {"output": output, "closed": self.closed}
 
     def write(self, text):
@@ -175,6 +188,8 @@ class Console:
         self.control.send(json.dumps({"command": "window-resize", "args": {"width": str(width), "height": str(height)}}), 1)
 
     def close(self):
-        self.closed = True
+        with self.available:
+            self.closed = True
+            self.available.notify_all()
         for channel in self.channels:
             channel.close()

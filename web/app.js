@@ -1105,8 +1105,10 @@ async function detail(r,scope) {
     wrapper.append(notice(r.tab==='snapshots'?'Você pode restaurar ou excluir snapshots. A restauração substitui o estado atual e só está disponível com o container parado.':'Backups podem ser criados e excluídos. O download e a importação de arquivos ainda não estão disponíveis.'));
   } else if(r.tab==='console'){
     const allowed=session.enable_console&&canMutate(r.target)&&state.status==='Running'&&!session.demo;
-    const controls=el('div',{class:'toolbar'},el('span',{id:'terminal-status',class:'terminal-status',role:'status'},allowed?'Conectando…':'Console indisponível'),el('button',{type:'button',disabled:allowed?null:'',onclick:()=>startTerminal(r.target).catch(showTerminalError)},'Reconectar'),el('button',{type:'button',onclick:()=>{closeConsole();const statusNode=$('#terminal-status');if(statusNode)statusNode.textContent='Desconectado';}},'Desconectar'));
-    wrapper.append(el('section',{class:'panel terminal-panel'},el('div',{class:'panel-head'},el('h2',{},'Console · '+r.target),controls),el('div',{class:'panel-body'},el('div',{id:'console-output',class:'terminal-host','aria-label':'Terminal interativo do container'})),el('div',{class:'terminal-help'},'Shell /bin/sh · teclado direto · Ctrl+C interrompe · Tab completa · Ctrl+Shift+C copia a seleção')));
+    const controls=el('div',{class:'toolbar'},el('span',{id:'terminal-status',class:'terminal-status',role:'status'},allowed?'Conectando…':'Console indisponível'),el('button',{type:'button',disabled:allowed?null:'',onclick:()=>startTerminal(r.target).catch(showTerminalError)},'Reconectar'),el('button',{type:'button',disabled:allowed?null:'',onclick:()=>terminalState?.enqueue?.('\x03',true)},'Interromper'),el('button',{type:'button',onclick:()=>{closeConsole();const statusNode=$('#terminal-status');if(statusNode)statusNode.textContent='Desconectado';}},'Desconectar'));
+    const command=el('input',{id:'console-command',type:'text',maxlength:'4095',autocomplete:'off',autocapitalize:'none',spellcheck:'false',disabled:'',placeholder:'Digite o comando completo e pressione Enter'});
+    const commandForm=el('form',{class:'console-command-form',onsubmit:event=>{event.preventDefault();if(command.value&&terminalState?.enqueue?.(command.value+'\r',true)){command.value='';command.focus();}}},el('label',{for:'console-command'},'Comando'),command,el('button',{type:'submit',disabled:''},'Enviar'));
+    wrapper.append(el('section',{class:'panel terminal-panel'},el('div',{class:'panel-head'},el('h2',{},'Console · '+r.target),controls),commandForm,el('div',{class:'panel-body'},el('div',{id:'console-output',class:'terminal-host','aria-label':'Terminal interativo do container'})),el('div',{class:'terminal-help'},'Comando: envia a linha inteira com Enter. Terminal: teclado direto, Tab completa, Ctrl+C interrompe e Ctrl+Shift+C copia a seleção.')));
     if(!allowed)wrapper.prepend(notice(session.demo?'O modo demonstração não emula um shell. O console interativo exige um container Incus real.':!session.enable_console?'Habilite enable_console na configuração do painel.':state.status!=='Running'?'Inicie o container para acessar o console.':'Seu usuário não tem permissão para abrir o console.'));
     wrapper.dataset.connectConsole=String(allowed);
   } else wrapper.append(empty('Página não encontrada.'));
@@ -1176,16 +1178,48 @@ async function mountTerminal(target,scope,renderId){
 }
 async function closeConsole(){
   clearTimeout(consoleTimer);
-  const state=terminalState,id=consoleId;terminalState=null;consoleId=null;
-  if(state){state.cancelled=true;clearTimeout(state.inputTimer);state.observer?.disconnect();state.input?.dispose();state.term?.dispose();}
+  const state=terminalState,id=consoleId||state?.id;terminalState=null;consoleId=null;
+  if(state){state.cancelled=true;state.connected=false;clearTimeout(state.inputTimer);state.cancelStream?.();state.socket?.close();state.observer?.disconnect();state.input?.dispose();state.term?.dispose();}
+  setConsoleInputEnabled(false);
   if(id&&session){const owner=session;consoleClosing=consoleClosing.catch(()=>{}).then(()=>session===owner?api('/api/console/close',{console:id}):null).catch(()=>{});}
   await consoleClosing;
+}
+function setConsoleInputEnabled(enabled){for(const input of document.querySelectorAll('.console-command-form input,.console-command-form button'))input.disabled=!enabled;}
+function connectConsoleStream(state,owner){
+  if(typeof WebSocket!=='function')return Promise.resolve(false);
+  return new Promise(resolve=>{
+    const url=new URL('/api/console/stream',location.href);url.protocol=location.protocol==='https:'?'wss:':'ws:';url.searchParams.set('console',state.id);
+    let socket,settled=false;
+    const fail=()=>{if(settled)return;settled=true;clearTimeout(timeout);state.cancelStream=null;if(socket){socket.onopen=socket.onclose=socket.onerror=socket.onmessage=null;socket.close();}state.socket=null;resolve(false);};
+    const timeout=setTimeout(fail,2000);state.cancelStream=fail;
+    try{socket=new WebSocket(url,['incus-console-v1','csrf.'+owner.csrf]);state.socket=socket;}catch{fail();return;}
+    socket.onopen=()=>{
+      if(state.cancelled||session!==owner){fail();return;}
+      settled=true;clearTimeout(timeout);state.cancelStream=null;state.streaming=true;resolve(true);
+    };
+    socket.onerror=()=>{if(!settled)fail();};
+    socket.onmessage=event=>{
+      if(state.cancelled||state.ended)return;
+      try{
+        const message=JSON.parse(event.data);
+        if(message.type==='output')state.term.write(message.text,()=>{if(socket.readyState===1&&!state.cancelled)socket.send(JSON.stringify({type:'ack',seq:message.seq}));});
+        else if(message.type==='closed')endTerminal(state,'Console encerrado');
+      }catch{endTerminal(state,'Resposta inválida do console. Use Reconectar.');socket.close();}
+    };
+    socket.onclose=()=>{if(!settled){fail();return;}if(!state.cancelled&&!state.ended)endTerminal(state,'Conexão interrompida. Use Reconectar.');};
+  });
+}
+function endTerminal(state,message){
+  if(state.ended||state.cancelled)return;
+  state.ended=true;state.connected=false;state.pending='';clearTimeout(state.inputTimer);clearTimeout(consoleTimer);
+  state.input?.dispose();state.observer?.disconnect();state.term.writeln('\r\n['+message+']');
+  if(consoleId===state.id)consoleId=null;setConsoleInputEnabled(false);showTerminalError(new Error(message));
 }
 async function startTerminal(target){
   const owner=session,scope={host,project};
   await closeConsole();
   const output=$('#console-output');if(!output||!session||session!==owner||host!==scope.host||project!==scope.project||route().page!=='instance'||route().target!==target||route().tab!=='console')return;
-  const state={cancelled:false,pending:'',inputChain:Promise.resolve()};
+  const state={cancelled:false,connected:false,pending:''};
   terminalState=state;
   await loadTerminalLibrary();if(state.cancelled||session!==owner)return;
   state.term=new Terminal({cursorBlink:false,scrollback:1500,fontFamily:'Consolas, "Courier New", monospace',fontSize:13,theme:{background:'#171717',foreground:'#eeeeee'},allowProposedApi:false,screenReaderMode:true});
@@ -1196,16 +1230,29 @@ async function startTerminal(target){
   catch(error){if(!state.cancelled){state.term.writeln('\r\n'+error.message);showTerminalError(error);}return;}
   if(state.cancelled||session!==owner){if(session===owner)api('/api/console/close',{console:result.console}).catch(()=>{});return;}
   consoleId=result.console;state.id=result.console;state.term.clear();
+  if(result.stream)await connectConsoleStream(state,owner);
+  if(state.cancelled||session!==owner)return;
+  state.connected=true;setConsoleInputEnabled(true);
   const statusNode=$('#terminal-status');if(statusNode)statusNode.textContent='Conectado · '+target;
   const flush=async()=>{
-    if(state.cancelled||state.sending||!state.pending)return;
+    if(state.cancelled||!state.connected||state.sending||!state.pending)return;
+    if(state.streaming&&state.socket.bufferedAmount>65536){state.inputTimer=setTimeout(flush,16);return;}
     state.sending=true;
-    const text=state.pending.slice(0,4096);state.pending=state.pending.slice(4096);
-    try{await api('/api/console/input',{console:state.id,text});if(!state.cancelled){clearTimeout(consoleTimer);pollConsole();}}
+    let count=Math.min(4096,state.pending.length);if(count<state.pending.length&&/[\uD800-\uDBFF]/.test(state.pending[count-1]))count--;
+    const text=state.pending.slice(0,count);state.pending=state.pending.slice(count);
+    try{
+      if(state.streaming){if(state.socket.readyState!==1)throw new Error('Conexão interrompida. Use Reconectar.');state.socket.send(JSON.stringify({type:'input',text}));}
+      else{await api('/api/console/input',{console:state.id,text});if(!state.cancelled){clearTimeout(consoleTimer);pollConsole();}}
+    }
     catch(error){if(!state.cancelled){showTerminalError(error);closeConsole();}}
     finally{state.sending=false;if(!state.cancelled&&state.pending)state.inputTimer=setTimeout(flush,0);}
   };
-  state.input=state.term.onData(data=>{state.pending+=data;clearTimeout(state.inputTimer);state.inputTimer=setTimeout(flush,16);});
+  state.enqueue=(data,immediate=false)=>{
+    if(!state.connected||state.cancelled)return false;
+    if(state.pending.length+data.length>262144){showTerminalError(new Error('A entrada está cheia. Aguarde antes de enviar mais texto.'));return false;}
+    state.pending+=data;clearTimeout(state.inputTimer);state.inputTimer=setTimeout(flush,immediate||/[\r\x03]/.test(data)?0:16);return true;
+  };
+  state.input=state.term.onData(data=>state.enqueue(data));
   state.term.attachCustomKeyEventHandler(event=>{
     if(event.ctrlKey&&event.shiftKey&&event.code==='KeyC'&&state.term.hasSelection()){if(event.type==='keydown')navigator.clipboard?.writeText(state.term.getSelection()).catch(()=>{});return false;}
     return true;
@@ -1215,18 +1262,19 @@ async function startTerminal(target){
     state.fit.fit();const width=Math.max(20,Math.min(300,state.term.cols)),height=Math.max(5,Math.min(100,state.term.rows));
     if(state.term.cols!==width||state.term.rows!==height)state.term.resize(width,height);
     if(state.lastSize===width+'x'+height)return;state.lastSize=width+'x'+height;
-    api('/api/console/resize',{console:state.id,width,height}).catch(showTerminalError);
+    if(state.streaming&&state.socket.readyState===1)state.socket.send(JSON.stringify({type:'resize',width,height}));
+    else api('/api/console/resize',{console:state.id,width,height}).catch(showTerminalError);
   };
-  state.observer=new ResizeObserver(resize);state.observer.observe(output);resize();state.term.focus();pollConsole();
+  state.observer=new ResizeObserver(resize);state.observer.observe(output);resize();state.term.focus();if(!state.streaming)pollConsole();
 }
 async function pollConsole(){
-  const id=consoleId,state=terminalState;if(!id||!state||state.cancelled)return;
+  const id=consoleId,state=terminalState;if(!id||!state||state.cancelled||state.streaming)return;
   if(state.reading)return;
   state.reading=true;
   try{
     const result=await api('/api/console/read?'+new URLSearchParams({console:id}));if(consoleId!==id||state.cancelled)return;
     if(result.output)state.term.write(result.output);
-    if(result.closed){state.term.writeln('\r\n[Console encerrado]');state.input?.dispose();state.observer?.disconnect();consoleId=null;showTerminalError(new Error('Desconectado'));api('/api/console/close',{console:id}).catch(()=>{});return;}
+    if(result.closed){endTerminal(state,'Console encerrado');api('/api/console/close',{console:id}).catch(()=>{});return;}
     consoleTimer=setTimeout(pollConsole,document.hidden?2000:result.output?100:400);
   }catch(error){if(consoleId===id){showTerminalError(error);closeConsole();}}
   finally{state.reading=false;}

@@ -156,6 +156,14 @@ try{
   assert.equal(terminalCalls.find(c=>c.path==='/api/console/start').confirmation,'demo/laboratorio/lab-web');
   terminalInstances[0].data('ls\r\x03\t\x1b[A');await wait(()=>terminalCalls.some(c=>c.path==='/api/console/input'));
   assert.equal(terminalCalls.find(c=>c.path==='/api/console/input').text,'ls\r\x03\t\x1b[A');
+  const beforeCommand=terminalCalls.filter(call=>call.path==='/api/console/input').length;
+  d.querySelector('#console-command').value='printf command-batch';
+  d.querySelector('#console-command').dispatchEvent(new w.Event('input',{bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,40));
+  assert.equal(terminalCalls.filter(call=>call.path==='/api/console/input').length,beforeCommand,'Digitar no campo de comando não envia caracteres.');
+  d.querySelector('.console-command-form').requestSubmit();
+  await wait(()=>terminalCalls.some(call=>call.text==='printf command-batch\r'));
+  assert.equal(d.querySelector('#console-command').value,'');
   terminalInstances[0].cols=140;terminalInstances[0].rows=45;w.lastResizeObserver.callback();
   await wait(()=>terminalCalls.some(c=>c.path==='/api/console/resize'&&c.width===140&&c.height===45));
   await navigate('instances');await wait(()=>terminalCalls.some(c=>c.path==='/api/console/close'));

@@ -1,5 +1,12 @@
 # Changelog
 
+## Console contínuo e envio por comando — 2026-11-07
+
+- Campo Comando com edição local e envio da linha completa somente com Enter ou Enviar; teclado do terminal permanece interativo.
+- Transporte WebSocket entre navegador e painel para entrada, saída e tamanho do terminal, com alternativa HTTP para proxies sem upgrade.
+- Saída com controle de fluxo, buffer limitado sem truncamento silencioso, validação de sessão/Origin/CSRF, heartbeat e limpeza dos canais ao desconectar.
+- Conexões de console não ocupam os slots HTTP do painel; testes de protocolo, autorização, concorrência e navegador com fixture de eco explícita.
+
 ## Menus de contexto e ações de containers — 2026-11-07
 
 - Menu de containers com organização do Proxmox: título azul, ícones, separadores, estados desabilitados e navegação por teclado, na árvore e nas grades.
