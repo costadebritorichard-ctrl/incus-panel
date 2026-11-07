@@ -13,8 +13,14 @@ jobs:
         run: sh -n install.sh
       - name: Rejeitar namespace sem IDs delegados antes de instalar
         run: |
+          probe_dir=$(mktemp -d /tmp/incus-panel-preflight.XXXXXX)
+          trap 'rm -rf -- "$probe_dir"' EXIT
+          chmod 755 "$probe_dir"
+          install -d -m 755 "$probe_dir/deploy" "$probe_dir/incus_panel"
+          install -m 644 deploy/preflight.py "$probe_dir/deploy/"
+          install -m 644 incus_panel/__init__.py incus_panel/memory.py "$probe_dir/incus_panel/"
           set +e
-          sudo unshare --user --map-root-user python3 deploy/preflight.py > /tmp/preflight.log 2>&1
+          sudo unshare --user --map-root-user python3 "$probe_dir/deploy/preflight.py" > /tmp/preflight.log 2>&1
           status=$?
           set -e
           cat /tmp/preflight.log
