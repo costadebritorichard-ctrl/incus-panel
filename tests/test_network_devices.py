@@ -63,6 +63,81 @@ class NetworkDevices(unittest.TestCase):
                 self.change('nic-delete')
             self.config[key] = previous
 
+    def test_cidr_input_reserves_the_host_address_with_bridge_prefix(self):
+        self.change('nic-update', nic={'network': 'labbr0', 'ipv4.address': '10.100.0.30/24'})
+        self.assertEqual(self.current()['devices']['eth0']['ipv4.address'], '10.100.0.30')
+        for address in ('10.100.0.31/16', '10.100.0.1/24', '10.100.0.0/24', '10.100.0.255/24'):
+            with self.subTest(address=address), self.assertRaises(PanelError):
+                self.change('nic-update', nic={'network': 'labbr0', 'ipv4.address': address})
+
+    def test_disconnect_preserves_nic_and_mac_then_reconnects(self):
+        self.client.instances['laboratorio', 'lab-web']['config']['volatile.eth0.hwaddr'] = '10:66:6a:11:22:33'
+        before = self.current()
+        self.change('nic-update', nic={'network': 'labbr0', 'name': 'eth0', 'ipv4.address': '10.100.0.30/24', 'disconnected': 'true'})
+        current = self.current()
+        self.assertEqual(current['devices']['eth0'], {'type': 'none'})
+        self.assertEqual(current['_disconnected_nics']['eth0']['ipv4.address'], '10.100.0.30')
+        self.assertEqual(current['_disconnected_nics']['eth0']['hwaddr'], '10:66:6a:11:22:33')
+        self.assertEqual(current['profiles'], before['profiles'])
+        self.change('nic-update', nic={'network': 'labbr0', 'disconnected': 'false'})
+        current = self.current()
+        self.assertEqual(current['devices']['eth0']['type'], 'nic')
+        self.assertEqual(current['devices']['eth0']['ipv4.address'], '10.100.0.30')
+        self.assertEqual(current['devices']['eth0']['hwaddr'], '10:66:6a:11:22:33')
+        self.assertEqual(current['_disconnected_nics'], {})
+
+    def test_profile_restore_and_removal_clear_saved_disconnected_options(self):
+        for action in ('nic-reset', 'nic-delete'):
+            self.change('nic-update', nic={'network': 'labbr0', 'disconnected': 'true'})
+            self.assertIn('eth0', self.current()['_disconnected_nics'])
+            self.change(action)
+            self.assertEqual(self.current()['_disconnected_nics'], {})
+
+    def test_mtu_uses_managed_parent_and_keeps_reservations_on_later_edits(self):
+        self.change('nic-update', nic={'network': 'labbr0', 'ipv4.address': '10.100.0.30/24', 'mtu': '1400'})
+        device = self.current()['devices']['eth0']
+        self.assertEqual((device['parent'], device['nictype'], device['mtu']), ('labbr0', 'bridged', '1400'))
+        self.assertNotIn('network', device)
+        self.change('nic-update', nic={'network': 'labbr0', 'limits.max': '20Mbit'})
+        self.assertEqual(self.current()['devices']['eth0']['ipv4.address'], '10.100.0.30')
+        self.assertEqual(self.current()['devices']['eth0']['mtu'], '1400')
+        self.change('nic-update', nic={'network': 'labbr0', 'mtu': ''})
+        device = self.current()['devices']['eth0']
+        self.assertEqual(device['network'], 'labbr0')
+        self.assertNotIn('parent', device)
+
+    def test_vlan_filter_conflict_and_invalid_disconnect_never_write(self):
+        for nic in ({'network': 'labbr0', 'vlan': '42', 'security.ipv4_filtering': 'true'},
+                    {'network': 'labbr0', 'vlan': '0'}, {'network': 'labbr0', 'disconnected': 'yes'},
+                    {'network': 'labbr0', 'ipv4.address': 'none'}):
+            with self.subTest(nic=nic), patch.object(self.client, 'request', wraps=self.client.request) as calls:
+                with self.assertRaises(PanelError):
+                    self.change('nic-update', nic=nic)
+                self.assertTrue(all(call.args[0] == 'GET' for call in calls.call_args_list))
+
+    def test_none_address_is_valid_only_with_family_filtering(self):
+        self.change('nic-update', nic={'network': 'labbr0', 'ipv4.address': 'none', 'security.ipv4_filtering': 'true'})
+        self.assertEqual(self.current()['devices']['eth0']['ipv4.address'], 'none')
+
+    def test_disconnected_metadata_is_part_of_device_revision(self):
+        from incus_panel.networking import DISCONNECTED_NICS
+        revision = self.current()['_devices_revision']
+        self.client.instances['laboratorio', 'lab-web']['config'][DISCONNECTED_NICS] = '{}'
+        with self.assertRaisesRegex(PanelError, 'mudaram'):
+            self.change('nic-update', revision=revision, nic={'network': 'labbr0'})
+
+    def test_sync_ack_does_not_hide_loss_of_reconnect_metadata(self):
+        from incus_panel.networking import DISCONNECTED_NICS
+        original = self.client.request
+        def lose_metadata(method, path, project, body=None, etag=None):
+            if method == 'PUT':
+                body = copy.deepcopy(body)
+                body['config'].pop(DISCONNECTED_NICS, None)
+            result = original(method, path, project, body, etag)
+            return {'type': 'sync', 'metadata': {}} if method == 'PUT' else result
+        with patch.object(self.client, 'request', side_effect=lose_metadata), self.assertRaises(PanelError):
+            self.change('nic-update', nic={'network': 'labbr0', 'disconnected': 'true'})
+
     def test_dhcp_range_validation(self):
         valid = {'ipv4.address': '10.8.0.1/24', 'ipv4.dhcp.ranges': '10.8.0.10-10.8.0.99', 'bridge.mtu': '1500'}
         self.assertEqual(bridge_config(valid), valid)

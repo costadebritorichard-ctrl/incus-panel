@@ -490,8 +490,9 @@ class Service:
         if resource == 'instance':
             data = copy.deepcopy(data)
             data['_revision'] = edit_revision(data)
-            from .networking import devices_revision
+            from .networking import devices_revision, disconnected_nics
             data['_devices_revision'] = devices_revision(data)
+            data['_disconnected_nics'] = disconnected_nics(data)
         if resource == 'network':
             data = copy.deepcopy(data)
             data['_revision'] = network_revision(data)
@@ -968,7 +969,9 @@ class Service:
                         if write_etag else client.request(method, path, project, payload))
             if action.startswith('nic-') and response.get('type') == 'sync':
                 confirmed = client.request('GET', path, project)['metadata']
-                if confirmed.get('devices', {}) != payload['devices']:
+                from .networking import DISCONNECTED_NICS
+                if (confirmed.get('devices', {}) != payload['devices'] or
+                        confirmed.get('config', {}).get(DISCONNECTED_NICS) != payload.get('config', {}).get(DISCONNECTED_NICS)):
                     raise PanelError(409, 'A configuração de rede não foi confirmada. Atualize o container.')
                 operation_id = self.completed_operation(user, host, project, action, target)
                 record.update(result='confirmada pelo Incus', operation=operation_id)

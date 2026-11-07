@@ -1,5 +1,12 @@
 # Changelog
 
+## Rede de containers no padrão Proxmox — 2026-11-07
+
+- Tabela única, colunas da referência, ações Adicionar/Remover/Editar no topo e abertura do editor ao clicar na linha; removidos os botões por linha e a tabela duplicada.
+- Editor compacto em duas colunas com IPv4/IPv6, CIDR, ponte, MAC, VLAN, Firewall, reset, Ajuda, Avançado e OK; campos avançados para MTU, banda, filtros e restauração do perfil.
+- Desconexão reversível preservando definição e MAC da interface, reservas CIDR normalizadas, MTU individual compatível com Incus 6.0 e validação de combinações VLAN/filtros.
+- Testes de backend e navegador com fixture isolada, dois temas, teclado, permissões e telas de 320 a 1920 px.
+
 ## Console somente interativo — 2026-11-07
 
 - Removida a barra separada de comandos; toda a digitação acontece diretamente no terminal, no padrão do Proxmox.

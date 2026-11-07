@@ -15,7 +15,7 @@ e JavaScript locais e as operações reais do Incus.
 | Sumário do datacenter | `www/manager6/dc/Summary.js` | Saúde, recursos, indicadores circulares, painéis de armazenamento e containers |
 | Sumário e sistema do nó | `www/manager6/node/Summary.js` | Propriedades compactas e gráficos em painéis, com período aplicado às amostras da sessão |
 | Abas do container | `www/manager6/lxc/Config.js` | Ações contextuais, sumário, console, recursos, rede, DNS, opções, tarefas, backup, snapshots e permissões |
-| Rede e interfaces | `www/manager6/lxc/Network.js` | Listas com barra de ações e formulários de duas colunas em janelas de criação/edição |
+| Rede e interfaces | `www/manager6/lxc/Network.js` | Tabela única com Adicionar/Remover/Editar no topo, clique na linha para editar, diálogo de 600 px em duas colunas e opções avançadas recolhidas |
 | Armazenamento | `www/manager6/storage/Summary.js` | Capacidade, driver, utilização, conteúdo e propriedades no mesmo sistema visual |
 | Login | `www/manager6/window/LoginWindow.js` | Diálogo compacto sobre a estrutura vazia do painel, campos alinhados e salvar nome de usuário |
 | Criar CT | `www/manager6/window/Wizard.js` | Janela com etapas, validação sequencial, botões de avanço e confirmação |
@@ -29,6 +29,14 @@ As diferenças funcionais refletem o Incus. Não há VMID, autenticação PAM,
 gestão de VMs ou operações Proxmox fictícias. Contas usam o domínio local;
 o painel mantém os papéis, Projects e permissões aplicados pelo backend.
 O log de auditoria não é apresentado como um log de cluster.
+
+Em **Container → Rede**, a tabela apresenta ID, nome, ponte, Firewall, VLAN,
+MAC, IP, gateway, MTU e estado desconectado. O diálogo usa os controles de
+IPv4/IPv6 e a disposição da referência, com Ajuda, Avançado, reset e OK.
+Endereço fixo corresponde a reserva DHCP; gateway vem da ponte e Firewall
+ativa filtros anti-spoofing do Incus. Os limites e o mapeamento estão em
+[Bridges e interfaces](bridges.md). `scripts/network-editor-review.mjs`
+valida o fluxo em fixture, permissões e 12 combinações de tema e viewport.
 
 ## Menus de contexto e operações Incus
 

@@ -50,7 +50,8 @@ Object.assign(iconPaths,{
   alert:['M12 3 2 21h20Z','M12 9v5','M12 17h.01'],
   file:['M5 3h10l4 4v14H5Z','M15 3v5h4','M8 12h8','M8 16h8'],
   power:['M12 2v10','M7 4a9 9 0 1 0 10 0'],clone:['M8 8h13v13H8Z','M16 8V3H3v13h5'],
-  template:['M5 2h9l5 5v15H5Z','M14 2v6h5'],pause:['M8 5v14','M16 5v14']
+  template:['M5 2h9l5 5v15H5Z','M14 2v6h5'],pause:['M8 5v14','M16 5v14'],
+  'close-circle':['M21 12a9 9 0 1 0-18 0 9 9 0 0 0 18 0','m9 9 6 6','m15 9-6 6']
 });
 const navIcons={'⌕':'search','◫':'summary','>_':'terminal','▤':'storage','⌘':'network','☷':'settings','⚙':'settings','◷':'history','▣':'box','♙':'users','✎':'edit','▦':'summary','◉':'network','◇':'box','▱':'file','△':'alert'};
 const solidIconPaths={
@@ -172,8 +173,8 @@ function extensionsView(extensions){
 const panel = (title, content, action) => el('section',{class:'panel'},el('div',{class:'panel-head'},el('h2',{},title),action),content);
 const empty = text => el('div',{class:'empty'},text);
 const kv = pairs => el('dl',{class:'key-values'},pairs.map(([k,v])=>el('div',{},el('dt',{},k),el('dd',{},v ?? 'n/d'))));
-function table(headers, rows) {
-  const heading=value=>/^[A-ZÀ-Ú0-9 /_.-]+$/.test(value)&&!['CPU','MAC','DNS','IP','MTU','VLAN','UUID','IPv4','IPv6'].includes(value)?value.slice(0,1)+value.slice(1).toLocaleLowerCase('pt-BR'):value;
+function table(headers, rows, {onSelect,onActivate,activateOnClick=false}={}) {
+  const heading=value=>/^[A-ZÀ-Ú0-9 /_.-]+$/.test(value)&&!['ID','CPU','MAC','DNS','IP','MTU','VLAN','UUID','IPv4','IPv6'].includes(value)?value.slice(0,1)+value.slice(1).toLocaleLowerCase('pt-BR'):value;
   const body=el('tbody'),header=el('tr'),grid=el('table',{},el('thead',{},header),body);
   const holder=el('div',{class:'table-holder'},el('div',{class:'table-wrap',tabindex:'0','aria-label':'Tabela de recursos'},grid));
   let ordered=rows.map((row,index)=>({row,index})),sortColumn=-1,ascending=true,selected=-1;
@@ -195,9 +196,11 @@ function table(headers, rows) {
   function update(){
     body.replaceChildren(...ordered.slice(page*size,(page+1)*size).map(({row,index})=>{
       const tr=el('tr',{tabindex:'0','aria-selected':String(selected===index),class:selected===index?'selected':''},(typeof row==='function'?row():row).map(c=>el('td',{},c)));
-      const select=()=>{selected=index;for(const sibling of body.children){sibling.classList.toggle('selected',sibling===tr);sibling.setAttribute('aria-selected',String(sibling===tr));}};
-      tr.onclick=event=>{if(!event.target.closest('a,button,input,select,summary,details'))select();};
-      tr.onkeydown=event=>{if(event.target!==tr)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();select();}if(['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const sibling=event.key==='ArrowUp'?tr.previousElementSibling:tr.nextElementSibling;sibling?.focus();sibling?.click();}};
+      const select=()=>{selected=index;for(const sibling of body.children){sibling.classList.toggle('selected',sibling===tr);sibling.setAttribute('aria-selected',String(sibling===tr));}onSelect?.(index);};
+      tr.selectRow=select;
+      tr.onclick=event=>{if(!event.target.closest('a,button,input,select,summary,details')){select();if(activateOnClick)onActivate?.(index);}};
+      tr.ondblclick=()=>{if(!activateOnClick)onActivate?.(index);};
+      tr.onkeydown=event=>{if(event.target!==tr)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();select();if(event.key==='Enter')onActivate?.(index);}if(['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const sibling=event.key==='ArrowUp'?tr.previousElementSibling:tr.nextElementSibling;sibling?.focus();sibling?.selectRow?.();}};
       return tr;
     }));
     if(!rows.length)body.append(el('tr',{},el('td',{colspan:String(headers.length),class:'table-empty'},empty('Nenhum recurso encontrado neste escopo.'))));
@@ -209,8 +212,11 @@ function table(headers, rows) {
 }
 function notice(text, critical=false) { return el('div',{class:'alert'+(critical?' critical':'')},text); }
 let editorContext='';
-function closeEditor(){if($('#editor-dialog').open)$('#editor-dialog').close();$('#editor-content').replaceChildren();editorContext='';}
-function openEditor(title,content){
+function closeEditor(){if($('#editor-dialog').open)$('#editor-dialog').close();$('#editor-content').replaceChildren();$('#editor-dialog').removeAttribute('data-editor-type');$('#reset-editor').hidden=true;$('#reset-editor').onclick=null;editorContext='';}
+function openEditor(title,content,type=''){
+  $('#editor-dialog').dataset.editorType=type;$('#reset-editor').hidden=type!=='nic';$('#reset-editor').onclick=null;
+  if(type==='nic'){$('#reset-editor').replaceChildren(icon('restart'));$('#close-editor').replaceChildren(icon('close-circle'));}
+  else $('#close-editor').textContent='×';
   editorContext=host+'/'+project+'/'+location.hash;$('#editor-title').textContent=title;$('#editor-content').replaceChildren(content);
   if(!$('#editor-dialog').open)$('#editor-dialog').showModal();
   $('#editor-content').querySelector('input:not([disabled]):not([readonly]),select:not([disabled]),textarea:not([disabled])')?.focus();
@@ -646,41 +652,132 @@ async function storageDetailView(scope,target,tab='summary'){
     panel('Detalhes',el('div',{class:'panel-body'},kv([['Nome',pool.name],['Driver',pool.driver],['Estado',pool.status],['Utilizado',bytes(space?.used)],['Capacidade',bytes(space?.total)],['Coletado em',date(usage.timestamp)]]))));
 }
 function canManageNetworks(){return !session.read_only&&session.role==='administrador'&&session.manage_networks;}
-async function containerNetworksView(scope,item){
+async function containerNetworksView(scope,item,state={}){
   const [networkResult,profileResult]=await Promise.all([read('networks',undefined,scope),read('profiles',undefined,scope)]);
   const networks=networkResult.data.filter(n=>n.managed&&n.type==='bridge'&&n.status==='Created');
   const inherited={};for(const profileName of item.profiles||[])Object.assign(inherited,profileResult.data.find(p=>p.name===profileName)?.devices||{});
   const devices={...item.expanded_devices};
   for(const [key,value]of Object.entries(item.devices||{}))if(value.type==='none')devices[key]=value;
-  const editable=canManageNetworks()&&canMutate(item.name);
-  const action=(kind,device,nic)=>openAction(kind,item.name,{device,revision:item._devices_revision,...(nic?{nic}:{})});
-  function edit(device='',current={}){
-    const deviceName=el('input',{required:'',maxlength:'63',value:device,readonly:device?'':null,name:'device'});
-    const bridge=el('select',{required:'',name:'network'},networks.map(n=>el('option',{value:n.name},n.name)));
-    if(current.network)bridge.value=current.network;
-    const inputs={network:bridge};
-    const fields=[el('label',{},'Dispositivo no Incus',deviceName),el('label',{},'Bridge',bridge)];
-    for(const [key,label,placeholder]of [['name','Interface no container','eth0'],['hwaddr','MAC (vazio: automático)',''],['mtu','MTU (vazio: herdado)','1500'],['vlan','VLAN (vazio: sem tag)','0–4094'],['ipv4.address','Reserva DHCP IPv4','Vazio: automático'],['ipv6.address','Reserva DHCP IPv6','Vazio: automático'],['limits.max','Limite de banda','100Mbit']]){
-      const input=el('input',{name:key,value:current[key]||(key==='name'?device:''),placeholder,maxlength:'128'});inputs[key]=input;fields.push(el('label',{},label,input));
-    }
-    for(const [key,label]of [['security.mac_filtering','Filtrar MAC'],['security.ipv4_filtering','Filtrar IPv4'],['security.ipv6_filtering','Filtrar IPv6']]){
-      const input=el('select',{name:key},el('option',{value:''},'Padrão'),el('option',{value:'true'},'Ativado'),el('option',{value:'false'},'Desativado'));input.value=current[key]||'';inputs[key]=input;fields.push(el('label',{},label,input));
-    }
-    bridge.onchange=()=>{inputs['ipv4.address'].value='';inputs['ipv6.address'].value='';};
-    const form=el('form',{class:'network-form'},...fields,el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},device?'Salvar interface':'Adicionar interface'),el('button',{type:'button',onclick:closeEditor},'Cancelar')));
-    form.onsubmit=event=>{event.preventDefault();action(device?'nic-update':'nic-add',deviceName.value.trim(),Object.fromEntries(Object.entries(inputs).map(([key,input])=>[key,input.value])));};
-    openEditor(device?'Editar: '+device:'Adicionar: interface de rede',el('div',{},form,notice('Alterar bridge, MAC ou IP pode interromper a rede do container. Reservas dependem do cliente DHCP; configuração estática dentro do container deve ser ajustada no próprio sistema.')));
-    deviceName.focus();
+  const editable=canManageNetworks()&&canMutate(item.name),filters=['security.mac_filtering','security.ipv4_filtering','security.ipv6_filtering'];
+  const definition=(key,device)=>device.type==='none'?item._disconnected_nics?.[key]||inherited[key]||device:device;
+  const managed=device=>networks.some(network=>network.name===(device.network||device.parent));
+  const gateway=network=>{const value=network?.config?.['ipv4.dhcp.gateway']||network?.config?.['ipv4.address'];return value&&value!=='none'?value.split('/')[0]:'';};
+  const cidr=(value,network,family)=>value&&value!=='none'?(value.includes('/')?value:value+(network?.config?.[family+'.address']?.includes('/')?'/'+network.config[family+'.address'].split('/')[1]:'')):'';
+  const action=(kind,device)=>openAction(kind,item.name,{device,revision:item._devices_revision});
+  const entries=Object.entries(devices).filter(([,device])=>['nic','none'].includes(device.type)).sort(([a],[b])=>a.localeCompare(b,undefined,{numeric:true}));
+  function edit(device='',raw={}){
+    const current=definition(device,raw),canEdit=editable&&(!device||managed(current));
+    let next=0;while(Object.hasOwn(devices,'eth'+next))next++;
+    const generated='eth'+next,selectedNetwork=current.network||current.parent||networks[0]?.name||'';
+    const initialNetwork=networks.find(network=>network.name===selectedNetwork);
+    const runtime=raw.type==='none'?null:state.network?.[current.name||device];
+    const field=(label,input)=>el('label',{class:'nic-field'},el('span',{},label+':'),input);
+    const input=(name,value='',attrs={})=>el('input',{name,value,maxlength:'128',...attrs});
+    const deviceName=input('device',device||generated,{required:'',maxlength:'63',readonly:device?'':null});
+    const interfaceName=input('name',current.name||device||generated,{required:'',maxlength:'15'});
+    const mac=input('hwaddr',current.hwaddr||'',{placeholder:runtime?.hwaddr||'auto',maxlength:'17'});
+    const bridge=el('select',{name:'network',required:''},networks.map(network=>el('option',{value:network.name,selected:network.name===selectedNetwork?'':null},network.name)));
+    if(selectedNetwork&&!initialNetwork)bridge.append(el('option',{value:selectedNetwork,selected:'',disabled:''},selectedNetwork));
+    const vlan=input('vlan',current.vlan||'',{type:'number',min:'1',max:'4094',placeholder:'no VLAN'});
+    const firewall=el('input',{type:'checkbox',name:'firewall',title:'Filtragem anti-spoofing de MAC e IP do Incus'});
+    const filterInputs=Object.fromEntries(filters.map(key=>[key,el('select',{name:key},[['','Padrão'],['true','Ativado'],['false','Desativado']].map(([value,label])=>el('option',{value,selected:value===(current[key]||'')?'':null},label)))]));
+    const syncFirewall=()=>{const active=filters.filter(key=>filterInputs[key].value==='true').length;firewall.checked=active>0;firewall.indeterminate=active>0&&active<filters.length;};syncFirewall();
+    firewall.defaultChecked=firewall.checked;
+    const modes={},addresses={},gateways={};
+    const familyFields=family=>{
+      const initialMode=current[family+'.address']||!initialNetwork?.config?.[family+'.address']||initialNetwork.config[family+'.address']==='none'?'static':family==='ipv6'&&initialNetwork.config['ipv6.dhcp.stateful']!=='true'?'slaac':'dhcp';
+      modes[family]=Object.fromEntries((family==='ipv4'?[['static','Estático'],['dhcp','DHCP']]:[['static','Estático'],['dhcp','DHCP'],['slaac','SLAAC']]).map(([value,label])=>[value,el('input',{type:'radio',name:family+'mode',value,checked:value===initialMode?'':null,'aria-label':family+' '+label})]));
+      addresses[family]=input(family+'.address',cidr(current[family+'.address'],initialNetwork,family),{placeholder:'Nenhum'});
+      gateways[family]=input(family+'.gateway','',{readonly:'',title:'Gateway herdado da ponte gerenciada pelo Incus'});
+      return [el('div',{class:'nic-field nic-radio-field'},el('span',{},family==='ipv4'?'IPv4:':'IPv6:'),el('div',{class:'nic-radio-group',role:'radiogroup','aria-label':family},Object.entries(modes[family]).map(([value,radio])=>el('label',{},radio,value==='static'?'Estático':value==='dhcp'?'DHCP':'SLAAC')))),field(family==='ipv4'?'IPv4/CIDR':'IPv6/CIDR',addresses[family]),field(family==='ipv4'?'Gateway (IPv4)':'Gateway (IPv6)',gateways[family])];
+    };
+    const left=el('div',{class:'nic-editor-column'},field('Nome',interfaceName),field('Endereço MAC',mac),field('Ponte',bridge),field('Tag da VLAN',vlan),field('Firewall',firewall));
+    const right=el('div',{class:'nic-editor-column'},...familyFields('ipv4'),el('div',{class:'nic-family-separator'}),...familyFields('ipv6'));
+    const disconnected=el('input',{type:'checkbox',name:'disconnected',checked:raw.type==='none'?'':null});
+    const mtu=input('mtu',current.mtu||'',{type:'number',min:'1280',max:'9000',placeholder:'Igual à ponte'});
+    const bandwidth=current['limits.max']?.match(/^([0-9]+)(kbit|Mbit|Gbit)$/);
+    const rate=input('rate',bandwidth?String(Number(bandwidth[1])*({kbit:1,Mbit:1000,Gbit:1000000})[bandwidth[2]]/8000):'',{type:'number',min:'0',max:'10240',step:'0.001',placeholder:'Sem limite'});
+    const restore=el('button',{type:'button',class:'nic-restore',disabled:canEdit&&device&&item.devices?.[device]&&inherited[device]?.type==='nic'?null:'',onclick:()=>action('nic-reset',device)},'Restaurar do perfil');
+    const advanced=el('div',{class:'nic-editor-columns nic-advanced',hidden:''},el('div',{class:'nic-editor-column'},field('Desconectado',disconnected),field('MTU',mtu),field('ID do dispositivo',deviceName),restore),el('div',{class:'nic-editor-column'},field('Limite (MB/s)',rate),field('Filtrar MAC',filterInputs[filters[0]]),field('Filtrar IPv4',filterInputs[filters[1]]),field('Filtrar IPv6',filterInputs[filters[2]])));
+    const hint=el('p',{class:'nic-address-hint',hidden:''},'IP fixo via reserva DHCP; gateway herdado da ponte.');
+    const help=el('div',{class:'nic-editor-help',hidden:''},el('p',{},'O endereço fixo é reservado no DHCP da ponte. O container deve usar DHCP; alterações estáticas feitas dentro dele precisam ser ajustadas no próprio sistema. O prefixo CIDR deve ser o da ponte.'),el('p',{},'Firewall ativa filtros anti-spoofing de MAC e IP do Incus. VLAN e filtragem de IP não podem ser combinadas. Desconectado remove a conexão e guarda suas opções para reconectar; os perfis são preservados.'));
+    const feedback=el('p',{class:'nic-editor-feedback',role:'alert'}),ok=el('button',{type:'submit',class:'primary',disabled:canEdit?null:''},'OK');
+    const advancedToggle=el('input',{type:'checkbox',name:'advanced','aria-controls':'nic-advanced'});advanced.id='nic-advanced';
+    advancedToggle.onchange=()=>{advanced.hidden=!advancedToggle.checked;};
+    const fields=el('fieldset',{class:'nic-editor-fields',disabled:canEdit?null:''},el('div',{class:'nic-editor-columns'},left,right),hint,advanced);
+    const form=el('form',{class:'nic-editor-form'},fields,help,feedback,el('div',{class:'nic-editor-footer'},el('button',{type:'button',class:'nic-help',onclick:()=>{help.hidden=!help.hidden;}},'? Ajuda'),el('label',{class:'nic-advanced-toggle'},'Avançado',advancedToggle),ok));
+    const mode=family=>Object.entries(modes[family]).find(([,radio])=>radio.checked)?.[0];
+    const selectedBridge=()=>networks.find(network=>network.name===bridge.value);
+    const hasAddress=family=>Boolean(selectedBridge()?.config?.[family+'.address']&&selectedBridge().config[family+'.address']!=='none');
+    const values=()=>({network:bridge.value,name:interfaceName.value.trim(),hwaddr:mac.value.trim(),vlan:vlan.value,mtu:mtu.value,
+      'limits.max':Number(rate.value)>0?Math.round(Number(rate.value)*8000)+'kbit':'',
+      ...Object.fromEntries(filters.map(key=>[key,filterInputs[key].value])),disconnected:String(disconnected.checked),
+      ...Object.fromEntries(['ipv4','ipv6'].map(family=>[family+'.address',hasAddress(family)&&mode(family)==='static'?(addresses[family].value.trim()||(current[family+'.address']==='none'?'none':'')):'']))});
+    let baseline,busy=false;
+    const update=()=>{
+      const network=selectedBridge(),config=network?.config||{};
+      interfaceName.setCustomValidity(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$/.test(interfaceName.value)?'':'Use até 15 caracteres: letras, números, ponto, hífen ou sublinhado.');
+      mac.setCustomValidity(!mac.value||/^(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/.test(mac.value)?'':'Informe um endereço MAC válido.');
+      for(const family of ['ipv4','ipv6']){
+        const enabled=hasAddress(family),stateful=family==='ipv4'||config['ipv6.dhcp.stateful']==='true';
+        for(const [value,radio]of Object.entries(modes[family]))radio.disabled=!enabled||(value==='dhcp'&&(!stateful||config[family+'.dhcp']==='false'))||(value==='slaac'&&stateful);
+        addresses[family].disabled=!enabled||mode(family)!=='static';
+        addresses[family].required=!addresses[family].disabled&&current[family+'.address']!=='none';
+        gateways[family].value=enabled?(family==='ipv4'?gateway(network):''):'';
+        gateways[family].placeholder=enabled&&family==='ipv6'?'Herdado da ponte':'';
+        gateways[family].disabled=addresses[family].disabled;
+      }
+      hint.hidden=!['ipv4','ipv6'].some(family=>hasAddress(family)&&mode(family)==='static');
+      ok.disabled=busy||!canEdit||Boolean(device&&baseline===JSON.stringify(values()))||!form.checkValidity();
+    };
+    firewall.onchange=()=>{firewall.indeterminate=false;for(const key of filters)filterInputs[key].value=String(firewall.checked);update();};
+    for(const control of Object.values(filterInputs))control.addEventListener('change',syncFirewall);
+    bridge.onchange=()=>{
+      for(const family of ['ipv4','ipv6']){addresses[family].value='';const automatic=family==='ipv6'&&selectedBridge()?.config?.['ipv6.dhcp.stateful']!=='true'?'slaac':'dhcp';for(const [value,radio]of Object.entries(modes[family]))radio.checked=value===automatic;}
+      update();
+    };
+    form.addEventListener('input',update);form.addEventListener('change',update);
+    baseline=JSON.stringify(values());update();
+    form.onsubmit=async event=>{
+      event.preventDefault();if(busy||!canEdit||!form.reportValidity())return;
+      const nic=values(),targetDevice=deviceName.value.trim(),owner=session;
+      busy=true;ok.disabled=true;feedback.textContent='';
+      try{
+        const result=await api('/api/action',{...scope,target:item.name,action:device?'nic-update':'nic-add',device:targetDevice,nic,revision:item._devices_revision,confirmation:`${scope.host}/${scope.project}/${item.name}`});
+        trackTask(`${scope.host}/${scope.project}/${result.operation}`,{...scope,id:result.operation,target:item.name,action:device?'nic-update':'nic-add',status_code:100,status:'Em andamento'});
+        const resultState=await waitOperation(result.operation,scope,owner);
+        if(session!==owner)return;
+        if(form.isConnected)closeEditor();
+        notify(resultState.status_code<200?'Alteração em andamento. Acompanhe em Tarefas.':'Interface de rede atualizada.');
+        if(host===scope.host&&project===scope.project)await render();
+      }catch(error){if(form.isConnected)feedback.textContent=error.message;}
+      finally{busy=false;update();}
+    };
+    openEditor((device?'Editar':'Adicionar')+': Dispositivo de Rede (veth)',form,'nic');
+    $('#reset-editor').onclick=()=>{form.reset();advanced.hidden=true;help.hidden=true;feedback.textContent='';syncFirewall();update();};
+    interfaceName.focus();
   }
-  const rows=Object.entries(devices).filter(([,d])=>['nic','none'].includes(d.type)).map(([key,d])=>{
-    const actions=el('div',{class:'network-form-actions'});
-    if(editable){
-      if(d.type==='nic')actions.append(el('button',{onclick:()=>edit(key,d)},'Editar'),el('button',{class:'danger-button',onclick:()=>action('nic-delete',key)},'Remover'));
-      if(item.devices?.[key]&&inherited[key]?.type==='nic')actions.append(el('button',{onclick:()=>action('nic-reset',key)},'Restaurar perfil'));
-    }
-    return [key,d.name||key,d.network?el('a',{href:'#network/'+encodeURIComponent(d.network)},d.network):d.parent||'—',d.type==='none'?'Desativada':item.devices?.[key]?'Local':'Herdada do perfil',d['ipv4.address']||'Automático',d['ipv6.address']||'Automático',d.vlan||'—',d['limits.max']||'Sem limite',actions];
+  let selected;
+  const remove=el('button',{type:'button','data-action':'nic-delete',disabled:'',onclick:()=>{if(selected)action('nic-delete',selected[0]);}},'Remover');
+  const editButton=el('button',{type:'button','data-action':'nic-edit',disabled:'',onclick:()=>{if(selected)edit(...selected);}},'Editar');
+  const toolbar=el('div',{class:'nic-grid-toolbar'},el('button',{type:'button','data-action':'nic-add',disabled:editable&&networks.length?null:'',onclick:()=>edit()},'Adicionar'),remove,editButton);
+  const rows=entries.map(([key,raw])=>{
+    const device=definition(key,raw),network=networks.find(value=>value.name===(device.network||device.parent)),runtime=raw.type==='none'?null:state.network?.[device.name||key];
+    const all=(runtime?.addresses||[]).map(address=>address.address+(address.netmask?'/'+address.netmask:''));
+    const configured=['ipv4','ipv6'].map(family=>cidr(device[family+'.address'],network,family)).filter(Boolean);
+    const addresses=[...new Set([...configured,...all.filter(value=>!value.startsWith('fe80:'))])];
+    const active=filters.filter(name=>device[name]==='true').length;
+    return [key,device.name||key,device.network||device.parent||'',active===filters.length?'Sim':active?'Parcial':'Não',device.vlan||'',
+      (runtime?.hwaddr||device.hwaddr||item.config?.['volatile.'+key+'.hwaddr']||'').toUpperCase(),
+      el('span',{class:'nic-addresses',title:all.join(', ')||configured.join(', ')},addresses.join(', ')),gateway(network),device.mtu||'',raw.type==='none'?'Sim':'Não'];
   });
-  return panel('Interfaces de rede',el('div',{},el('div',{class:'grid-toolbar'},el('button',{disabled:editable&&networks.length?null:'',onclick:()=>edit()},...iconLabel('plus','Adicionar interface')),el('a',{class:'button-link',href:'#networks'},'Gerenciar bridges')),table(['DISPOSITIVO','INTERFACE','BRIDGE','ORIGEM','IPv4','IPv6','VLAN','BANDA','AÇÕES'],rows)));
+  const grid=table(['ID','Nome','Ponte','Firewall','Tag da VLAN','Endereço MAC','Endereço IP','Gateway','MTU','Desconectado'],rows,{activateOnClick:true,
+    onSelect:index=>{selected=entries[index];const allowed=editable&&managed(definition(...selected));remove.disabled=editButton.disabled=!allowed;},
+    onActivate:index=>edit(...entries[index])});
+  const gridTable=grid.querySelector('table');gridTable.classList.add('nic-table');
+  gridTable.prepend(el('colgroup',{},[50,80,80,75,75,120,300,150,70,100].map(width=>el('col',{style:'width:'+width+'px'}))));
+  grid.querySelector('th button')?.click();
+  return el('section',{class:'nic-grid','aria-label':'Interfaces de rede do container'},toolbar,grid);
 }
 function bridgeOptions(config={}){
   const ipv4=config['ipv4.address']||'auto';
@@ -1072,11 +1169,11 @@ async function detail(r,scope) {
     wrapper.append(panel('Recursos',table(['RECURSO','CONFIGURAÇÃO','USO ATUAL'],[['Memória',item.expanded_config?.['limits.memory']||'Herdado',bytes(state.memory?.usage)],['Núcleos',item.expanded_config?.['limits.cpu']||'Herdado','—'],['Limite de CPU',item.expanded_config?.['limits.cpu.allowance']||'Herdado',state.cpu?.usage==null?'n/d':fmt(state.cpu.usage/1e9)+' s acumulados'],...Object.entries(item.expanded_devices||{}).filter(([,d])=>d.type==='disk').map(([key,d])=>['Disco ('+key+')',(d.pool||'')+' · '+(d.size||'Capacidade do pool'),bytes(state.disk?.[key]?.usage)])]),el('a',{class:'button-link',href:instanceLink(r.target,'options')},'Editar')),
       panel('Dispositivos',table(['DISPOSITIVO','ORIGEM','CONFIGURAÇÃO'],Object.entries(item.expanded_devices||{}).map(([key,value])=>[key,Object.hasOwn(item.devices||{},key)?'Local':'Herdado de perfil',inspect('Ver propriedades',()=>propertyTable(value))]))));
   } else if(r.tab==='network'){
-    wrapper.append(await containerNetworksView(scope,item));
-    wrapper.append(panel('Interfaces de rede',table(['NOME','TIPO','BRIDGE / REDE','MAC','ENDEREÇOS'],Object.entries(item.expanded_devices||{}).filter(([,d])=>d.type==='nic').map(([key,d])=>{const nic=state.network?.[d.name||key];return [d.name||key,d.nictype||'Gerenciada',d.network||d.parent||'n/d',nic?.hwaddr||d.hwaddr||'n/d',(nic?.addresses||[]).map(a=>a.address+(a.netmask?'/'+a.netmask:'')).join(', ')||d['ipv4.address']||'DHCP / não informado'];}))));
+    wrapper.classList.add('nic-workspace');
+    wrapper.append(await containerNetworksView(scope,item,state));
   } else if(r.tab==='dns'){
     const networks=(await read('networks',undefined,scope)).data;
-    const used=new Set(Object.values(item.expanded_devices||{}).filter(d=>d.type==='nic').map(d=>d.network));
+    const used=new Set(Object.values(item.expanded_devices||{}).filter(d=>d.type==='nic').map(d=>d.network||d.parent));
     wrapper.append(panel('DNS herdado da rede',table(['REDE','DOMÍNIO','MODO','GATEWAY IPv4'],networks.filter(n=>used.has(n.name)).map(n=>[n.name,n.config?.['dns.domain']||'Padrão do Incus',n.config?.['dns.mode']||'Padrão do Incus',n.config?.['ipv4.address']||'n/d']))),notice('O container recebe DNS pelo DHCP da bridge. Alterações feitas dentro do sistema convidado não são consultadas por esta tela.'));
   }
   else if(r.tab==='options')wrapper.append(editView(item,scope));
