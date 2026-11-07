@@ -14,7 +14,7 @@ jobs:
       - name: Rejeitar namespace sem IDs delegados antes de instalar
         run: |
           set +e
-          sudo unshare --user --map-root-user python3 - < deploy/preflight.py > /tmp/preflight.log 2>&1
+          sudo unshare --user --map-root-user python3 deploy/preflight.py > /tmp/preflight.log 2>&1
           status=$?
           set -e
           cat /tmp/preflight.log
