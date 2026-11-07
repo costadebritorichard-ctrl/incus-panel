@@ -246,13 +246,11 @@ html[data-theme="dark"] .context-menu button:not(:disabled):hover,html[data-them
 
 /* The terminal surface is independent of the selected theme. */
 .terminal-panel .panel-body{padding:0;background:#171717}.terminal-panel .toolbar{margin:0}
-.console-command-form{display:flex;align-items:center;gap:7px;padding:7px;border-bottom:1px solid var(--border)}
-.console-command-form>label,.console-command-form>button{flex-shrink:0}.console-command-form>input{flex:1;min-width:0;font-family:Consolas,"Courier New",monospace}
 .terminal-host{height:clamp(220px,calc(100dvh - 350px),800px);min-width:0;padding:7px;background:#171717}.terminal-host .xterm{height:100%}
 .terminal-help{padding:6px 8px;border-top:1px solid var(--border);background:var(--chrome);font-size:11px}.terminal-status{color:var(--muted);font-size:11px}
 .console-window #shell{grid-template-columns:minmax(0,1fr);grid-template-rows:38px auto minmax(0,1fr);grid-template-areas:"header" "resource" "main"}
 .console-window #sidebar,.console-window #navigation,.console-window #task-log,.console-window footer,.console-window #menu-toggle,.console-window #global-search,.console-window .header-label,.console-window #create-ct{display:none}
-.console-window .terminal-host{height:calc(100dvh - 235px)}
+.console-window .terminal-host{height:calc(100dvh - 195px)}
 
 /* Responsive layouts share the same named grid areas. */
 @media(max-width:1350px){

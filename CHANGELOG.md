@@ -1,5 +1,10 @@
 # Changelog
 
+## Console somente interativo — 2026-11-07
+
+- Removida a barra separada de comandos; toda a digitação acontece diretamente no terminal, no padrão do Proxmox.
+- Mantidos o transporte WebSocket contínuo, atalhos do terminal e alternativa HTTP; janela dedicada recupera o espaço da barra removida.
+
 ## Console contínuo e envio por comando — 2026-11-07
 
 - Campo Comando com edição local e envio da linha completa somente com Enter ou Enviar; teclado do terminal permanece interativo.

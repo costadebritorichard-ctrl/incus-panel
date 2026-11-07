@@ -30,10 +30,9 @@ bloqueada pelo proxy, mantém compatibilidade HTTP com consultas a cada 100–40
 e 2 segundos na aba oculta. Sombras, desfoques, transições e rotação
 contínua do indicador de carregamento são desativados.
 
-O campo **Comando** edita a linha localmente e só a envia ao pressionar Enter
-ou Enviar, sem requisições durante a digitação. O terminal conserva teclado
-interativo para Tab, Ctrl+C, senhas e programas de tela cheia. Não há histórico
-de comandos salvo pelo campo no navegador. O caminho contínuo elimina as
+Toda a entrada acontece diretamente no terminal, sem uma barra de comando
+separada, preservando Tab, Ctrl+C, senhas e programas de tela cheia.
+O caminho contínuo elimina as
 requisições HTTP por lote de teclado e as consultas periódicas de saída.
 
 A saída tem controle de fluxo: no máximo quatro blocos aguardam a confirmação
@@ -45,7 +44,7 @@ e [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455.html).
 
 `python tests/console_fixture.py` e `node scripts/console-review.mjs` verificam
 o transporte real do painel com um PTY de eco explícito, sem executar comandos.
-Cobrem envio somente com Enter, Unicode, teclado interativo, seis layouts e
+Cobrem teclado direto no terminal, Unicode, seis layouts e
 fallback HTTP. A latência dessa fixture local não representa a rede ou o Incus
 da TV box. Os contratos de frames, autorização, sessão, fluxo e concorrência
 ficam em `tests/test_console_stream.py`.

@@ -25,15 +25,18 @@ try{
   await evaluate("location.hash='#instance/lab-web/console'");await wait('terminalState?.connected&&terminalState.streaming===true');
   const inputFrames=()=>frames.filter(frame=>frame.type==='input');
   const before=inputFrames().length;
-  await evaluate("document.querySelector('#console-command').focus()");
-  for(const text of ['printf ','complete-','command'])await call('Input.insertText',{text});
-  await new Promise(resolve=>setTimeout(resolve,50));
-  assert.equal(inputFrames().length,before,'Typing locally must not send any terminal input.');
-  await evaluate("document.querySelector('.console-command-form').requestSubmit()");
-  await wait("document.querySelector('#console-command').value===''");
+  assert.equal(await evaluate("document.querySelector('.console-command-form')===null"),true);
+  await evaluate('terminalState.term.focus()');
+  for(const key of 'pwd'){
+    await call('Input.dispatchKeyEvent',{type:'keyDown',key,code:'Key'+key.toUpperCase(),windowsVirtualKeyCode:key.toUpperCase().charCodeAt(0),text:key});
+    await call('Input.dispatchKeyEvent',{type:'keyUp',key,code:'Key'+key.toUpperCase(),windowsVirtualKeyCode:key.toUpperCase().charCodeAt(0)});
+  }
   for(let count=0;count<100&&inputFrames().length===before;count++)await new Promise(resolve=>setTimeout(resolve,10));
-  assert.equal(inputFrames().length,before+1);
-  assert.equal(inputFrames().at(-1).text,'printf complete-command\r');
+  assert.equal(inputFrames().slice(before).map(frame=>frame.text).join(''),'pwd','Typing in the terminal is sent directly.');
+  await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r'});
+  await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+  await wait('terminalState.pending.length===0');await new Promise(resolve=>setTimeout(resolve,30));
+  assert.equal(inputFrames().slice(before).map(frame=>frame.text).join(''),'pwd\r');
   assert.equal(requests.some(url=>url.includes('/api/console/input')||url.includes('/api/console/read')),false,'A healthy stream must not poll or send HTTP keystrokes.');
   const controls='pwd\r\x03\t\x1b[A';
   await evaluate("window.consoleReceived='';window.originalTerminalWrite=terminalState.term.write.bind(terminalState.term);terminalState.term.write=(text,callback)=>{window.consoleReceived+=text;originalTerminalWrite(text,callback);};terminalState.enqueue("+JSON.stringify(controls)+",true)");
@@ -48,19 +51,19 @@ try{
   const samples=await evaluate(`(async()=>{const samples=[];for(let index=0;index<10;index++){const marker='LATENCY_'+index+'_'+Date.now();const started=performance.now();await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Echo timeout')),3000);const original=terminalState.term.write.bind(terminalState.term);terminalState.term.write=(text,callback)=>original(text,()=>{callback?.();if(text.includes(marker)){clearTimeout(timer);terminalState.term.write=original;samples.push(performance.now()-started);resolve();}});terminalState.enqueue(marker+'\\r',true);});}return samples;})()`);
   for(const theme of ['dark','light'])for(const width of [1440,390,320]){
     await viewport(width,width<=390?650:900);await evaluate(`applyTheme('${theme}')`);
-    const bounds=await evaluate("(()=>{const r=document.querySelector('.console-command-form').getBoundingClientRect(),main=document.querySelector('main').getBoundingClientRect();return {left:r.left,right:r.right,visible:r.top>=main.top&&r.bottom<=main.bottom,overflow:document.documentElement.scrollWidth>innerWidth};})()");
-    assert.ok(bounds.visible&&bounds.left>=0&&bounds.right<=width+1&&!bounds.overflow,JSON.stringify({theme,width,bounds}));await screenshot(`${theme}-${width}`);
+    const bounds=await evaluate("(()=>{const r=document.querySelector('.terminal-host').getBoundingClientRect();return {left:r.left,right:r.right,height:r.height,overflow:document.documentElement.scrollWidth>innerWidth};})()");
+    assert.ok(bounds.height>0&&bounds.left>=0&&bounds.right<=width+1&&!bounds.overflow,JSON.stringify({theme,width,bounds}));await screenshot(`${theme}-${width}`);
   }
   await viewport(1440,900);
   await evaluate("window.savedWebSocket=window.WebSocket;window.WebSocket=function(){throw new Error('Blocked proxy fixture');};startTerminal('lab-web')");
   await wait('terminalState?.connected&&!terminalState.streaming');
   const beforeFallback=requests.filter(url=>url.endsWith('/api/console/input')).length;
-  await evaluate("document.querySelector('#console-command').value='fallback-command';document.querySelector('.console-command-form').requestSubmit()");
+  await evaluate("terminalState.enqueue('fallback-command\\r',true)");
   await wait("terminalState.pending.length===0&&!terminalState.sending");
   assert.equal(requests.filter(url=>url.endsWith('/api/console/input')).length,beforeFallback+1);
   await evaluate('window.WebSocket=window.savedWebSocket;closeConsole()');
   assert.equal(await evaluate('consoleId===null&&terminalState===null'),true);
   assert.equal(errors.length,0,JSON.stringify(errors));
-  const sorted=[...samples].sort((a,b)=>a-b),result={transport:'real local WebSocket with echo-only PTY double',commandSentOnlyOnSubmit:true,httpKeystrokeRequestsInStreamingMode:0,unicodePreserved:true,httpFallback:true,layouts:6,renderedEchoMs:{samples:samples.map(value=>+value.toFixed(2)),median:+sorted[5].toFixed(2),max:+Math.max(...samples).toFixed(2)},jsErrors:errors.length};
+  const sorted=[...samples].sort((a,b)=>a-b),result={transport:'real local WebSocket with echo-only PTY double',directTerminalKeyboard:true,separateCommandBar:false,httpKeystrokeRequestsInStreamingMode:0,unicodePreserved:true,httpFallback:true,layouts:6,renderedEchoMs:{samples:samples.map(value=>+value.toFixed(2)),median:+sorted[5].toFixed(2),max:+Math.max(...samples).toFixed(2)},jsErrors:errors.length};
   await fs.writeFile('artifacts/console/result.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{socket.close();}

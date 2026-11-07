@@ -1106,9 +1106,7 @@ async function detail(r,scope) {
   } else if(r.tab==='console'){
     const allowed=session.enable_console&&canMutate(r.target)&&state.status==='Running'&&!session.demo;
     const controls=el('div',{class:'toolbar'},el('span',{id:'terminal-status',class:'terminal-status',role:'status'},allowed?'Conectando…':'Console indisponível'),el('button',{type:'button',disabled:allowed?null:'',onclick:()=>startTerminal(r.target).catch(showTerminalError)},'Reconectar'),el('button',{type:'button',disabled:allowed?null:'',onclick:()=>terminalState?.enqueue?.('\x03',true)},'Interromper'),el('button',{type:'button',onclick:()=>{closeConsole();const statusNode=$('#terminal-status');if(statusNode)statusNode.textContent='Desconectado';}},'Desconectar'));
-    const command=el('input',{id:'console-command',type:'text',maxlength:'4095',autocomplete:'off',autocapitalize:'none',spellcheck:'false',disabled:'',placeholder:'Digite o comando completo e pressione Enter'});
-    const commandForm=el('form',{class:'console-command-form',onsubmit:event=>{event.preventDefault();if(command.value&&terminalState?.enqueue?.(command.value+'\r',true)){command.value='';command.focus();}}},el('label',{for:'console-command'},'Comando'),command,el('button',{type:'submit',disabled:''},'Enviar'));
-    wrapper.append(el('section',{class:'panel terminal-panel'},el('div',{class:'panel-head'},el('h2',{},'Console · '+r.target),controls),commandForm,el('div',{class:'panel-body'},el('div',{id:'console-output',class:'terminal-host','aria-label':'Terminal interativo do container'})),el('div',{class:'terminal-help'},'Comando: envia a linha inteira com Enter. Terminal: teclado direto, Tab completa, Ctrl+C interrompe e Ctrl+Shift+C copia a seleção.')));
+    wrapper.append(el('section',{class:'panel terminal-panel'},el('div',{class:'panel-head'},el('h2',{},'Console · '+r.target),controls),el('div',{class:'panel-body'},el('div',{id:'console-output',class:'terminal-host','aria-label':'Terminal interativo do container'})),el('div',{class:'terminal-help'},'Shell /bin/sh · teclado direto · Ctrl+C interrompe · Tab completa · Ctrl+Shift+C copia a seleção')));
     if(!allowed)wrapper.prepend(notice(session.demo?'O modo demonstração não emula um shell. O console interativo exige um container Incus real.':!session.enable_console?'Habilite enable_console na configuração do painel.':state.status!=='Running'?'Inicie o container para acessar o console.':'Seu usuário não tem permissão para abrir o console.'));
     wrapper.dataset.connectConsole=String(allowed);
   } else wrapper.append(empty('Página não encontrada.'));
@@ -1180,11 +1178,9 @@ async function closeConsole(){
   clearTimeout(consoleTimer);
   const state=terminalState,id=consoleId||state?.id;terminalState=null;consoleId=null;
   if(state){state.cancelled=true;state.connected=false;clearTimeout(state.inputTimer);state.cancelStream?.();state.socket?.close();state.observer?.disconnect();state.input?.dispose();state.term?.dispose();}
-  setConsoleInputEnabled(false);
   if(id&&session){const owner=session;consoleClosing=consoleClosing.catch(()=>{}).then(()=>session===owner?api('/api/console/close',{console:id}):null).catch(()=>{});}
   await consoleClosing;
 }
-function setConsoleInputEnabled(enabled){for(const input of document.querySelectorAll('.console-command-form input,.console-command-form button'))input.disabled=!enabled;}
 function connectConsoleStream(state,owner){
   if(typeof WebSocket!=='function')return Promise.resolve(false);
   return new Promise(resolve=>{
@@ -1213,7 +1209,7 @@ function endTerminal(state,message){
   if(state.ended||state.cancelled)return;
   state.ended=true;state.connected=false;state.pending='';clearTimeout(state.inputTimer);clearTimeout(consoleTimer);
   state.input?.dispose();state.observer?.disconnect();state.term.writeln('\r\n['+message+']');
-  if(consoleId===state.id)consoleId=null;setConsoleInputEnabled(false);showTerminalError(new Error(message));
+  if(consoleId===state.id)consoleId=null;showTerminalError(new Error(message));
 }
 async function startTerminal(target){
   const owner=session,scope={host,project};
@@ -1232,7 +1228,7 @@ async function startTerminal(target){
   consoleId=result.console;state.id=result.console;state.term.clear();
   if(result.stream)await connectConsoleStream(state,owner);
   if(state.cancelled||session!==owner)return;
-  state.connected=true;setConsoleInputEnabled(true);
+  state.connected=true;
   const statusNode=$('#terminal-status');if(statusNode)statusNode.textContent='Conectado · '+target;
   const flush=async()=>{
     if(state.cancelled||!state.connected||state.sending||!state.pending)return;
