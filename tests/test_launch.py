@@ -72,6 +72,32 @@ class LaunchContracts(unittest.TestCase):
         self.assertEqual(job['status_code'], 200)
         self.assertEqual(self.client.instances['laboratorio', result['target']]['status'], 'Stopped')
 
+    def test_native_wait_advances_both_phases_without_polling_sleep(self):
+        calls = []
+        def wait_operation(operation, project):
+            calls.append(operation)
+            if calls.count(operation) == 1:
+                return {'status_code': 103, 'metadata': {'progress': '50%'}}
+            return self.client.request('GET', '/1.0/operations/' + operation, project)['metadata']
+        self.client.wait_operation = wait_operation
+        with patch('incus_panel.core.time.sleep') as sleep:
+            result, job = self.launch()
+        self.assertEqual(job['status_code'], 200)
+        self.assertEqual(self.client.instances['laboratorio', result['target']]['status'], 'Running')
+        self.assertEqual(len(calls), 4)
+        self.assertEqual(len(set(calls)), 2)
+        sleep.assert_not_called()
+
+    def test_native_wait_failure_never_starts_and_releases_creation_slot(self):
+        self.client.wait_operation = lambda operation, project: {'status_code': 400, 'err': 'Import failed'}
+        with patch.object(self.client, 'request', wraps=self.client.request) as calls:
+            _, job = self.launch()
+        self.assertEqual(job['status_code'], 400)
+        self.assertEqual(job['err'], 'Import failed')
+        self.assertFalse(any(c.args[0] == 'PUT' for c in calls.call_args_list))
+        del self.client.wait_operation
+        self.assertEqual(self.launch()[1]['status_code'], 200)
+
     def test_wizard_rejects_invalid_options_before_any_mutation(self):
         invalid = [[], {'unknown': 'value'}, {'memory_mib': 0}, {'memory_mib': True},
                    {'cpu_cores': 0}, {'cpu_allowance': 101}, {'start': 'false'},

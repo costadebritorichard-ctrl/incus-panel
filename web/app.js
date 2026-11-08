@@ -77,7 +77,6 @@ async function waitOperation(operation,scope,owner){
     if(session!==owner)throw new Error('A sessão mudou. Consulte Tarefas para conferir a operação.');
     state=(await read('operation',operation,scope)).data;
     trackTask(`${scope.host}/${scope.project}/${operation}`,{...tasks.get(`${scope.host}/${scope.project}/${operation}`),...scope,id:operation,...state});
-    if(state.status_code>=200)readCache.clear();
     if(state.status_code>=400)throw new Error(state.err||'O Incus não concluiu a operação.');
     if(state.status_code>=200)return state;
     await new Promise(resolve=>setTimeout(resolve,owner.low_resource?5000:1000));
@@ -92,6 +91,7 @@ const creationRuns = new Map();
 const snapshotRuns = new Map();
 const imageDownloads = new Map();
 const readCache = new Map();
+const operationMutations = new Map();
 let inventory=[], serverInfo={}, storageInventory=[], networkInventory=[], taskLogScope='', taskLogItems=[], taskLogMode='tasks';
 const instanceTabs=[['summary','◫','Sumário'],['console','>_','Console'],['resources','▤','Recursos'],['network','⌘','Rede'],['dns','☷','DNS'],['options','⚙','Opções'],['history','◷','Histórico de tarefas'],['backups','▣','Backup'],['snapshots','◷','Snapshots'],['permissions','♙','Permissões']];
 const nodeTabs=[['search','⌕','Procurar'],['summary','◫','Sumário'],['notes','✎','Notas'],['system','▦','Sistema'],['network','⌘','Rede'],['storage','▤','Discos'],['tasks','◷','Histórico de tarefas']];
@@ -228,12 +228,39 @@ $('#close-editor').onclick=closeEditor;
 $('#editor-dialog').addEventListener('cancel',event=>{event.preventDefault();closeEditor();});
 function errorNode(error) { return notice((error.status===403?'Sem permissão. ':error.status===503?'Desconectado. ':'')+error.message,true); }
 function loadingView(message) { return el('div',{class:'loading-state',role:'status','aria-live':'polite'},el('span',{class:'spinner','aria-hidden':'true'}),el('p',{},message)); }
+function invalidateMutation(path,change){
+  if(path==='/api/users'){readCache.clear();return;}
+  const action=path==='/api/create'?'create':path==='/api/images/download'?'download-image':change.action;
+  const shared=new Set(['audit','host-summary','pool-resources','volumes']);
+  const networkAction=action?.startsWith('network-'),artifactAction=/^(snapshot|backup)/.test(action||'');
+  if(!networkAction&&!artifactAction&&action!=='download-image')shared.add('instance-list');
+  if(networkAction||['create','delete','clone','nic-add','nic-update','nic-delete','nic-reset'].includes(action)){
+    for(const resource of ['networks','network','network-leases'])shared.add(resource);
+  }
+  if(['create','delete','clone'].includes(action))shared.add('profiles');
+  if(action==='download-image'||action==='template'||action==='create'&&change.remote_image){shared.add('images');shared.add('creation-images');}
+  const targets=new Set([change.target,change.name].filter(Boolean));
+  for(const key of readCache.keys()){
+    const query=new URLSearchParams(key.split('?')[1]);
+    if(query.get('host')!==change.host||query.get('project')!==change.project)continue;
+    const resource=query.get('resource');
+    if(shared.has(resource)||(['instance','state','snapshots','backups'].includes(resource)&&targets.has(query.get('target'))))readCache.delete(key);
+  }
+}
 async function api(path, body) {
   const owner=session;
-  if(body&&['/api/action','/api/create','/api/images/download','/api/users'].includes(path))readCache.clear();
+  const mutation=body&&['/api/action','/api/create','/api/images/download','/api/users'].includes(path);
+  if(mutation)invalidateMutation(path,body);
   const response = await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':session?.csrf || ''}:{},body:body?JSON.stringify(body):undefined,cache:'no-store'});
   const result = await response.json();
-  if(body&&['/api/action','/api/create','/api/images/download','/api/users'].includes(path))readCache.clear();
+  if(mutation&&session===owner){
+    const change={...body,target:result.target||body.target};
+    invalidateMutation(path,change);
+    if(response.ok&&result.operation){
+      operationMutations.set(`${body.host}/${body.project}/${result.operation}`,{path,change});
+      if(operationMutations.size>100)operationMutations.delete(operationMutations.keys().next().value);
+    }
+  }
   if (!response.ok) {
     if (response.status===401 && path!=='/api/login' && owner && session===owner) logoutLocal('Sua sessão expirou. Entre novamente.');
     throw Object.assign(new Error(result.error || 'Falha na solicitação.'),{status:response.status});
@@ -249,6 +276,14 @@ async function queuedRead(path,current=()=>true){
 }
 async function read(resource,target,scope={host,project}) {
   const path='/api/read?'+new URLSearchParams({...scope,resource,...(target?{target}:{})});
+  if(resource==='operation'){
+    const owner=session,result=await queuedRead(path),key=`${scope.host}/${scope.project}/${target}`;
+    if(session===owner&&result.data.status_code>=200){
+      const mutation=operationMutations.get(key);
+      if(mutation){invalidateMutation(mutation.path,mutation.change);operationMutations.delete(key);}
+    }
+    return result;
+  }
   const cacheable=['server','instance-list',...(session?.low_resource?[
     'host-summary','pools','pool-resources','networks','network','network-leases',
     'profiles','projects','instance','state','snapshots','backups','images',
@@ -374,6 +409,7 @@ function logoutLocal(message='') {
   closeConsole();
   for(const run of creationRuns.values())clearTimeout(run.timer);
   creationRuns.clear();
+  operationMutations.clear();
   for(const run of snapshotRuns.values()){clearTimeout(run.timer);clearTimeout(run.closeTimer);}
   snapshotRuns.clear();$('#snapshot-progress').close();
   for(const run of imageDownloads.values())clearTimeout(run.timer);
@@ -1314,7 +1350,7 @@ async function pollSnapshotTask(run){
     if(run.status_code>=200){
       run.ended_at=state.updated_at||Date.now()/1000;
       appendSnapshotLog(run,snapshotTaskSuccess(run)?({'snapshot':'Snapshot criado e confirmado pelo Incus.','snapshot-delete':'Remoção do snapshot confirmada pelo Incus.','snapshot-restore':'Reversão confirmada pelo Incus.'})[run.action]:run.err||'A operação terminou com erro.');
-      readCache.clear();
+      invalidateMutation('/api/action',{...run.scope,action:run.action,target:run.target});
     }
     trackTask(run.key,snapshotTaskRecord(run));updateSnapshotTaskWindows(run);
     if(run.status_code>=200){
@@ -1723,7 +1759,7 @@ async function pollImageDownload(run){
     trackTask(`${run.scope.host}/${run.scope.project}/${run.operation}`,{...run.scope,...state,target:run.target,action:'download-image',description:'Baixar '+run.target});
     updateImageDownload(run);
     if(run.status_code<200){if(watchingRun(run,'images'))run.timer=setTimeout(()=>pollImageDownload(run),session.low_resource?5000:1500);}
-    else if(watchingRun(run,'images')){readCache.clear();await render();}
+    else if(watchingRun(run,'images')){invalidateMutation('/api/images/download',run.scope);await render();}
   }catch(error){if(session===run.owner){run.connectionError=error.message;updateImageDownload(run);}}
   finally{run.polling=false;}
 }
@@ -1895,9 +1931,9 @@ async function pollCreation(run){
     if(state.status_code>=200)appendCreationLog(run,state.status_code<400&&!state.err?'Container criado e confirmado pelo Incus.':state.err||'A operação terminou com erro.',Boolean(state.err)||state.status_code>=400);
     trackTask(`${run.scope.host}/${run.scope.project}/${run.operation}`,{...run.scope,...state,action:'create',target:run.target,description:`CT ${run.target} - Criar`});
     updateCreationTaskViewer(run);
-    if(state.status_code<200){if(watchingCreation(run))run.timer=setTimeout(()=>pollCreation(run),session.low_resource?5000:1500);}
+    if(state.status_code<200){if(watchingCreation(run))run.timer=setTimeout(()=>pollCreation(run),1000);}
     else{
-      readCache.clear();
+      invalidateMutation('/api/create',{...run.scope,target:run.target});
       const renderId=generation;
       const latest=await read('instance-list',undefined,run.scope).catch(()=>null);
       if(latest&&session===run.owner&&host===run.scope.host&&project===run.scope.project){

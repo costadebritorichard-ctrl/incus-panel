@@ -69,6 +69,28 @@ class LocalAdministration(unittest.TestCase):
                     UnixIncus({'socket_path': str(Path('incus.socket').resolve())}).request(method, path, 'default')
             connection.assert_not_called()
 
+    def test_operation_wait_is_bounded_and_keeps_project_scope(self):
+        operation = 'a' * 8 + '-1111-2222-3333-' + 'b' * 12
+        response = Mock(status=200)
+        response.read.return_value = json.dumps({'type': 'sync', 'metadata': {'status_code': 200}}).encode()
+        with patch('incus_panel.unix_transport.UnixHTTPConnection') as connection:
+            connection.return_value.getresponse.return_value = response
+            client = UnixIncus({'socket_path': str(Path('incus.socket').resolve())})
+            self.assertEqual(client.wait_operation(operation, 'default')['status_code'], 200)
+            path = connection.return_value.request.call_args.args[1]
+            self.assertIn('/operations/' + operation + '/wait?', path)
+            self.assertIn('timeout=5', path)
+            self.assertIn('project=default', path)
+            connection.return_value.close.assert_called_once()
+
+    def test_operation_wait_cannot_supply_paths_or_query_parameters(self):
+        client = UnixIncus({'socket_path': str(Path('incus.socket').resolve())})
+        with patch('incus_panel.unix_transport.UnixHTTPConnection') as connection:
+            for operation in ('../instances', 'a' * 36 + '?timeout=-1', 'a' * 35, None):
+                with self.assertRaises(PanelError):
+                    client.wait_operation(operation, 'default')
+            connection.assert_not_called()
+
     def test_socket_allows_only_supported_managed_bridge_write_paths(self):
         response = Mock(status=202)
         response.read.return_value = json.dumps({'type': 'async', 'operation': '/1.0/operations/123', 'metadata': {}}).encode()

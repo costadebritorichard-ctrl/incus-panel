@@ -39,9 +39,14 @@ try{
   $('#login-username').value='test';$('#login-password').value='local-browser-fixture';$('#login-form').requestSubmit();
   await wait(()=>!$('#shell').hidden&&!$('#content').hasAttribute('aria-busy'));
   w.location.hash='instances';await wait(()=>!!$('.view-instances')&&!$('#content').hasAttribute('aria-busy'));
+  for(const resource of ['server','pools','instance','state'])await w.read(resource,['instance','state'].includes(resource)?'lab-web':undefined);
+  const stableReads=()=>requests.filter(path=>path.includes('resource=server')||path.includes('resource=pools')||path.includes('target=lab-web')).length;
+  const beforeCreationReads=stableReads();
   await create('creation-visible');
   await wait(()=>$('.task-view-output')?.textContent.includes('25%'));
   assert.equal($('#task-detail').open,true);
+  const duringCreation=(await w.read('instance','creation-visible')).data;
+  assert.equal(duringCreation.status,'Stopped','A leitura intermediária deve ser invalidada ao concluir.');
   const owner=w.eval('session');
   restoreSession(new Response(JSON.stringify(restoredSession),{status:200,headers:{'Content-Type':'application/json'}}));
   await new Promise(resolve=>setTimeout(resolve,50));
@@ -52,6 +57,10 @@ try{
   await wait(()=>$('.task-view-output')?.textContent.includes('TASK OK'));
   assert.equal($('#task-detail').open,true,'O acompanhamento conclui sem fechar o diálogo.');
   await wait(()=>$('#content').textContent.includes('creation-visible'));
+  const completed=(await w.read('instance','creation-visible')).data;
+  assert.equal(completed.status,'Running','O estado intermediário não permanece no cache.');
+  for(const resource of ['server','pools','instance','state'])await w.read(resource,['instance','state'].includes(resource)?'lab-web':undefined);
+  assert.equal(stableReads(),beforeCreationReads,'Criar outro CT preserva os dados do servidor, pools e containers que não mudaram.');
   assert.ok($('#tree a[href="#instance/creation-visible/summary"]'),'O container aparece na árvore sem F5.');
   assert.equal(requests.filter(path=>path==='/api/create').length,1);
   $('#task-view-tab-status').click();assert.match($('.task-view-status').textContent,/Concluída/);

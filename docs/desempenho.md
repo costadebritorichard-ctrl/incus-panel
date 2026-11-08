@@ -6,7 +6,8 @@ congelamento de uma VM durante APT/DPKG precisa de diagnóstico próprio; os
 resultados de RSS abaixo não comprovam instalação em 512 MB, 1 GB ou 2 GB.
 
 O modo leve é padrão. O inventário fica em memória no navegador e é reutilizado
-entre telas. Atualizar, mudança de escopo e ações pelo painel invalidam esse cache.
+entre telas. Atualizar e mudança de escopo invalidam esse cache por completo;
+ações pelo painel invalidam apenas os recursos afetados no host/Project.
 Mudanças feitas por outro cliente Incus exigem o botão Atualizar. Pools são
 consultados em Armazenamento/Alertas; a visão geral não varre todos os pools.
 
@@ -14,9 +15,25 @@ Na navegação do modo leve, o painel mantém até 128 respostas de leitura em u
 cache LRU por sessão e escopo. Ele inclui inventário, detalhes já consultados,
 redes, perfis, imagens e pools; progresso de operações assíncronas não é
 armazenado. Ao trocar de rota dentro do mesmo host/Project, a tela anterior
-permanece visível enquanto a próxima é montada. O botão Atualizar e qualquer
-ação invalidam o cache. Essa alteração evita novas consultas Incus para dados
+permanece visível enquanto a próxima é montada. O botão Atualizar invalida todo
+o cache; ações preservam os dados de telas e containers que não mudaram.
+Essa alteração evita novas consultas Incus para dados
 já lidos ao alternar entre telas; não é uma medição de latência na TV Box.
+
+Na criação pelo socket Unix, o worker usa a [espera nativa de operações do
+Incus](https://linuxcontainers.org/incus/docs/main/rest-api-spec/),
+com timeout de 5 s para renovar o progresso. O daemon responde assim que a etapa
+termina, sem uma pausa fixa antes de iniciar a próxima. O acompanhamento web
+consulta o job em memória a cada segundo somente enquanto está visível. Essa
+espera ocorre fora dos slots HTTP do painel. Outros transportes conservam
+consultas limitadas a uma por segundo durante o processamento da criação.
+
+Na medição anterior a esse ajuste, em 08/11/2026, criar e iniciar um Alpine
+local pelo assistente levou 21,2 s. A primeira visita ao sumário de outro CT,
+já consultado antes da criação, voltou a fazer duas requisições e levou 193 ms,
+pois a ação havia apagado seu cache. As revisitas em repouso levaram 4–17 ms.
+São amostras na TV box ARMv7 com três CTs em execução, sem isolar toda a carga
+do host; não constituem um benchmark estatístico.
 
 Listagens enviam somente os campos necessários, com configurações completas
 disponíveis no detalhe. Tabelas criam até 25 linhas por página e o explorador

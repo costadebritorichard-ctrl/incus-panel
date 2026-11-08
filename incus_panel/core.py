@@ -687,11 +687,15 @@ class Service:
         return {'operation': job_id, 'target': target}
 
     def _finish_launch(self, client, project, target, job):
+        wait_operation = getattr(client, 'wait_operation', None)
         try:
             for phase in ('create', 'start'):
                 deadline = time.monotonic() + 1800
                 while time.monotonic() < deadline:
-                    state = client.request('GET', '/1.0/operations/' + job['incus_operation'], project)['metadata']
+                    # The Unix daemon wakes this worker as soon as a phase ends.
+                    # Its bounded wait also refreshes progress during long imports.
+                    state = (wait_operation(job['incus_operation'], project) if callable(wait_operation)
+                             else client.request('GET', '/1.0/operations/' + job['incus_operation'], project)['metadata'])
                     with self.lock:
                         job['metadata'] = redact(state.get('metadata', {}))
                     code = state.get('status_code', 100)
@@ -699,7 +703,8 @@ class Service:
                         if code != 200 or state.get('err'):
                             raise PanelError(409, state.get('err') or 'O Incus não concluiu a operação.')
                         break
-                    time.sleep(5 if self.low_resource else 1)
+                    if not callable(wait_operation):
+                        time.sleep(1)
                 else:
                     raise PanelError(504, 'Tempo de espera excedido. Confira o estado no Incus antes de repetir.')
                 if phase == 'create':

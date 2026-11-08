@@ -325,8 +325,8 @@ Essa fixture é simulada e fica exclusivamente em `127.0.0.1:8082`.
 O modo leve é o padrão em todos os transportes, inclusive para configurações antigas
 sem a opção `low_resource`. Não há atualização periódica do inventário ou assinatura
 de eventos. O inventário é reutilizado entre telas; use o botão Atualizar para obter
-mudanças externas ao painel. Ações pelo painel invalidam esse cache. A criação consulta
-o progresso a cada 5 segundos enquanto a tela estiver visível, continua no Incus em
+mudanças externas ao painel. Ações pelo painel invalidam apenas os dados afetados.
+A criação consulta o progresso a cada segundo enquanto o acompanhamento estiver visível, continua no Incus em
 segundo plano e permite apenas uma criação de cada vez. Ao voltar à tela, a consulta
 é retomada. Armazenamento e Alertas consultam os pools sob demanda.
 
