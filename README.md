@@ -50,7 +50,7 @@ O script usa o código local quando executado na pasta do projeto; quando baixad
 - Modo leve por padrão em todos os transportes: inventário manual reutilizado entre telas, eventos desativados e uma criação por vez. Progresso consultado a cada 5 segundos somente na tela correspondente visível; o Incus continua a operação em segundo plano.
 - Tabelas com 25 linhas por página, detalhes carregados ao abrir e efeitos de desfoque/animação desativados. Arquivos estáticos comprimidos uma vez e revalidados por ETag.
 - Containers novos recebem 128 MiB de RAM, meio núcleo de CPU e autostart desligado. A criação exige 256 MiB disponíveis; download e extração podem precisar de mais.
-- Serviço do painel com até quatro requisições simultâneas no modo leve, limitado a 25% de CPU, `MemoryHigh=64M` e `MemoryMax=128M`. Ajustes do alocador glibc devolvem grandes buffers temporários ao sistema. São limites configurados; Incus e containers consomem recursos separados.
+- Serviço do painel com até quatro requisições simultâneas no modo leve, `CPUQuota=100%` (até um núcleo, com prioridade baixa `Nice=10`), `MemoryHigh=64M` e `MemoryMax=128M`. Um único cálculo de senha por vez evita picos concorrentes. Ajustes do alocador glibc devolvem grandes buffers temporários ao sistema. São limites configurados; Incus e containers consomem recursos separados.
 - Armazenamento `dir`, sem ZFS ou discos loop. Snapshots copiam dados e precisam de espaço. Containers sem privilégios; a segurança do kernel não é desativada para contornar incompatibilidades.
 
 Os pacotes seguem a [documentação oficial do Incus](https://linuxcontainers.org/incus/docs/main/installing/). O bootstrap usa `incus-base` e `incus-client`; no Ubuntu 24.04 usa `incus` sem pacotes recomendados, evitando o conjunto de máquinas virtuais.
@@ -66,6 +66,10 @@ Reexecute o instalador com o código atualizado para migrar a escuta de um IP es
 [Instalação e diagnóstico](docs/instalacao-local.md) · [Integração SSH](docs/tvbox.md) · [Operação e segurança](docs/operacao.md) · [Bridges e interfaces](docs/bridges.md).
 
 ## Validação
+
+Veja a [validação na TV box de 07/11/2026](docs/validacao-tvbox-2026-11-07.md)
+para os critérios funcionais, medições reais de navegação, correções aplicadas
+e pendências de infraestrutura.
 
 ```bash
 python -m unittest discover -s tests -v

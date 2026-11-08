@@ -52,6 +52,9 @@ class Application:
         self.events = {}
         self.failures = {}
         self.lock = threading.RLock()
+        # Password hashing is expensive on ARM. Bound its memory/CPU without
+        # holding the session lock needed by every authenticated request.
+        self.login_workers = threading.BoundedSemaphore(1 if self.service.low_resource else 2)
         self.assets = {}
         for path, filename, mime in (('/', 'index.html', 'text/html'), ('/app.js', 'app.js', 'text/javascript'), ('/style.css', 'style.css', 'text/css'), ('/vendor/xterm.js', 'vendor/xterm.js', 'text/javascript'), ('/vendor/xterm.css', 'vendor/xterm.css', 'text/css'), ('/vendor/addon-fit.js', 'vendor/addon-fit.js', 'text/javascript')):
             raw = (ROOT / 'web' / filename).read_bytes()
@@ -211,25 +214,37 @@ class Application:
         return {"ok": True, "action": action, "username": username}
 
     def login(self, username, password, address):
-        now = time.time()
-        with self.lock:
-            self.failures = {k: v for k, v in self.failures.items() if now - v[1] < 300}
-            failed, since = self.failures.get(address, (0, now))
-            if failed >= 10:
-                raise PanelError(429, "Muitas tentativas. Aguarde cinco minutos.")
-            user = next((u for u in self.config["users"] if u["username"] == username), None)
-            valid = verify_password(password, user["password_hash"] if user else "invalid$invalid")
-            if not user or not valid:
+        if not self.login_workers.acquire(blocking=False):
+            raise PanelError(429, "Autenticação em andamento. Aguarde e tente novamente.")
+        try:
+            now = time.time()
+            with self.lock:
+                self.failures = {k: v for k, v in self.failures.items() if now - v[1] < 300}
+                failed, since = self.failures.get(address, (0, now))
+                if failed >= 10:
+                    raise PanelError(429, "Muitas tentativas. Aguarde cinco minutos.")
+                # Reserve the attempt before releasing the lock, so concurrent
+                # logins cannot bypass the per-address rate limit.
                 self.failures[address] = (failed + 1, since)
-                raise PanelError(401, "Credenciais inválidas.")
-            self.failures.pop(address, None)
-            self.sessions = {k: v for k, v in self.sessions.items() if v["expires"] > now}
-            if len(self.sessions) >= 100:
-                raise PanelError(429, "Limite de sessões atingido.")
-            token = secrets.token_urlsafe(32)
-            session = {"user": user, "csrf": secrets.token_urlsafe(32), "expires": now + self.config.get("session_seconds", 1800)}
-            self.sessions[token] = session
-            return token, session
+                user = next((u for u in self.config["users"] if u["username"] == username), None)
+            valid = verify_password(password, user["password_hash"] if user else "invalid$invalid")
+            with self.lock:
+                current = next((u for u in self.config["users"] if u["username"] == username), None)
+                # A password/role change or removal during hashing must not
+                # issue a session with the previous identity or permissions.
+                if not user or not valid or current is not user:
+                    raise PanelError(401, "Credenciais inválidas.")
+                self.failures.pop(address, None)
+                now = time.time()
+                self.sessions = {k: v for k, v in self.sessions.items() if v["expires"] > now}
+                if len(self.sessions) >= 100:
+                    raise PanelError(429, "Limite de sessões atingido.")
+                token = secrets.token_urlsafe(32)
+                session = {"user": user, "csrf": secrets.token_urlsafe(32), "expires": now + self.config.get("session_seconds", 1800)}
+                self.sessions[token] = session
+                return token, session
+        finally:
+            self.login_workers.release()
 
     def session(self, token):
         with self.lock:

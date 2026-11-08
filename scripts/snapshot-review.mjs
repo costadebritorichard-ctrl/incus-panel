@@ -85,7 +85,8 @@ try{
   const external=await fetch(new URL('/api/action',origin),{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie,Origin:origin,'X-CSRF-Token':w.eval('session.csrf')},body:JSON.stringify({host:'demo',project:'laboratorio',target:'lab-web',action:'snapshot',name:'external-snapshot',confirmation:'demo/laboratorio/lab-web'})});
   assert.equal(external.ok,true);
   await navigate('lab-db');await navigate('lab-web');
-  assert.ok($('[data-snapshot="external-snapshot"]'),'Reopening snapshots must bypass the low-resource read cache.');
+  await wait(()=>$('[data-snapshot="external-snapshot"]'));
+  assert.ok($('[data-snapshot="external-snapshot"]'),'Reopening snapshots revalidates external changes in the background.');
   select('external-snapshot');await action('snapshot-delete');$('#confirmation').value='demo/laboratorio/lab-web/external-snapshot';await save();
   await action('snapshot');$('#artifact-name').value='running-snapshot';await save();
   select('running-snapshot');assert.equal($('[data-action=snapshot-restore]').disabled,true);
@@ -103,6 +104,7 @@ try{
   w.eval('session.read_only=false');await w.render();
   w.fetch=(path,options)=>String(path).includes('resource=snapshots')?Promise.resolve(new Response(JSON.stringify({data:Array.from({length:30},(_,index)=>({name:'many-'+index,description:'',created_at:'2026-11-07T12:00:00Z'}))}),{status:200,headers:{'content-type':'application/json'}})):fetchOriginal(path,options);
   await w.render();
+  await wait(()=>d.querySelectorAll('.snapshot-table tbody tr').length===31);
   assert.equal(d.querySelectorAll('.snapshot-table tbody tr').length,31);
   assert.equal($('.snapshot-table tbody tr:last-child').dataset.snapshot,'current');
   assert.equal($('[data-snapshot=current]').getAttribute('aria-selected'),'true');

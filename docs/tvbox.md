@@ -32,6 +32,11 @@ Use `--project` repetidamente para vários escopos. O assistente mantém uma ún
 
 ## Verificação desta entrega
 
+A validação mais recente, de **07/11/2026**, inclui operações reais em CTs
+descartáveis, navegador pela LAN e correções de desempenho. Consulte o
+[relatório de validação na TV box](validacao-tvbox-2026-11-07.md); o diagnóstico
+abaixo descreve somente o estado histórico de 05/11.
+
 ### Diagnostico de desempenho em 2026-11-05
 
 Em 2026-11-05, o acesso SSH à TV Box foi concluído e foram executadas somente consultas de diagnóstico. O equipamento reportou Debian 13, arquitetura ARMv7 (`armv7l`), Incus 6.0.4, cerca de 991 MiB de RAM e cerca de 765 MiB disponíveis durante a consulta. A pool `panel-dir` usa o driver `dir`; a bridge gerenciada `panelbr0` está em uso; há três containers em execução. `container-teste` já contém o snapshot `teste1`, confirmando que uma tentativa de criar outro snapshot com esse nome colidiria. O comando `incus info container-teste`, a listagem de snapshots e as listagens de redes e pools foram consultados sem alterar recursos.

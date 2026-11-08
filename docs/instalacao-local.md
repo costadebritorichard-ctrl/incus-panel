@@ -343,7 +343,8 @@ são alterados. Aplicações que exigem mais memória podem falhar com esse limi
 
 Antes da criação, o painel exige `MemAvailable` de pelo menos 256 MiB. Isso é uma
 precaução e não uma garantia: o download e a extração rodam no daemon Incus e podem
-consumir mais recursos. O serviço do painel tem `CPUQuota=25%`, `MemoryHigh=64M` e
+consumir mais recursos. O serviço do painel tem `CPUQuota=100%` (até um núcleo,
+com prioridade baixa `Nice=10`), `MemoryHigh=64M` e
 `MemoryMax=128M`; esses limites dependem do suporte a cgroups do equipamento e
 não abrangem o daemon Incus. Se o painel atingir seu limite, ele poderá reiniciar.
 

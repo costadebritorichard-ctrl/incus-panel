@@ -240,10 +240,10 @@ async function api(path, body) {
 }
 let activeReads=0;
 const readWaiters=[];
-async function queuedRead(path){
+async function queuedRead(path,current=()=>true){
   const owner=session;
   if(activeReads>=2)await new Promise(resolve=>readWaiters.push(resolve));else activeReads++;
-  try{if(session!==owner)throw new Error('A sessão mudou. Atualize a tela.');return await api(path);}finally{const next=readWaiters.shift();if(next)next();else activeReads--;}
+  try{if(session!==owner)throw new Error('A sessão mudou. Atualize a tela.');if(!current())throw new Error('Consulta de uma tela anterior descartada.');return await api(path);}finally{const next=readWaiters.shift();if(next)next();else activeReads--;}
 }
 async function read(resource,target,scope={host,project}) {
   const path='/api/read?'+new URLSearchParams({...scope,resource,...(target?{target}:{})});
@@ -520,7 +520,7 @@ function filteredInstances(items) {
   let filterTimer;input.oninput=()=>{clearTimeout(filterTimer);filterTimer=setTimeout(update,120);};filter.onchange=update;sort.onchange=update;update();
   return el('div',{},el('div',{class:'toolbar'},input,filter,sort,el('a',{href:'#create',class:'primary button-link'},...iconLabel('plus','Criar container'))),panel('Seus containers',holder));
 }
-async function render() {
+async function render({refreshSnapshots=true}={}) {
   if(!session)return;
   // Compatibility for old bookmarks; creation is an overlay, never a workspace page.
   if(route().page==='create'){history.replaceState(null,'',lastWorkspaceHash);if(!$('#content').childElementCount)await render();openCreateWizard();return;}
@@ -548,6 +548,7 @@ async function render() {
   if(!$('#content').childNodes.length||renderedScope!==scope.host+'/'+scope.project||renderedSession!==session)
     $('#content').replaceChildren(loadingView(route().page==='create'?'Carregando imagens disponíveis…':'Carregando '+title+'…'));
   const container=el('div',{class:'workspace-view view-'+r.page,'data-tab':r.page==='server'?(r.target||'summary'):r.tab});
+  const cachedSnapshots=r.page==='instance'&&r.tab==='snapshots'&&['instance','snapshots'].every(resource=>readCache.has('/api/read?'+new URLSearchParams({...scope,resource,target:r.target})));
   try {
     const [serverResult, instancesResult,poolsForTree,networksForTree]=await Promise.allSettled([read('server',undefined,scope),read('instance-list',undefined,scope),session.host_metrics?read('pools',undefined,scope):Promise.resolve({data:[]}),read('networks',undefined,scope)]);
     if(id!==generation||!session)return;
@@ -607,11 +608,25 @@ async function render() {
     $('#updated').textContent='Inventário '+new Date(instancesResult.value.timestamp*1000).toLocaleTimeString('pt-BR');
     if(taskLogScope!==host+'/'+project){taskLogScope=host+'/'+project;taskLogItems=[];refreshTaskLog();}else renderTaskLog();
     if(r.page==='instance'&&r.tab==='console')mountTerminal(r.target,scope,id);
+    if(cachedSnapshots&&refreshSnapshots&&session.low_resource)revalidateSnapshotView(r,scope,id,session);
     resumeSnapshotTasks();
   } catch(error) {
     if(id===generation&&session){$('#content').replaceChildren(errorNode(error),notice('Não foi possível atualizar este escopo. A falha de conexão não indica que os containers estejam parados.'));$('#connection').textContent=error.status===403?'Sem permissão':'Conexão degradada';}
   } finally {
     if(id===generation){busy=false;$('#content').removeAttribute('aria-busy');scheduleRefresh();}
+  }
+}
+async function revalidateSnapshotView(r,scope,renderId,owner){
+  const keys=['instance','snapshots'].map(resource=>'/api/read?'+new URLSearchParams({...scope,resource,target:r.target}));
+  const entries=keys.map(key=>readCache.get(key));
+  try{
+    const previous=await Promise.all(entries.map(entry=>entry?.promise));
+    const latest=await Promise.all(['instance','snapshots'].map(resource=>freshResource(resource,r.target,scope,()=>session===owner&&renderId===generation)));
+    if(session!==owner||renderId!==generation||keys.some((key,index)=>readCache.get(key)!==entries[index]))return;
+    keys.forEach((key,index)=>readCache.set(key,{promise:Promise.resolve(latest[index]),expires:owner.low_resource?Infinity:Date.now()+15000}));
+    if(renderId===generation&&latest.some((result,index)=>JSON.stringify(result.data)!==JSON.stringify(previous[index]?.data)))await render({refreshSnapshots:false});
+  }catch(error){
+    if(session===owner&&renderId===generation){$('#connection').textContent='Não foi possível atualizar os snapshots';$('#content .snapshot-feedback')?.replaceChildren(errorNode(error));const feedback=$('#content .snapshot-feedback');if(feedback)feedback.hidden=false;}
   }
 }
 function scheduleRefresh(){clearTimeout(timer);if(session?.low_resource)return;timer=setTimeout(()=>{if(!session)return;if(!consoleId&&!menuOpen&&!document.hidden&&!$('#confirm').open&&!$('#editor-dialog').open&&!$('#create-dialog').open&&!$('#task-detail').open&&!['create','settings'].includes(route().page)&&route().tab!=='options'&&!$('#content').contains(document.activeElement))render();else scheduleRefresh();},15000);}
@@ -1312,8 +1327,8 @@ async function pollSnapshotTask(run){
   }
 }
 $('#close-snapshot-progress').onclick=()=>$('#snapshot-progress').close();
-async function snapshotsView(scope,item){
-  const result=await freshResource('snapshots',item.name,scope),owner=session;
+async function snapshotsView(scope,item,result){
+  result=result||await read('snapshots',item.name,scope);const owner=session;
   const snapshots=result.data.slice().sort((a,b)=>(Date.parse(a.created_at)||0)-(Date.parse(b.created_at)||0)||a.name.localeCompare(b.name));
   let selected=null,requesting=false;
   const allowed=canMutate(item.name),admin=allowed&&session.role==='administrador';
@@ -1360,8 +1375,11 @@ async function snapshotsView(scope,item){
   update();
   return el('section',{class:'snapshot-grid'},toolbar,grid,feedback);
 }
-async function detail(r,scope) {
-  const [instanceResult,stateResult]=await Promise.all([r.tab==='snapshots'?freshResource('instance',r.target,scope):read('instance',r.target,scope),['summary','resources','network'].includes(r.tab)?read('state',r.target,scope):Promise.resolve(null)]);
+async function detail(r,scope,renderId=generation) {
+  // Fetch independent data together. Revisits reuse the session cache; every
+  // snapshot action still revalidates names and state before confirmation.
+  const [instanceResult,stateResult,snapshotResult]=await Promise.all([read('instance',r.target,scope),['summary','resources','network'].includes(r.tab)?read('state',r.target,scope):Promise.resolve(null),r.tab==='snapshots'?read('snapshots',r.target,scope):Promise.resolve(null)]);
+  if(renderId!==generation)return el('div');
   const item=instanceResult.data,state=stateResult?.data||{status:item.status};
   const wrapper=el('div',{class:'instance-content'});
   const actions=el('div',{class:'toolbar object-toolbar'},status(state.status));
@@ -1396,7 +1414,7 @@ async function detail(r,scope) {
   else if(r.tab==='permissions')wrapper.append(await permissionsView(scope,[item]));
   else if(r.tab==='snapshots'){
     wrapper.classList.add('snapshot-workspace');
-    wrapper.append(await snapshotsView(scope,item));
+    wrapper.append(await snapshotsView(scope,item,snapshotResult));
   }
   else if(r.tab==='backups'){
     const result=await read(r.tab,r.target,scope);
@@ -1973,7 +1991,7 @@ function closeResourceMenu(restoreFocus=false){
   const trigger=resourceMenu?.trigger;resourceMenu?.remove();resourceMenu=null;
   if(restoreFocus&&trigger?.isConnected)trigger.focus({preventScroll:true});
 }
-function freshResource(resource,target,scope){return queuedRead('/api/read?'+new URLSearchParams({...scope,resource,...(target?{target}:{})}));}
+function freshResource(resource,target,scope,current){return queuedRead('/api/read?'+new URLSearchParams({...scope,resource,...(target?{target}:{})}),current);}
 function showResourceMenu(event,item,kind='instance',trigger=event.target?.closest('a,tr')){
   closeResourceMenu();
   const owner=session,scope={host,project},current=()=>session===owner&&host===scope.host&&project===scope.project;

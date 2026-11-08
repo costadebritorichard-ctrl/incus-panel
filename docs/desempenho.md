@@ -128,3 +128,19 @@ Em 2026-11-05, a TV Box ARMv7 foi inspecionada por SSH. Veja [os dados e limites
 da medição](tvbox.md#diagnostico-de-desempenho-em-2026-11-05). A tela web não foi
 medida no equipamento; o navegador conectado não permitiu abrir a sessão
 autenticada do painel.
+
+Em 07/11/2026, a navegação foi medida em Chromium real acessando o serviço da
+TV box pela LAN, e os fluxos foram testados contra o Incus real. Consulte o
+[relatório com resultados, correções e limitações](validacao-tvbox-2026-11-07.md).
+A aba Snapshots agora apresenta o cache imediatamente e confere alterações
+externas em segundo plano; a primeira consulta carrega detalhe e lista em
+paralelo. As ações continuam revalidando nomes e estado. Também foi removido
+o bloqueio das sessões existentes durante o cálculo scrypt de outro login,
+mantendo seus parâmetros e limitando a concorrência do hash no modo leve.
+
+O limite de CPU do serviço foi corrigido de um quarto de núcleo para até um
+núcleo (`CPUQuota=100%`), mantendo `Nice=10` e os limites de memória. No mesmo
+processo ARMv7, esse ajuste reduziu o login de 6,2 para 1,6 s e a mediana da
+consulta de identidade de 192 para 65 ms. O percentual do systemd é relativo
+a um núcleo; na TV box de quatro núcleos, o teto agregado do painel é cerca
+de 25% da CPU total. Os resultados e limites do ensaio estão no relatório.

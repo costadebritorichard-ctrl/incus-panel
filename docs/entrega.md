@@ -1,6 +1,6 @@
 # Relatório por lote — 0.1.0
 
-Este documento preserva o relatório do lote original 0.1.0. A atualização de 2026-11-05, ao final, registra o acesso posterior à TV Box, as correções e as evidências atuais. Os critérios que dependem de mutações em recursos descartáveis seguem pendentes.
+Este documento preserva o relatório histórico do lote original 0.1.0 e da atualização de 05/11/2026. A [validação de 07/11/2026](validacao-tvbox-2026-11-07.md) registra os testes posteriores com mutações em recursos descartáveis, o navegador real e as correções de desempenho. As pendências históricas abaixo devem ser interpretadas junto desse relatório mais recente.
 
 ## LOTE-00 / F0
 

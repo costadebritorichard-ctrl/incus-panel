@@ -1,6 +1,6 @@
 # Protocolo experimental F4
 
-**Nenhum resultado de hardware foi coletado nesta sessão.** R3 é uma fotografia histórica informada pela especificação; não é uma medição nova. As metas de 64 MiB RSS, +5 pontos de CPU e atualização em 3 s não foram comprovadas. Fixtures não entram como resultados de desempenho.
+Este documento define o protocolo de avaliação. R3 é uma fotografia histórica informada pela especificação; não é uma medição nova. Os [ensaios reais de 07/11/2026](validacao-tvbox-2026-11-07.md) registram hardware, navegação e limites separadamente. Eles não encerram automaticamente o protocolo completo abaixo nem comprovam todas as metas de qualidade. Fixtures não entram como resultados de desempenho de hardware.
 
 Registre, por ensaio, data, arquitetura, SO/kernel, versão e extensões Incus, commit do painel, topologia de rede, driver/capacidade do pool, inventário de containers descartáveis, cache frio/quente e método de coleta. Use 5 repetições por condição, 60 s de estabilização e 30 amostras a cada 2 s. Execute baseline e painel com a mesma carga, alternando a ordem A/B quando viável. Preserve CSV bruto, falhas, mediana e p95; resultados não comparáveis devem ser identificados.
 
