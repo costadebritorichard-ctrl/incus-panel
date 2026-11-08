@@ -8,7 +8,7 @@ O espaço de trabalho se ajusta à largura e à altura da janela: até 1100 px, 
 
 A revisão visual usa como referência o código oficial do Proxmox: barra do recurso, árvore recolhível e redimensionável, grades com filtros e ordenação, editores em diálogos, gráficos e tarefas. Veja o [mapeamento das telas e a verificação de responsividade](docs/proxmox-interface.md).
 
-O assistente abre sobre qualquer tela, preservando a página e os rascunhos. Nome e template são obrigatórios; cada etapa precisa estar válida antes de avançar. O progresso aparece em uma janela de tarefas. Veja a [revisão da interface, testes e limites de escopo](docs/revisao-interface.md).
+O assistente abre sobre qualquer tela, preservando a página e os rascunhos. Nome e template são obrigatórios; cada etapa precisa estar válida antes de avançar. O progresso aparece em uma janela de tarefas, que informa **Concluída / TASK OK** após a confirmação do Incus e atualiza a lista de containers automaticamente. Veja a [revisão da interface, testes e limites de escopo](docs/revisao-interface.md).
 
 No assistente administrativo, escolha memória, núcleos, limite de CPU, pool, bridge, reserva IPv4 e inicialização automática. A cota de disco só é oferecida nos drivers suportados pelo assistente; `dir` utiliza a capacidade do pool. DNS é herdado da bridge. É possível criar e manter parado ou iniciar após a criação. Instalações restritas à allowlist usam a configuração do perfil `default`.
 
@@ -86,6 +86,8 @@ Histórico de tarefas/auditoria fica em memória; contas locais persistem em `/v
 Para desenvolver com dados simulados: `python -m incus_panel.server --demo`. Esse modo não é usado na instalação.
 
 Teste opcional da interface sem navegador: instale `npm install --prefix artifacts/qa jsdom --no-audit --no-fund`, execute `python tests/create_fixture.py` em um terminal e `node scripts/dom-smoke.mjs` em outro. A fixture deve estar nova a cada execução. O teste cobre 20 rotas, as oito etapas, limites, criação, erro assíncrono, tarefas, console com dublês explícitos, cache de leituras ao revisitar telas e manutenção da tela enquanto outra rota carrega. Não verifica a aparência nem executa um shell real. xterm.js 6.0.0 e addon-fit 0.11.0 são distribuídos em `web/vendor`, com licenças MIT; o JavaScript do terminal só é carregado ao abrir um console autorizado.
+
+Com outra fixture nova, `node scripts/creation-review.mjs` verifica a conclusão com a janela aberta, restauração atrasada de sessão, atualização automática da lista e da árvore, erro do Incus, criação sem iniciar e retomada do acompanhamento sem reenviar a criação.
 
 Para medir tráfego e RSS/CPU com uma fixture local de 200 containers: `python3 scripts/benchmark.py --output artifacts/performance.json`. O ensaio usa as variáveis do alocador presentes no arquivo de serviço e requer Linux; não mede o daemon Incus nem comprova consumo em ARM/TV boxes. Procedimento e resultados locais em [desempenho](docs/desempenho.md).
 

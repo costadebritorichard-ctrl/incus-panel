@@ -86,6 +86,7 @@ async function waitOperation(operation,scope,owner){
 }
 let session, host, project, generation = 0, pendingAction, timer, expiryTimer, busy = false, consoleId, consoleTimer, renderedScope = '', renderedSession;
 let eventTimer,eventVersion;
+let sessionAttempt=0;
 const tasks = new Map();
 const creationRuns = new Map();
 const snapshotRuns = new Map();
@@ -228,12 +229,13 @@ $('#editor-dialog').addEventListener('cancel',event=>{event.preventDefault();clo
 function errorNode(error) { return notice((error.status===403?'Sem permissão. ':error.status===503?'Desconectado. ':'')+error.message,true); }
 function loadingView(message) { return el('div',{class:'loading-state',role:'status','aria-live':'polite'},el('span',{class:'spinner','aria-hidden':'true'}),el('p',{},message)); }
 async function api(path, body) {
+  const owner=session;
   if(body&&['/api/action','/api/create','/api/images/download','/api/users'].includes(path))readCache.clear();
   const response = await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':session?.csrf || ''}:{},body:body?JSON.stringify(body):undefined,cache:'no-store'});
   const result = await response.json();
   if(body&&['/api/action','/api/create','/api/images/download','/api/users'].includes(path))readCache.clear();
   if (!response.ok) {
-    if (response.status===401 && path!=='/api/login' && session) logoutLocal('Sua sessão expirou. Entre novamente.');
+    if (response.status===401 && path!=='/api/login' && owner && session===owner) logoutLocal('Sua sessão expirou. Entre novamente.');
     throw Object.assign(new Error(result.error || 'Falha na solicitação.'),{status:response.status});
   }
   return result;
@@ -364,6 +366,7 @@ $('#action-form').onsubmit=async event=>{
   finally { snapshotLoading($('#action-form'),false);if(pendingAction===actionOwner){$('#cancel-action').disabled=false;$('#close-action').disabled=false; $('#submit-action').disabled=false;$('#submit-action').textContent=actionSubmitLabel(actionOwner.action);} }
 };
 function logoutLocal(message='') {
+  sessionAttempt++;
   closeEditor();
   closeCreateWizard();metricHistory.clear();closeResourceMenu();
   document.body.classList.add('low-resource');
@@ -448,8 +451,11 @@ $('#login-form').onsubmit=async event=>{
   $('#login-error').textContent='';$('#login-error').hidden=true;
   button.disabled=true;button.textContent='Entrando…';form.setAttribute('aria-busy','true');
   const username=$('#login-username').value.trim();
+  const attempt=++sessionAttempt;
   try {
-    session=await api('/api/login',{username,password:$('#login-password').value});
+    const authenticated=await api('/api/login',{username,password:$('#login-password').value});
+    if(attempt!==sessionAttempt)return;
+    session=authenticated;
     try{if($('#remember-username').checked)localStorage.setItem('incus-login-username',username);else localStorage.removeItem('incus-login-username');}catch{}
     $('#login-password').value='';enter();
   }catch(error){
@@ -1892,8 +1898,14 @@ async function pollCreation(run){
     if(state.status_code<200){if(watchingCreation(run))run.timer=setTimeout(()=>pollCreation(run),session.low_resource?5000:1500);}
     else{
       readCache.clear();
+      const renderId=generation;
       const latest=await read('instance-list',undefined,run.scope).catch(()=>null);
-      if(latest&&session===run.owner&&host===run.scope.host&&project===run.scope.project){inventory=latest.data;renderResourceTree();}
+      if(latest&&session===run.owner&&host===run.scope.host&&project===run.scope.project){
+        inventory=latest.data;renderResourceTree();
+        // Refresh the workspace behind the task as well as the resource tree.
+        // Keep a newer route, console or unfinished editor intact.
+        if(renderId===generation&&!consoleId&&!$('#content form')&&!$('#editor-dialog').open&&!$('#create-dialog').open)await render();
+      }
     }
   }catch(error){run.connectionError=error.message;run.updated_at=Date.now();appendCreationLog(run,'Conexão temporariamente interrompida: '+error.message,true);updateCreationTaskViewer(run);}
   finally{run.polling=false;}
@@ -1931,7 +1943,7 @@ function creationTaskViewer(run){
   if(active==='output')body.append(el('pre',{class:'task-view-output',tabindex:'0','aria-label':'Saída da tarefa de criação','data-task-control':'log','aria-live':'polite'},outputText));
   else{
     const progress=Object.entries(run.metadata||{}).find(([key,value])=>/progress/i.test(key)&&typeof value==='string')?.[1];
-    const phases={prepare:'Preparar configuração',create:'Baixar imagem e criar container',start:'Iniciar container',verify:'Confirmar funcionamento'};
+    const phases={prepare:'Preparar configuração',create:'Baixar imagem e criar container',start:'Iniciar container',verify:'Confirmar funcionamento',done:'Concluído'};
     body.append(el('div',{class:'task-view-status'},kv([['Tarefa',`CT ${run.target} - Criar`],['Estado',creationTaskStatus(run)],['Servidor',run.scope.host],['Projeto',run.scope.project],['Etapa',phases[run.phase]||'Solicitação ao Incus'],['Progresso',progress||'Não informado pelo Incus'],['Início',localDate(run.started_at)],['Última atualização',localDate(run.updated_at)],['Resultado',run.err|| (run.status_code===200?'TASK OK':'Aguardando a confirmação do Incus.')]]),run.err?notice(run.err,true):null));
   }
   const content=el('div',{class:'task-viewer'},tabs,toolbar,body);
@@ -1944,7 +1956,7 @@ function openCreationTaskViewer(run,show=true){
   const previous=$('#task-detail .task-view-output'),scrollTop=previous?.scrollTop||0,follow=!previous||previous.scrollHeight-previous.clientHeight-scrollTop<24;
   const focused=$('#task-detail-content').contains(document.activeElement)?document.activeElement.dataset.taskControl:null;
   if(show)run.viewerTab='output';
-  $('#task-detail-title').textContent=`Tarefa: CT ${run.target} · Criar`;
+  $('#task-detail-title').textContent=`Tarefa: CT ${run.target} · Criar · ${creationTaskStatus(run)}`;
   dialog.dataset.taskRun=run.key;
   $('#task-detail-content').replaceChildren(creationTaskViewer(run));
   if(show&&!dialog.open)dialog.showModal();
@@ -2245,4 +2257,9 @@ try{const width=Number(localStorage.getItem('incus-tree-width'));if(width>=200)s
 treeSplitter.onkeydown=event=>{if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();setTreeWidth($('#sidebar').offsetWidth+(event.key==='ArrowRight'?15:-15));}};
 treeSplitter.onpointerdown=event=>{if(menuBreakpoint.matches)return;event.preventDefault();treeSplitter.setPointerCapture(event.pointerId);treeSplitter.onpointermove=move=>setTreeWidth(move.clientX);};
 treeSplitter.onpointerup=treeSplitter.onpointercancel=()=>{treeSplitter.onpointermove=null;};
-api('/api/session').then(data=>{session=data;enter();}).catch(()=>{});
+const restoredSessionAttempt=sessionAttempt;
+api('/api/session').then(data=>{
+  // A late bootstrap response must not replace a newer login and orphan its tasks.
+  if(sessionAttempt!==restoredSessionAttempt||session)return;
+  session=data;enter();
+}).catch(()=>{});
