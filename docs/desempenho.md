@@ -27,6 +27,10 @@ termina, sem uma pausa fixa antes de iniciar a próxima. O acompanhamento web
 consulta o job em memória a cada segundo somente enquanto está visível. Essa
 espera ocorre fora dos slots HTTP do painel. Outros transportes conservam
 consultas limitadas a uma por segundo durante o processamento da criação.
+O Incus 6 pode devolver `context deadline exceeded` ao vencer essa espera,
+inclusive em um envelope de erro com HTTP 200. Nesse caso, o painel consulta o
+estado da operação e continua acompanhando; uma falha real da operação continua
+sendo apresentada como erro.
 
 Na medição anterior a esse ajuste, em 08/11/2026, criar e iniciar um Alpine
 local pelo assistente levou 21,2 s. A primeira visita ao sumário de outro CT,

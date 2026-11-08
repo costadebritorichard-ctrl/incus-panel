@@ -91,6 +91,30 @@ class LocalAdministration(unittest.TestCase):
                     client.wait_operation(operation, 'default')
             connection.assert_not_called()
 
+    def test_incus_6_wait_timeout_reads_running_state_instead_of_failing(self):
+        client = UnixIncus({'socket_path': str(Path('incus.socket').resolve())})
+        operation = 'a' * 36
+        for status in (500, 502):
+            with self.subTest(status=status), patch.object(client, 'request', side_effect=[PanelError(status, 'Incus: context deadline exceeded'),
+                                                                                       {'metadata': {'status_code': 103}}]) as request:
+                self.assertEqual(client.wait_operation(operation, 'default')['status_code'], 103)
+            self.assertEqual([call.args[1] for call in request.call_args_list],
+                             ['/1.0/operations/' + operation + '/wait', '/1.0/operations/' + operation])
+
+    def test_wait_timeout_still_returns_the_actual_operation_failure(self):
+        client = UnixIncus({'socket_path': str(Path('incus.socket').resolve())})
+        with patch.object(client, 'request', side_effect=[PanelError(500, 'Incus: context deadline exceeded'),
+                                                       {'metadata': {'status_code': 400, 'err': 'Import failed'}}]):
+            self.assertEqual(client.wait_operation('a' * 36, 'default')['err'], 'Import failed')
+
+    def test_other_native_wait_errors_are_not_masked(self):
+        client = UnixIncus({'socket_path': str(Path('incus.socket').resolve())})
+        for status, message in [(403, 'Forbidden'), (500, 'Incus: another failure'), (502, 'Incus: another failure'), (503, 'Socket unavailable')]:
+            with self.subTest(status=status), patch.object(client, 'request', side_effect=PanelError(status, message)) as request:
+                with self.assertRaisesRegex(PanelError, message):
+                    client.wait_operation('a' * 36, 'default')
+                request.assert_called_once()
+
     def test_socket_allows_only_supported_managed_bridge_write_paths(self):
         response = Mock(status=202)
         response.read.return_value = json.dumps({'type': 'async', 'operation': '/1.0/operations/123', 'metadata': {}}).encode()

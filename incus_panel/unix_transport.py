@@ -32,7 +32,15 @@ class UnixIncus:
     def wait_operation(self, operation, project):
         if not isinstance(operation, str) or not re.fullmatch(r'[a-f0-9-]{36}', operation):
             raise PanelError(400, 'Operação Incus inválida.')
-        return self.request('GET', '/1.0/operations/' + operation + '/wait', project)['metadata']
+        path = '/1.0/operations/' + operation
+        try:
+            return self.request('GET', path + '/wait', project)['metadata']
+        except PanelError as exc:
+            # Incus 6 can return an error envelope on wait expiry (also over
+            # HTTP 200, mapped to 502 here). The operation itself continues.
+            if exc.status not in (500, 502) or str(exc) != 'Incus: context deadline exceeded':
+                raise
+            return self.request('GET', path, project)['metadata']
 
     def request(self, method, path, project, body=None, etag=None):
         write = ((method == 'POST' and path in ('/1.0/instances', '/1.0/images')) or
