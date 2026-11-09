@@ -26,11 +26,11 @@ e JavaScript locais e as operações reais do Incus.
 | Notas, opções, cluster, volumes, imagens, backups e alertas | Componentes compartilhados de painéis e grades | Mesmos controles, tipografia, bordas, espaçamento, estados vazios e temas |
 
 Dispositivos, Perfis, Projetos e Redes usam resumos de configuração nas linhas.
-Selecione um recurso e use **Propriedades** na barra, dê duplo clique ou pressione
-Enter na linha para abrir a janela de consulta. A janela preserva os valores
+Clique uma vez na linha do recurso ou pressione Enter para abrir a janela de
+propriedades, sem botão adicional na barra. A janela preserva os valores
 completos, sem expandir tabelas dentro das células. Em Opções, **Configuração
-técnica** abre a configuração local e a efetiva na mesma janela. Operações usam
-**Detalhes** para abrir o visualizador de tarefas, mantendo o progresso na grade.
+técnica** abre a configuração local e a efetiva na mesma janela. Nas operações,
+clicar na linha abre o visualizador de tarefas, mantendo o progresso na grade.
 Escape e Fechar encerram a consulta; mudar de recurso também fecha a janela.
 
 `node scripts/properties-review.mjs`, com a fixture local ativa, verifica esses

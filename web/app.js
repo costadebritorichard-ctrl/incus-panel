@@ -163,13 +163,11 @@ function openResourceProperties(item,kind){
   const label=({profiles:'Perfil',projects:'Projeto',network:'Rede'})[kind]||'Recurso';
   openProperties(`Propriedades: ${label} ${item.name}`,()=>resourceProperties(item,kind));
 }
-function propertiesGrid(title,headers,items,row,show,{buttonLabel='Propriedades'}={}){
-  let selected;
-  const button=el('button',{type:'button',disabled:'','data-action':'resource-properties','aria-haspopup':'dialog',title:'Selecione uma linha para abrir '+buttonLabel.toLocaleLowerCase('pt-BR'),onclick:()=>{if(selected!==undefined)show(items[selected]);}},...iconLabel('file',buttonLabel));
-  const content=el('div',{},el('div',{class:'grid-toolbar'},button),table(headers,items.map(item=>()=>row(item)),{
-    onSelect:index=>{selected=index;button.disabled=false;button.title=buttonLabel;},
+function propertiesGrid(title,headers,items,row,show){
+  const content=table(headers,items.map(item=>()=>row(item)),{
+    activateOnClick:true,
     onActivate:index=>show(items[index])
-  }));
+  });
   const view=panel(title,content);view.classList.add('properties-grid');return view;
 }
 function operationMetadata(metadata){
@@ -961,7 +959,12 @@ async function networkDetailView(scope,target,tab='summary'){
   const dependencyError=instances.status==='rejected'||profiles.status==='rejected';
   const external=Boolean(network.config?.['bridge.external_interfaces']);
   const managedBridge=network.managed&&network.type==='bridge';
-  const body=panel('Configuração da rede',el('div',{class:'panel-body'},kv([['Nome',network.name],['Tipo',network.type],['Gerenciada',network.managed?'Sim':'Não'],['Estado',network.status],['Gateway / CIDR IPv4',network.config?.['ipv4.address']],['Faixa DHCP IPv4',network.config?.['ipv4.dhcp.ranges']],['DHCP IPv4',network.config?.['ipv4.dhcp']],['NAT IPv4',network.config?.['ipv4.nat']],['IPv6 / CIDR',network.config?.['ipv6.address']],['Domínio DNS',network.config?.['dns.domain']],['Projeto',scope.project]])),el('button',{type:'button','data-action':'resource-properties','aria-haspopup':'dialog',onclick:()=>openResourceProperties(network,'network')},...iconLabel('file','Propriedades')));
+  const body=propertiesGrid('Configuração da rede',['PROPRIEDADE','VALOR'],[
+    ['Nome',network.name],['Tipo',network.type],['Gerenciada',network.managed?'Sim':'Não'],['Estado',network.status],
+    ['Gateway / CIDR IPv4',network.config?.['ipv4.address']],['Faixa DHCP IPv4',network.config?.['ipv4.dhcp.ranges']],
+    ['DHCP IPv4',network.config?.['ipv4.dhcp']],['NAT IPv4',network.config?.['ipv4.nat']],
+    ['IPv6 / CIDR',network.config?.['ipv6.address']],['Domínio DNS',network.config?.['dns.domain']],['Projeto',scope.project]
+  ],([label,value])=>[label,value??'n/d'],()=>openResourceProperties(network,'network'));
   const result=el('div',{class:'dashboard-view'},el('div',{class:'grid dashboard-top'},healthView(network.name,network.status==='Created',network.type+' · '+(network.managed?'gerenciada pelo Incus':'externa')),body),panel('Containers conectados',instanceTable(attached)));
   if(dependencies.size)result.append(panel('Dependências da bridge',table(['RECURSO'],[...dependencies].map(value=>[value]))));
   if(dependencyError)result.append(notice('Não foi possível conferir todas as dependências. Atualize antes de excluir a bridge.',true));
@@ -1696,7 +1699,7 @@ async function taskView(scope) {
     try{const data=all.get(task.id)||(task.status_code>=200?task:(await read('operation',task.id,scope)).data);const updated={...task,...data,...(task.action==='download-image'?{description:'Baixar '+task.target}:{})};trackTask(key,updated);all.set(task.id,updated);}catch(error){all.set(task.id,{...task,err:error.message});}
   }
   $('#task-summary').textContent=`${all.size} operações neste escopo · estado confirmado pelo Incus`;
-  return propertiesGrid('Operações assíncronas',['UUID','DESCRIÇÃO','ESTADO','PROGRESSO / ERRO'],[...all.values()],i=>[i.id,i.description||i.action,status(i.status),i.err?notice(i.err,true):operationMetadata(i.metadata)],openTaskDetail,{buttonLabel:'Detalhes'});
+  return propertiesGrid('Operações assíncronas',['UUID','DESCRIÇÃO','ESTADO','PROGRESSO / ERRO'],[...all.values()],i=>[i.id,i.description||i.action,status(i.status),i.err?notice(i.err,true):operationMetadata(i.metadata)],openTaskDetail);
 }
 function operationList(data){return Array.isArray(data)?data:Object.values(data||{}).flat().filter(item=>item&&typeof item==='object');}
 function operationMatchesInstance(operation,target){

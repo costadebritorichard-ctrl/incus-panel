@@ -28,27 +28,31 @@ try{
   d.querySelector('[name=username]').value='test';d.querySelector('[name=password]').value='local-browser-fixture';d.querySelector('#login-form').requestSubmit();
   await wait(()=>!d.querySelector('#shell').hidden&&!d.querySelector('#content').hasAttribute('aria-busy'));
   assert.equal(w.eval('session.demo'),true);
-  const routes=['instance/lab-web/resources','instance/lab-web/devices','profiles','projects','networks','server/network'];
+  const routes=['instance/lab-web/resources','instance/lab-web/devices','profiles','projects','networks','server/network','network/labbr0/summary'];
   for(const route of routes){
     await navigate(route);
     assert.equal(d.querySelector('#content details'),null,'No inline expanders on '+route);
-    const grid=d.querySelector('.properties-grid'),button=grid.querySelector('[data-action=resource-properties]'),row=grid.querySelector('tbody tr');
-    assert.equal(button.disabled,true);
+    const grid=d.querySelector('.properties-grid'),row=grid.querySelector('tbody tr');
+    assert.equal(grid.querySelector('.grid-toolbar,[data-action=resource-properties]'),null,'No properties button or empty toolbar on '+route);
     assert.equal(row.querySelector('table,details,button'),null,'Rows contain compact values on '+route);
     const itemName=row.cells[0].textContent,markup=grid.innerHTML;
-    row.click();assert.equal(button.disabled,false);assert.equal(row.getAttribute('aria-selected'),'true');
-    button.click();assert.equal(d.querySelector('#editor-dialog').open,true);assert.match(d.querySelector('#editor-title').textContent,new RegExp(itemName));
+    row.cells[1].click();assert.equal(row.getAttribute('aria-selected'),'true');
+    assert.equal(d.querySelector('#editor-dialog').open,true,'One click opens properties on '+route);
+    assert.ok(d.querySelector('#editor-title').textContent.includes(route==='network/labbr0/summary'?'labbr0':itemName));
     assert.equal(d.querySelector('#editor-dialog').dataset.editorType,'properties');assert.equal(d.querySelector('#editor-content form'),null);
+    const properties=d.querySelector('.properties-view');
+    row.dispatchEvent(new w.MouseEvent('dblclick',{bubbles:true}));
+    assert.equal(d.querySelector('.properties-view'),properties,'A double-click does not open properties twice');
     close();
     const selectedMarkup=grid.innerHTML;
-    row.dispatchEvent(new w.MouseEvent('dblclick',{bubbles:true}));assert.equal(d.querySelector('#editor-dialog').open,true);
+    row.click();assert.equal(d.querySelector('#editor-dialog').open,true);
     d.querySelector('.properties-view .dialog-actions button').click();assert.equal(d.querySelector('#editor-dialog').open,false);
     assert.equal(grid.innerHTML,selectedMarkup,'Opening properties does not change the table on '+route);
     assert.notEqual(markup,selectedMarkup,'Selection remains visible');
     row.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));assert.equal(d.querySelector('#editor-dialog').open,true);
     d.querySelector('#editor-dialog').dispatchEvent(new w.Event('cancel',{cancelable:true}));assert.equal(d.querySelector('#editor-dialog').open,false);
   }
-  await navigate('network/labbr0/summary');d.querySelector('[data-action=resource-properties]').click();
+  d.querySelector('.properties-grid tbody tr').click();
   assert.match(d.querySelector('#editor-content').textContent,/ipv4.address/);close();
   await navigate('instance/lab-web/options');d.querySelector('[data-action=technical-properties]').click();
   assert.match(d.querySelector('#editor-content').textContent,/Configuração local/);assert.match(d.querySelector('#editor-content').textContent,/Configuração efetiva, incluindo perfis/);
@@ -58,17 +62,22 @@ try{
     document.querySelector('#content').replaceChildren(propertiesGrid('Fixture',['NOME','CONFIGURAÇÃO'],window.reviewItems,item=>[item.name,configurationSummary(item.config)],item=>openProperties(item.name,()=>propertyTable(item.config))));`);
   const grid=d.querySelector('.properties-grid');
   grid.querySelector('th button').click();grid.querySelector('th button').click();
+  assert.equal(d.querySelector('#editor-dialog').open,false,'Sorting does not open properties');
   let row=grid.querySelector('tbody tr');assert.equal(row.cells[0].textContent,'device-29');
-  row.dispatchEvent(new w.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));grid.querySelector('[data-action=resource-properties]').click();
+  row.click();
   assert.equal(d.querySelector('#editor-title').textContent,'device-29');assert.match(d.querySelector('#editor-content').textContent,/\/29/);
   assert.equal(d.querySelector('#editor-content script'),null,'Values remain plain text');assert.ok(d.querySelector('#editor-content').textContent.includes('x'.repeat(1500)),'The dialog preserves complete values');close();
   [...grid.querySelectorAll('.pagination button')].find(button=>button.textContent==='Próxima').click();
+  assert.equal(d.querySelector('#editor-dialog').open,false,'Pagination does not open properties');
   row=grid.querySelector('tbody tr');assert.equal(row.cells[0].textContent,'device-04');
   row.dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));
-  grid.querySelector('[data-action=resource-properties]').click();assert.equal(d.querySelector('#editor-title').textContent,'device-03');close();
+  assert.equal(d.querySelector('#editor-dialog').open,false,'Arrow keys only select a row');
+  row.nextElementSibling.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+  assert.equal(d.querySelector('#editor-title').textContent,'device-03');close();
   // Empty inventories cannot open a nonexistent resource.
   w.eval(`document.querySelector('#content').replaceChildren(propertiesGrid('Vazio',['NOME'],[],item=>[item.name],()=>{throw new Error('Empty selection');}));`);
-  assert.equal(d.querySelector('[data-action=resource-properties]').disabled,true);
+  d.querySelector('.table-empty').click();assert.equal(d.querySelector('#editor-dialog').open,false);
+  assert.equal(d.querySelector('[data-action=resource-properties]'),null);
   // Profile devices are separate sections; project features stay available.
   w.openResourceProperties({name:'inherited',config:{},devices:{eth0:{type:'nic',network:'labbr0'},root:{type:'disk',path:'/'}}},'profiles');
   assert.match(d.querySelector('#editor-content').textContent,/Dispositivo: eth0/);assert.match(d.querySelector('#editor-content').textContent,/Dispositivo: root/);
@@ -79,9 +88,9 @@ try{
   w.eval('window.savedRead=read;read=async resource=>resource===\'operations\'?{data:[window.reviewOperation]}:{data:{}};');
   w.reviewOperation=operation;w.eval('tasks.clear()');
   d.querySelector('#content').replaceChildren(await w.taskView(w.eval('({host,project})')));
-  assert.match(d.querySelector('#content').textContent,/75%/);d.querySelector('.properties-grid tbody tr').click();d.querySelector('[data-action=resource-properties]').click();
+  assert.match(d.querySelector('#content').textContent,/75%/);d.querySelector('.properties-grid tbody tr').click();
   assert.equal(d.querySelector('#task-detail').open,true);assert.match(d.querySelector('#task-detail-content').textContent,/fixture/);d.querySelector('#close-task-detail').click();
   w.eval('read=window.savedRead');
   assert.equal(writes,0,'Property inspection never sends resource mutations');assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({routes:routes.length,selection:true,doubleClick:true,keyboard:true,sortAndPagination:true,emptyInventory:true,fullValuesAndEscaping:true,profileDevices:true,projectFeatures:true,taskMetadata:true,resourceWrites:writes,domErrors:errors.length}));
+  console.log(JSON.stringify({routes:routes.length,singleClick:true,noPropertiesButtons:true,noDuplicateOpen:true,selection:true,keyboard:true,sortAndPagination:true,emptyInventory:true,fullValuesAndEscaping:true,profileDevices:true,projectFeatures:true,taskMetadata:true,resourceWrites:writes,domErrors:errors.length}));
 }finally{dom.window.close();}
