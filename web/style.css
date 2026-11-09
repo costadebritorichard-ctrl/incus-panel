@@ -135,9 +135,10 @@ tbody tr:nth-child(even){background:var(--row-alt)}tbody tr:hover{background:var
 .alert.critical{border-left-color:var(--danger);color:var(--danger)}.feedback{border-left-color:var(--good)}.action-help{margin:5px 0;color:var(--muted);font-size:11px}
 .property-wrap{margin:5px 0}.property-table tbody th[scope="row"]{width:38%;min-width:125px;white-space:normal;vertical-align:top}
 .property-table td{white-space:normal;overflow-wrap:anywhere}.property-table code{display:block;margin-top:2px;font-size:10px;color:var(--muted)}.property-list{padding-left:16px;margin:0}
-.resource-inspector{min-width:125px}.resource-inspector>summary{color:var(--link);text-decoration:underline;text-underline-offset:2px}
-.inspector-body{width:min(600px,75vw);padding:8px 0;white-space:normal}.inspector-sections{display:grid;gap:12px}
-.inspector-sections h2,.inspector-sections h3{margin-bottom:5px}.technical-details>summary{padding:8px;background:var(--chrome)}
+.configuration-summary{display:block;max-width:440px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.properties-sections{display:grid;gap:12px;min-width:0}.properties-sections h2,.properties-sections h3{margin-bottom:5px}
+.properties-sections p{overflow-wrap:anywhere;white-space:pre-wrap}
+.properties-grid tbody tr{cursor:pointer}
 .resource-section-title{padding:5px 7px;color:var(--muted);font-weight:600}
 
 /* Summaries and charts. */
@@ -276,6 +277,10 @@ dialog::backdrop{background:rgba(0,0,0,.25)}
 .dialog-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:7px;padding:7px;margin-top:12px;border-top:1px solid var(--border);background:var(--panel)}
 #create-dialog{width:min(820px,calc(100vw - 24px))}.wizard-form{display:flex;flex-direction:column;min-height:370px}
 #editor-dialog{width:min(820px,calc(100vw - 24px))}#editor-content{padding:12px}#editor-content .panel-body{padding:0}
+#editor-dialog[data-editor-type="properties"]{width:min(720px,calc(100vw - 24px))}
+#editor-dialog[data-editor-type="properties"] #editor-content{padding:0}
+.properties-view>.properties-sections{padding:12px}.properties-view .dialog-actions{position:sticky;bottom:0;margin-top:0}
+.properties-view .dialog-actions button{min-width:75px}
 .wizard-tabs{display:flex;overflow-x:auto;gap:2px;padding:5px 5px 0;background:var(--chrome);border-bottom:1px solid var(--border)}
 .wizard-tabs button{padding:6px 9px;border:1px solid transparent;border-radius:2px 2px 0 0;background:transparent;flex-shrink:0}
 .wizard-tabs button.active{background:var(--panel);border-color:var(--border);border-bottom-color:var(--panel);color:var(--text)}.wizard-tabs button:disabled{background:transparent}
@@ -370,7 +375,7 @@ html[data-theme="dark"] .context-menu button:not(:disabled):hover,html[data-them
   .wizard-form,.wizard-page{min-height:0}.wizard-page{padding:12px}.wizard-footer{flex-wrap:wrap;gap:5px}.wizard-footer>small{flex-basis:100%}.wizard-footer button{min-width:0}
   #task-summary{display:none}#task-log-refresh{margin-left:auto}.task-log-toolbar{min-height:32px}
   .summary-toolbar{flex-wrap:wrap}.summary-toolbar>span{flex-basis:100%}.summary-resource-body{justify-content:flex-start;gap:16px}
-  .inspector-body{width:min(440px,80vw)}.property-table tbody th[scope="row"]{min-width:100px}
+  .configuration-summary{max-width:240px}.property-table tbody th[scope="row"]{min-width:100px}
   .login-workspace{grid-template-columns:minmax(0,1fr);grid-template-areas:"header" "work" "tasks"}
   .login-workspace-tree,.login-workspace-header>input,.login-workspace-header .header-label,.login-workspace-header .header-right>button:first-child{display:none}.login-workspace-header .header-right{margin-left:auto}
   footer{font-size:9px}

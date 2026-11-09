@@ -412,6 +412,7 @@ class Service:
         self.hosts = {h["id"]: connect(h) for h in config["hosts"]}
         self.audit = []
         self.launches = {}
+        self.operation_results = {}
         self.lock = threading.RLock()
         from .snapshots import SnapshotMetadata
         self.snapshot_metadata = SnapshotMetadata(snapshot_metadata_path)
@@ -466,6 +467,9 @@ class Service:
                 job = self.launches.get(target)
                 if job and job['host'] == host and job['project'] == project and job['identity'] == user['username']:
                     return redact(copy.deepcopy(job))
+                cached = self.operation_results.get((user['username'], host, project, target))
+                if cached is not None:
+                    return copy.deepcopy(cached)
         allowed = {"server": "/1.0", "resources": "/1.0/resources", "host-summary": "/1.0/resources", "instances": "/1.0/instances", "instance-list": "/1.0/instances", "images": "/1.0/images", "profiles": "/1.0/profiles", "networks": "/1.0/networks", "pools": "/1.0/storage-pools", "operations": "/1.0/operations"}
         if resource == "projects":
             # Never request a global project inventory with a broad proxy identity.
@@ -491,7 +495,12 @@ class Service:
         # Host-global physical metrics may expose other projects. Explicit opt-in per identity.
         if resource in ("resources", "host-summary", "pools", "pool-resources", "volumes", "network-leases") and not user.get("host_metrics", False):
             raise PanelError(403, "Métricas globais não autorizadas para esta identidade.")
-        data = client.request("GET", path, project)["metadata"]
+        # Incus removes completed operations after five seconds. A bounded native
+        # wait captures their terminal result before a browser polling gap can
+        # lose it; transports without wait retain the ordinary GET contract.
+        wait_operation = getattr(client, 'wait_operation', None)
+        data = (wait_operation(target, project) if resource == 'operation' and callable(wait_operation)
+                else client.request("GET", path, project)["metadata"])
         if resource == 'operation':
             self.snapshot_metadata.settle(client, host, project, target, data)
             data = self.snapshot_task_context(host, project, data)
@@ -532,7 +541,14 @@ class Service:
         if resource == "server":
             data = {k: data[k] for k in ("auth", "api_extensions", "environment", "api_version") if k in data}
             data.get("environment", {}).pop("certificate", None)
-        return redact(data)
+        data = redact(data)
+        if resource == 'operation' and data.get('status_code', 100) >= 200:
+            with self.lock:
+                key = (user['username'], host, project, target)
+                self.operation_results[key] = copy.deepcopy(data)
+                if len(self.operation_results) > 100:
+                    del self.operation_results[next(iter(self.operation_results))]
+        return data
 
     def download_image(self, user, host, project, body):
         client = self.context(user, host, project)

@@ -72,14 +72,17 @@ function iconLabel(name,label){return [icon(name),el('span',{},label)];}
 document.querySelectorAll('[data-header-icon]').forEach(node=>node.prepend(icon(node.dataset.headerIcon)));
 function notify(message){$('#feedback').textContent=message;$('#feedback').hidden=false;}
 async function waitOperation(operation,scope,owner){
-  let state;
-  for(let attempt=0;attempt<(owner.low_resource?6:30);attempt++){
+  let state;const deadline=Date.now()+30000;
+  for(let attempt=0;attempt<30;attempt++){
     if(session!==owner)throw new Error('A sessão mudou. Consulte Tarefas para conferir a operação.');
     state=(await read('operation',operation,scope)).data;
     trackTask(`${scope.host}/${scope.project}/${operation}`,{...tasks.get(`${scope.host}/${scope.project}/${operation}`),...scope,id:operation,...state});
     if(state.status_code>=400)throw new Error(state.err||'O Incus não concluiu a operação.');
     if(state.status_code>=200)return state;
-    await new Promise(resolve=>setTimeout(resolve,owner.low_resource?5000:1000));
+    if(Date.now()>=deadline)break;
+    // Incus retains a completed operation for only five seconds. Keep active
+    // observation inside that window, including transports without native wait.
+    await new Promise(resolve=>setTimeout(resolve,1000));
   }
   return state;
 }
@@ -109,7 +112,9 @@ const metricHistory=new Map();
 const numberFormat = new Intl.NumberFormat('pt-BR', {maximumFractionDigits:1});
 const fmt = n => n === null || n === undefined ? 'n/d' : numberFormat.format(n);
 const bytes = n => n === null || n === undefined ? 'n/d' : n >= 1073741824 ? fmt(n/1073741824)+' GiB' : fmt(n/1048576)+' MiB';
-const date = n => n ? new Date(typeof n === 'number' ? n*1000 : n).toLocaleString('pt-BR') : 'n/d';
+const hasTimestamp = n => Boolean(n)&&!(typeof n==='string'&&/^0001-01-01(?:T|$)/.test(n));
+const date = n => hasTimestamp(n) ? new Date(typeof n === 'number' ? n*1000 : n).toLocaleString('pt-BR') : 'n/d';
+const expiryDate = n => hasTimestamp(n) ? date(n) : 'Sem expiração';
 const localDate = n => n ? new Date(typeof n==='number'&&n<1e12?n*1000:n).toLocaleString('pt-BR') : 'n/d';
 const transportLabel = () => ({ssh:'SSH verificado',unix:'Socket local Incus',tls:'TLS verificado'})[session?.hosts.find(h=>h.id===host)?.transport||'tls'];
 const badge = (text, cls='') => el('span',{class:'badge '+cls},text);
@@ -137,26 +142,41 @@ function propertyTable(value,depth=0){
   if(!entries.length)return empty('Nenhuma propriedade informada.');
   return el('div',{class:'table-wrap property-wrap'},el('table',{class:'property-table'},el('thead',{},el('tr',{},el('th',{},'PROPRIEDADE'),el('th',{},'VALOR'))),el('tbody',{},entries.map(([key,item])=>el('tr',{},el('th',{scope:'row'},el('span',{},propertyName(key)),propertyLabels[key]?el('code',{},key):null),el('td',{},propertyValue(item,depth,key)))))));
 }
-function inspect(label,renderContent){
-  const details=el('details',{class:'resource-inspector'},el('summary',{},label));let rendered=false;
-  details.addEventListener('toggle',()=>{if(details.open&&!rendered){rendered=true;details.append(el('div',{class:'inspector-body'},renderContent()));}});return details;
+function configurationSummary(config,exclude=[]){
+  const entries=Object.entries(config||{}).filter(([key])=>!exclude.includes(key));
+  const text=entries.slice(0,4).map(([key,value])=>`${key}=${typeof value==='object'?Object.keys(value||{}).join(', '):String(value).replace(/\s+/g,' ')}`).join(', ')+(entries.length>4?` · +${entries.length-4} propriedades`:'');
+  return el('span',{class:'configuration-summary',title:text||'Padrão do Incus'},text||'Padrão do Incus');
 }
-function inspectResource(item,kind){
-  return inspect('Ver configuração e propriedades',()=>{
-    const body=el('div',{class:'inspector-sections'});
-    if(item.description)body.append(el('div',{},el('h3',{},'Descrição'),el('p',{},item.description)));
-    if(item.config)body.append(el('div',{},el('h3',{},kind==='network'?'Configuração da rede':'Configuração'),propertyTable(item.config)));
-    if(item.devices)body.append(el('div',{},el('h3',{},'Dispositivos do perfil'),propertyTable(item.devices)));
-    if(item.features)body.append(el('div',{},el('h3',{},'Recursos do projeto'),propertyTable(item.features)));
-    if(!body.childElementCount)body.append(empty('Nenhuma configuração adicional.'));
-    return body;
-  });
+function openProperties(title,renderContent){
+  openEditor(title,el('div',{class:'properties-view'},renderContent(),el('div',{class:'dialog-actions'},el('button',{type:'button',onclick:closeEditor},'Fechar'))),'properties');
+}
+function resourceProperties(item,kind){
+  const body=el('div',{class:'properties-sections'});
+  if(item.description)body.append(el('section',{},el('h3',{},'Descrição'),el('p',{},item.description)));
+  if(item.config)body.append(el('section',{},el('h3',{},kind==='network'?'Configuração da rede':'Configuração'),propertyTable(item.config)));
+  if(item.devices)for(const [name,device] of Object.entries(item.devices))body.append(el('section',{},el('h3',{},'Dispositivo: '+name),propertyTable(device)));
+  if(item.features)body.append(el('section',{},el('h3',{},'Recursos do projeto'),propertyTable(item.features)));
+  if(!body.childElementCount)body.append(empty('Nenhuma configuração adicional.'));
+  return body;
+}
+function openResourceProperties(item,kind){
+  const label=({profiles:'Perfil',projects:'Projeto',network:'Rede'})[kind]||'Recurso';
+  openProperties(`Propriedades: ${label} ${item.name}`,()=>resourceProperties(item,kind));
+}
+function propertiesGrid(title,headers,items,row,show,{buttonLabel='Propriedades'}={}){
+  let selected;
+  const button=el('button',{type:'button',disabled:'','data-action':'resource-properties','aria-haspopup':'dialog',title:'Selecione uma linha para abrir '+buttonLabel.toLocaleLowerCase('pt-BR'),onclick:()=>{if(selected!==undefined)show(items[selected]);}},...iconLabel('file',buttonLabel));
+  const content=el('div',{},el('div',{class:'grid-toolbar'},button),table(headers,items.map(item=>()=>row(item)),{
+    onSelect:index=>{selected=index;button.disabled=false;button.title=buttonLabel;},
+    onActivate:index=>show(items[index])
+  }));
+  const view=panel(title,content);view.classList.add('properties-grid');return view;
 }
 function operationMetadata(metadata){
   const value=metadata&&typeof metadata==='object'?metadata:{};
   if(!Object.keys(value).length)return el('span',{class:'muted'},'Aguardando detalhes');
   const progress=Object.entries(value).find(([key,item])=>/progress/i.test(key)&&typeof item==='string')?.[1];
-  return inspect(progress||'Ver detalhes da operação',()=>propertyTable(value));
+  return progress||'Detalhes disponíveis';
 }
 function extensionArea(name){
   if(/cluster|member|raft/i.test(name))return 'Cluster';
@@ -218,6 +238,7 @@ let editorContext='';
 function closeEditor(){if($('#editor-dialog').open)$('#editor-dialog').close();$('#editor-content').replaceChildren();$('#editor-dialog').removeAttribute('data-editor-type');$('#reset-editor').hidden=true;$('#reset-editor').onclick=null;editorContext='';}
 function openEditor(title,content,type=''){
   $('#editor-dialog').dataset.editorType=type;$('#reset-editor').hidden=type!=='nic';$('#reset-editor').onclick=null;
+  $('#close-editor').setAttribute('aria-label',type==='properties'?'Fechar propriedades':'Fechar editor');
   if(type==='nic'){$('#reset-editor').replaceChildren(icon('restart'));$('#close-editor').replaceChildren(icon('close-circle'));}
   else $('#close-editor').textContent='×';
   editorContext=host+'/'+project+'/'+location.hash;$('#editor-title').textContent=title;$('#editor-content').replaceChildren(content);
@@ -277,7 +298,16 @@ async function queuedRead(path,current=()=>true){
 async function read(resource,target,scope={host,project}) {
   const path='/api/read?'+new URLSearchParams({...scope,resource,...(target?{target}:{})});
   if(resource==='operation'){
-    const owner=session,result=await queuedRead(path),key=`${scope.host}/${scope.project}/${target}`;
+    const owner=session,key=`${scope.host}/${scope.project}/${target}`;
+    let result;
+    try{result=await queuedRead(path);}catch(error){
+      if(session===owner&&error.status===404){
+        const mutation=operationMutations.get(key);
+        if(mutation){invalidateMutation(mutation.path,mutation.change);operationMutations.delete(key);}
+        if(tasks.has(key))trackTask(key,{...tasks.get(key),status:'Resultado incerto',status_code:400,uncertain:true,err:error.message,ended_at:Date.now()/1000});
+      }
+      throw error;
+    }
     if(session===owner&&result.data.status_code>=200){
       const mutation=operationMutations.get(key);
       if(mutation){invalidateMutation(mutation.path,mutation.change);operationMutations.delete(key);}
@@ -307,6 +337,7 @@ const snapshotOperations=['snapshot','snapshot-restore','snapshot-delete'];
 const snapshotConfirmations=['snapshot-restore','snapshot-delete'];
 function actionSubmitLabel(action){return action==='snapshot'?'Tirar um Snapshot':action==='snapshot-edit'?'OK':snapshotConfirmations.includes(action)?'Sim':'Confirmar operação';}
 function openAction(action,target,extra={}) {
+  $('#feedback').hidden=true;
   if(action==='console'){startTerminal(target).catch(showTerminalError);return;}
   pendingAction={host,project,action,target,...extra};
   $('#cancel-action').disabled=false;$('#close-action').disabled=false;$('#submit-action').disabled=false;$('#submit-action').textContent=actionSubmitLabel(action);
@@ -357,13 +388,13 @@ function openAction(action,target,extra={}) {
   $('#confirm').showModal(); (snapshotConfirmation?$('#cancel-action'):action==='snapshot-edit'?$('#snapshot-description'):needsConfirmation?$('#confirmation'):!$('#name-label').hidden?$('#artifact-name'):$('#submit-action')).focus();
 }
 $('#cancel-action').onclick=()=>$('#confirm').close();
-$('#close-action').onclick=()=>{if(!$('#submit-action').disabled)$('#confirm').close();};
-$('#confirm').addEventListener('cancel',event=>{if($('#submit-action').disabled)event.preventDefault();});
+$('#close-action').onclick=()=>{if(!$('#cancel-action').disabled)$('#confirm').close();};
+$('#confirm').addEventListener('cancel',event=>{if($('#cancel-action').disabled)event.preventDefault();});
 $('#action-form').onsubmit=async event=>{
   event.preventDefault();if($('#submit-action').disabled)return; $('#cancel-action').disabled=true;$('#close-action').disabled=true; $('#submit-action').disabled=true;$('#submit-action').textContent='Processando…';
-  const actionOwner=pendingAction;
+  const actionOwner=pendingAction,owner=session,viewAtStart=location.hash;let acceptedOperation=false,observationFailed=false;
   try {
-    const action={...pendingAction},owner=session;
+    const action={...pendingAction};
     const artifact=action.snapshot||action.backup||'';
     const typedValue=artifact?`${action.host}/${action.project}/${action.target}/${artifact}`:action.target;
     const artifactName=$('#artifact-name').value.trim();
@@ -379,6 +410,7 @@ $('#action-form').onsubmit=async event=>{
     if(snapshotOperations.includes(action.action)||action.action==='snapshot-edit')snapshotLoading($('#action-form'),true);
     const data=await api('/api/action',{...requestAction,confirmation:`${action.host}/${action.project}/${action.target}${artifact?'/'+artifact:''}`,name:artifactName});
     if(session!==owner)return;
+    acceptedOperation=Boolean(data.operation);
     if(snapshotOperations.includes(action.action)){
       $('#confirm').close();
       startSnapshotTask({...action,snapshot:artifact||artifactName},data.operation,owner);
@@ -397,8 +429,13 @@ $('#action-form').onsubmit=async event=>{
     if(action.action==='network-delete'){location.hash='#networks';return;}
     if(state.status_code<200){location.hash='#tasks';return;}
     await render();
-  } catch(error) { $('#action-error').textContent=error.message; }
-  finally { snapshotLoading($('#action-form'),false);if(pendingAction===actionOwner){$('#cancel-action').disabled=false;$('#close-action').disabled=false; $('#submit-action').disabled=false;$('#submit-action').textContent=actionSubmitLabel(actionOwner.action);} }
+  } catch(error) {
+    if(session!==owner||pendingAction!==actionOwner)return;
+    observationFailed=acceptedOperation;
+    $('#action-error').textContent=error.message+(acceptedOperation?' A operação já foi enviada. Confira o estado e os detalhes da tarefa antes de executar outra ação.':'');
+    if(acceptedOperation&&location.hash===viewAtStart)await render();
+  }
+  finally { snapshotLoading($('#action-form'),false);if(session===owner&&pendingAction===actionOwner){$('#cancel-action').disabled=false;$('#close-action').disabled=false; $('#submit-action').disabled=observationFailed;$('#submit-action').textContent=observationFailed?'Operação já enviada':actionSubmitLabel(actionOwner.action);} }
 };
 function logoutLocal(message='') {
   sessionAttempt++;
@@ -631,7 +668,7 @@ async function render({refreshSnapshots=true}={}) {
     else if(r.page==='network')container.append(await networkDetailView(scope,r.target,r.tab));
     else if(['profiles','projects'].includes(r.page)) {
       const result=await read(r.page,undefined,scope); const data=result.data;
-      container.append(panel(title,table(['NOME','DESCRIÇÃO','CONFIGURAÇÃO'],data.map(item=>()=>[item.name,item.description||'—',inspectResource(item,r.page)]))));
+      container.append(propertiesGrid(title,['NOME','DESCRIÇÃO','CONFIGURAÇÃO',...(r.page==='profiles'?['DISPOSITIVOS']:[])],data,item=>[item.name,item.description||'—',configurationSummary(item.config),...(r.page==='profiles'?[Object.keys(item.devices||{}).join(', ')||'Nenhum']:[])],item=>openResourceProperties(item,r.page)));
       container.append(notice('Consulta de '+(r.page==='profiles'?'perfis':'projetos')+'. A criação e a edição são feitas diretamente no Incus.'));
       if(r.page==='projects')container.append(notice('A lista contém somente os escopos configurados no servidor do painel. A autorização final permanece no Incus.'));
     } else if(r.page==='tasks') container.append(await taskView(scope));
@@ -714,7 +751,7 @@ async function datacenterBackupsView(scope,instances){
   results.forEach((result,index)=>{
     const item=selected[index];
     if(result.status==='rejected'){failures.push(item.name);return;}
-    for(const backup of result.value.data||[]){const raw=typeof backup==='string'?backup:backup.name;rows.push([item.name,String(raw||'').split('/').pop(),date(backup.created_at),date(backup.expires_at),el('a',{href:instanceLink(item.name,'backups')},'Abrir')]);}
+    for(const backup of result.value.data||[]){const raw=typeof backup==='string'?backup:backup.name;rows.push([item.name,String(raw||'').split('/').pop(),date(backup.created_at),expiryDate(backup.expires_at),el('a',{href:instanceLink(item.name,'backups')},'Abrir')]);}
   });
   const view=panel('Backups dos containers',table(['CONTAINER','BACKUP','CRIADO EM','EXPIRA EM',''],rows),el('a',{href:'#instances'},'Containers'));
   if(instances.length>selected.length)view.append(notice(`Exibindo os primeiros ${selected.length} containers. Abra a aba Backup em cada container para consultar os demais.`));
@@ -924,7 +961,7 @@ async function networkDetailView(scope,target,tab='summary'){
   const dependencyError=instances.status==='rejected'||profiles.status==='rejected';
   const external=Boolean(network.config?.['bridge.external_interfaces']);
   const managedBridge=network.managed&&network.type==='bridge';
-  const body=panel('Configuração da rede',el('div',{class:'panel-body'},kv([['Nome',network.name],['Tipo',network.type],['Gerenciada',network.managed?'Sim':'Não'],['Estado',network.status],['Gateway / CIDR IPv4',network.config?.['ipv4.address']],['Faixa DHCP IPv4',network.config?.['ipv4.dhcp.ranges']],['DHCP IPv4',network.config?.['ipv4.dhcp']],['NAT IPv4',network.config?.['ipv4.nat']],['IPv6 / CIDR',network.config?.['ipv6.address']],['Domínio DNS',network.config?.['dns.domain']],['Projeto',scope.project]]),inspectResource(network,'network')));
+  const body=panel('Configuração da rede',el('div',{class:'panel-body'},kv([['Nome',network.name],['Tipo',network.type],['Gerenciada',network.managed?'Sim':'Não'],['Estado',network.status],['Gateway / CIDR IPv4',network.config?.['ipv4.address']],['Faixa DHCP IPv4',network.config?.['ipv4.dhcp.ranges']],['DHCP IPv4',network.config?.['ipv4.dhcp']],['NAT IPv4',network.config?.['ipv4.nat']],['IPv6 / CIDR',network.config?.['ipv6.address']],['Domínio DNS',network.config?.['dns.domain']],['Projeto',scope.project]])),el('button',{type:'button','data-action':'resource-properties','aria-haspopup':'dialog',onclick:()=>openResourceProperties(network,'network')},...iconLabel('file','Propriedades')));
   const result=el('div',{class:'dashboard-view'},el('div',{class:'grid dashboard-top'},healthView(network.name,network.status==='Created',network.type+' · '+(network.managed?'gerenciada pelo Incus':'externa')),body),panel('Containers conectados',instanceTable(attached)));
   if(dependencies.size)result.append(panel('Dependências da bridge',table(['RECURSO'],[...dependencies].map(value=>[value]))));
   if(dependencyError)result.append(notice('Não foi possível conferir todas as dependências. Atualize antes de excluir a bridge.',true));
@@ -1062,10 +1099,10 @@ async function networksView(scope){
   try{
     const data=(await read('networks',undefined,scope)).data;
     const content=el('div');
-    content.append(panel('Redes do nó',table(['NOME','TIPO','GERENCIADA','ESTADO','IPv4 / CIDR','IPv6 / CIDR','USO','CONFIGURAÇÃO'],data.map(item=>()=>[
+    content.append(propertiesGrid('Redes do nó',['NOME','TIPO','GERENCIADA','ESTADO','IPv4 / CIDR','IPv6 / CIDR','USO','CONFIGURAÇÃO'],data,item=>[
       el('a',{href:'#network/'+encodeURIComponent(item.name)},item.name),item.type,item.managed?'Sim':'Não',item.status||'n/d',
-      item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',(item.used_by||[]).length,inspectResource(item,'network')
-    ]))));
+      item.config?.['ipv4.address']||'—',item.config?.['ipv6.address']||'—',(item.used_by||[]).length,configurationSummary(item.config)
+    ],item=>openResourceProperties(item,'network')));
     if(canManageNetworks()){
       const networkName=el('input',{name:'network-name',maxlength:'15',pattern:'[A-Za-z0-9][A-Za-z0-9_\\-]{0,14}',required:'',placeholder:'Ex.: bridge-lab',title:'Até 15 caracteres: letras, números, hífen ou sublinhado.'});
       const description=el('input',{name:'description',maxlength:'1024',placeholder:'Opcional'});
@@ -1365,7 +1402,7 @@ async function pollSnapshotTask(run){
     run.connectionError=error.message;appendSnapshotLog(run,'Não foi possível consultar a operação: '+error.message);updateSnapshotTaskWindows(run);
   }finally{
     run.polling=false;
-    if(watchingSnapshotTask(run)&&run.status_code<200&&!run.connectionError)run.timer=setTimeout(()=>pollSnapshotTask(run),run.owner.low_resource?5000:1000);
+    if(watchingSnapshotTask(run)&&run.status_code<200&&!run.connectionError)run.timer=setTimeout(()=>pollSnapshotTask(run),1000);
   }
 }
 $('#close-snapshot-progress').onclick=()=>$('#snapshot-progress').close();
@@ -1442,7 +1479,7 @@ async function detail(r,scope,renderId=generation) {
     if(!canMutate(r.target))wrapper.append(notice('Ações bloqueadas pelo modo de leitura, papel ou autorização deste container.'));
   } else if(r.tab==='resources'||r.tab==='devices'){
     wrapper.append(panel('Recursos',table(['RECURSO','CONFIGURAÇÃO','USO ATUAL'],[['Memória',item.expanded_config?.['limits.memory']||'Herdado',bytes(state.memory?.usage)],['Núcleos',item.expanded_config?.['limits.cpu']||'Herdado','—'],['Limite de CPU',item.expanded_config?.['limits.cpu.allowance']||'Herdado',state.cpu?.usage==null?'n/d':fmt(state.cpu.usage/1e9)+' s acumulados'],...Object.entries(item.expanded_devices||{}).filter(([,d])=>d.type==='disk').map(([key,d])=>['Disco ('+key+')',(d.pool||'')+' · '+(d.size||'Capacidade do pool'),bytes(state.disk?.[key]?.usage)])]),el('a',{class:'button-link',href:instanceLink(r.target,'options')},'Editar')),
-      panel('Dispositivos',table(['DISPOSITIVO','ORIGEM','CONFIGURAÇÃO'],Object.entries(item.expanded_devices||{}).map(([key,value])=>[key,Object.hasOwn(item.devices||{},key)?'Local':'Herdado de perfil',inspect('Ver propriedades',()=>propertyTable(value))]))));
+      propertiesGrid('Dispositivos',['DISPOSITIVO','TIPO','ORIGEM','CONFIGURAÇÃO'],Object.entries(item.expanded_devices||{}),([key,value])=>[key,value.type||'—',Object.hasOwn(item.devices||{},key)?'Local':'Herdado de perfil',configurationSummary(value,['type'])],([key,value])=>openProperties('Propriedades: Dispositivo '+key,()=>el('div',{class:'properties-sections'},kv([['Container',item.name],['Origem',Object.hasOwn(item.devices||{},key)?'Local':'Herdado de perfil']]),propertyTable(value)))));
   } else if(r.tab==='network'){
     wrapper.classList.add('nic-workspace');
     wrapper.append(await containerNetworksView(scope,item,state));
@@ -1467,7 +1504,7 @@ async function detail(r,scope,renderId=generation) {
       const remove=actionButton('Excluir','backup-delete',r.target,{backup:artifact});
       remove.disabled=!(session.role==='administrador'&&canMutate(r.target));
       controls.append(remove);
-      return [artifact,date(item.created_at),date(item.expires_at),controls];
+      return [artifact,date(item.created_at),expiryDate(item.expires_at),controls];
     });
     wrapper.append(panel('Backups',table(['NOME','CRIADO EM','EXPIRA EM','AÇÕES'],artifacts),actionButton('Criar','backup',r.target)));
     wrapper.append(notice('Backups podem ser criados e excluídos. O download e a importação de arquivos ainda não estão disponíveis.'));
@@ -1520,7 +1557,7 @@ function editView(item,scope){
   };
   const effective=item.expanded_config||{};
   const rows=[['Descrição',item.description||'—'],['Memória',effective['limits.memory']||'Herdada do perfil'],['CPU',effective['limits.cpu']||'Herdada do perfil'],['Inicialização automática',effective['boot.autostart']==='true'?'Sim':'Não'],['Proteção contra exclusão',effective['security.protection.delete']==='true'?'Sim':'Não']];
-  const output=el('div',{},panel('Opções',el('div',{},el('div',{class:'grid-toolbar'},el('button',{type:'button','data-action':'instance-edit',disabled:allowed?null:'',onclick:()=>openEditor('Editar: '+item.name,form)},...iconLabel('edit','Editar'))),table(['OPÇÃO','VALOR'],rows))),el('details',{class:'panel technical-details'},el('summary',{},'Configuração técnica (somente leitura)'),el('div',{class:'panel-body inspector-sections'},el('section',{},el('h2',{},'Configuração local'),propertyTable(item.config)),el('section',{},el('h2',{},'Configuração efetiva, incluindo perfis'),propertyTable(item.expanded_config)))));
+  const output=el('div',{},panel('Opções',el('div',{},el('div',{class:'grid-toolbar'},el('button',{type:'button','data-action':'instance-edit',disabled:allowed?null:'',onclick:()=>openEditor('Editar: '+item.name,form)},...iconLabel('edit','Editar')),el('button',{type:'button','data-action':'technical-properties','aria-haspopup':'dialog',onclick:()=>openProperties('Configuração técnica: '+item.name,()=>el('div',{class:'properties-sections'},el('section',{},el('h2',{},'Configuração local'),propertyTable(item.config)),el('section',{},el('h2',{},'Configuração efetiva, incluindo perfis'),propertyTable(item.expanded_config))))},...iconLabel('file','Configuração técnica'))),table(['OPÇÃO','VALOR'],rows))));
   if(session.role==='administrador'){
     const button=actionButton('Excluir container','delete',item.name);
     const protectedDelete=(item.expanded_config?.['security.protection.delete']??config['security.protection.delete'])==='true';
@@ -1659,7 +1696,7 @@ async function taskView(scope) {
     try{const data=all.get(task.id)||(task.status_code>=200?task:(await read('operation',task.id,scope)).data);const updated={...task,...data,...(task.action==='download-image'?{description:'Baixar '+task.target}:{})};trackTask(key,updated);all.set(task.id,updated);}catch(error){all.set(task.id,{...task,err:error.message});}
   }
   $('#task-summary').textContent=`${all.size} operações neste escopo · estado confirmado pelo Incus`;
-  return panel('Operações assíncronas',table(['UUID','DESCRIÇÃO','ESTADO','PROGRESSO / ERRO'],[...all.values()].map(i=>()=>[i.id,i.description||i.action,status(i.status),i.err?notice(i.err,true):operationMetadata(i.metadata)])));
+  return propertiesGrid('Operações assíncronas',['UUID','DESCRIÇÃO','ESTADO','PROGRESSO / ERRO'],[...all.values()],i=>[i.id,i.description||i.action,status(i.status),i.err?notice(i.err,true):operationMetadata(i.metadata)],openTaskDetail,{buttonLabel:'Detalhes'});
 }
 function operationList(data){return Array.isArray(data)?data:Object.values(data||{}).flat().filter(item=>item&&typeof item==='object');}
 function operationMatchesInstance(operation,target){
@@ -1758,7 +1795,7 @@ async function pollImageDownload(run){
     if(state.err)run.status_code=400;
     trackTask(`${run.scope.host}/${run.scope.project}/${run.operation}`,{...run.scope,...state,target:run.target,action:'download-image',description:'Baixar '+run.target});
     updateImageDownload(run);
-    if(run.status_code<200){if(watchingRun(run,'images'))run.timer=setTimeout(()=>pollImageDownload(run),session.low_resource?5000:1500);}
+    if(run.status_code<200){if(watchingRun(run,'images'))run.timer=setTimeout(()=>pollImageDownload(run),1000);}
     else if(watchingRun(run,'images')){invalidateMutation('/api/images/download',run.scope);await render();}
   }catch(error){if(session===run.owner){run.connectionError=error.message;updateImageDownload(run);}}
   finally{run.polling=false;}

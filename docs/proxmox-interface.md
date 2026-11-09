@@ -25,6 +25,20 @@ e JavaScript locais e as operações reais do Incus.
 | Usuários, permissões, projetos e perfis | Componentes compartilhados de grade e configuração | Listas, propriedades, formulários e janelas uniformes; usuários editados em diálogos |
 | Notas, opções, cluster, volumes, imagens, backups e alertas | Componentes compartilhados de painéis e grades | Mesmos controles, tipografia, bordas, espaçamento, estados vazios e temas |
 
+Dispositivos, Perfis, Projetos e Redes usam resumos de configuração nas linhas.
+Selecione um recurso e use **Propriedades** na barra, dê duplo clique ou pressione
+Enter na linha para abrir a janela de consulta. A janela preserva os valores
+completos, sem expandir tabelas dentro das células. Em Opções, **Configuração
+técnica** abre a configuração local e a efetiva na mesma janela. Operações usam
+**Detalhes** para abrir o visualizador de tarefas, mantendo o progresso na grade.
+Escape e Fechar encerram a consulta; mudar de recurso também fecha a janela.
+
+`node scripts/properties-review.mjs`, com a fixture local ativa, verifica esses
+fluxos, seleção após ordenação e paginação, navegação por teclado, inventário
+vazio, valores completos, dispositivos de perfis e recursos de projetos.
+O teste usa DOM simulado e confirma que a consulta não envia mutações; não
+verifica dimensões, aparência nem o foco nativo de diálogos no navegador.
+
 As diferenças funcionais refletem o Incus. Não há VMID, autenticação PAM,
 gestão de VMs ou operações Proxmox fictícias. Contas usam o domínio local;
 o painel mantém os papéis, Projects e permissões aplicados pelo backend.
