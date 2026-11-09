@@ -329,7 +329,7 @@ async function read(resource,target,scope={host,project}) {
 function route() { const [page='',target='',tab='summary'] = location.hash.slice(1).split('/').map(value=>{try{return decodeURIComponent(value);}catch{return value;}}); return {page:page||'overview',target,tab}; }
 function instanceLink(name, tab='summary') { return '#instance/'+encodeURIComponent(name)+'/'+tab; }
 function canMutate(target) { return !session.read_only && session.role!=='observador' && (session.manage_all_instances || (session.mutable_instances?.[host]?.[project] || []).includes(target)); }
-function actionButton(label, action, target, extra={}) { return el('button',{class:'action-button'+(action==='delete'?' danger-button':''),disabled:canMutate(target)?null:'',onclick:()=>openAction(action,target,extra)},...iconLabel(iconPaths[action]?action:'plus',label)); }
+function actionButton(label, action, target, extra={}) { return el('button',{class:'action-button'+(action==='delete'?' danger-button':''),disabled:canMutate(target)?null:'',onclick:()=>openAction(action,target,extra)},...(action.endsWith('-delete')?[label]:iconLabel(iconPaths[action]?action:'plus',label))); }
 function availableName(base,names){let candidate=base.slice(0,63),suffix=1;while(names.has(candidate)){const ending='-'+suffix++;candidate=base.slice(0,63-ending.length)+ending;}return candidate;}
 const snapshotOperations=['snapshot','snapshot-restore','snapshot-delete'];
 const snapshotConfirmations=['snapshot-restore','snapshot-delete'];
