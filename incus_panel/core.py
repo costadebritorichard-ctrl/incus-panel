@@ -593,6 +593,7 @@ class Service:
             raise
 
     def _launch(self, user, host, project, body):
+        from .networking import available_bridge, bridge_attachment
         client = self.context(user, host, project)
         if self.config.get('read_only', True) or user['role'] != 'administrador' or not self.config.get('manage_all_instances'):
             raise PanelError(403, 'Criação automática exige administrador local.')
@@ -621,10 +622,11 @@ class Service:
             overrides['root'] = {'type': 'disk', 'path': '/', 'pool': pool['name']}
         if not any(d.get('type') == 'nic' for d in devices.values()):
             networks = client.request('GET', '/1.0/networks', project)['metadata']
-            network = next((n for n in networks if n.get('managed') and n.get('type') == 'bridge' and n.get('status') == 'Created'), None)
+            candidates = [n for n in networks if available_bridge(n)]
+            network = next((n for n in candidates if n.get('managed')), next(iter(candidates), None))
             if not network:
                 raise PanelError(409, 'O Incus não tem rede de containers disponível. Execute novamente o instalador na TV box.')
-            overrides['eth0'] = {'type': 'nic', 'name': 'eth0', 'network': network['name']}
+            overrides['eth0'] = bridge_attachment({'name': 'eth0'}, network)
         launch_config = None
         options = body.get('options')
         if options is not None:
@@ -667,13 +669,14 @@ class Service:
                 networks = client.request('GET', '/1.0/networks', project)['metadata']
                 nic_name = next((k for k, d in devices.items() if d.get('type') == 'nic'), 'eth0')
                 nic = copy.deepcopy(overrides.get(nic_name, devices.get(nic_name, {})))
-                selected_network = options.get('network', nic.get('network'))
-                network = next((n for n in networks if n['name'] == selected_network and n.get('managed') and n.get('type') == 'bridge' and n.get('status') == 'Created'), None)
+                selected_network = options.get('network') or nic.get('network') or nic.get('parent')
+                network = next((n for n in networks if n['name'] == selected_network and available_bridge(n)), None)
                 if not network:
-                    raise PanelError(400, 'Selecione uma bridge gerenciada disponível neste projeto.')
-                # A managed NIC has a network instead of nictype/parent.
-                nic = {'type': 'nic', 'name': nic.get('name', nic_name), 'network': network['name']}
+                    raise PanelError(400, 'Selecione uma bridge disponível neste projeto, gerenciada pelo Incus ou externa.')
+                nic = bridge_attachment({'name': nic.get('name', nic_name)}, network)
                 if options.get('ipv4'):
+                    if not network.get('managed'):
+                        raise PanelError(400, 'Bridge externa usa o DHCP da rede física. Configure IP fixo no container ou reserve no roteador.')
                     try:
                         address = ipaddress.IPv4Address(options['ipv4'])
                         subnet = ipaddress.IPv4Interface(network.get('config', {}).get('ipv4.address', ''))

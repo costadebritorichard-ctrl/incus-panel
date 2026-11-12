@@ -41,8 +41,8 @@ jobs:
           sudo sha256sum -c /tmp/config.sha256
       - name: Testes Linux (incluindo socket Unix e instalador)
         run: python3 -m unittest discover -s tests -v
-      - name: Snapshot e reversão de conteúdo em Incus real
-        run: sudo python3 -m incus_panel.verify --config /etc/incus-panel/config.local.json --snapshots
+      - name: Snapshots, bridges Incus/Linux e troca de interface em Incus real
+        run: sudo python3 -m incus_panel.verify --config /etc/incus-panel/config.local.json --snapshots --bridges
       - name: Diagnóstico de falhas
         if: failure()
         run: |

@@ -72,6 +72,29 @@ class LaunchContracts(unittest.TestCase):
         self.assertEqual(job['status_code'], 200)
         self.assertEqual(self.client.instances['laboratorio', result['target']]['status'], 'Stopped')
 
+    def test_wizard_can_use_lan_bridge_and_rejects_incus_reservation_on_it(self):
+        self.client.networks['laboratorio'].append({'name': 'br-lan', 'type': 'bridge', 'managed': False, 'config': {}})
+        result, job = self.launch(options={'network': 'br-lan', 'start': False})
+        self.assertEqual(job['status_code'], 200)
+        nic = self.client.instances['laboratorio', result['target']]['devices']['eth0']
+        self.assertEqual(nic, {'type': 'nic', 'name': 'eth0', 'parent': 'br-lan', 'nictype': 'bridged'})
+        with patch.object(self.client, 'request', wraps=self.client.request) as calls:
+            with self.assertRaisesRegex(PanelError, 'roteador'):
+                self.launch(options={'network': 'br-lan', 'ipv4': '192.168.1.30'})
+            self.assertTrue(all(call.args[0] == 'GET' for call in calls.call_args_list))
+
+    def test_no_profile_can_create_using_only_an_external_bridge(self):
+        self.client.networks['laboratorio'] = [{'name': 'br-lan', 'type': 'bridge', 'managed': False, 'status': '', 'config': {}}]
+        original = self.client.request
+        def without_profile(method, path, project, body=None, etag=None):
+            if method == 'GET' and path == '/1.0/profiles':
+                return {'type': 'sync', 'metadata': []}
+            return original(method, path, project, body, etag)
+        with patch.object(self.client, 'request', side_effect=without_profile):
+            result, job = self.launch(options={'network': 'br-lan', 'start': False})
+        self.assertEqual(job['status_code'], 200)
+        self.assertEqual(self.client.instances['laboratorio', result['target']]['devices']['eth0']['parent'], 'br-lan')
+
     def test_native_wait_advances_both_phases_without_polling_sleep(self):
         calls = []
         def wait_operation(operation, project):

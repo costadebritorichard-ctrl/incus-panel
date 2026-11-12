@@ -68,6 +68,20 @@ class NetworkManagementTests(unittest.TestCase):
         self.action('network-delete', 'bridge-test')
         self.assertFalse(any(item['name'] == 'bridge-test' for item in self.client.networks['laboratorio']))
 
+    def test_create_empty_bridge_and_attach_existing_container(self):
+        self.action('network-create', 'emptybr', config={'ipv4.address': 'none', 'ipv4.dhcp': 'false',
+                    'ipv4.nat': 'false', 'ipv6.address': 'none', 'ipv6.dhcp': 'false', 'ipv6.nat': 'false'})
+        bridge = self.service.read(self.user, 'demo', 'laboratorio', 'network', 'emptybr')
+        self.assertEqual(bridge['config']['ipv4.address'], 'none')
+        self.assertEqual(bridge['config']['ipv4.dhcp'], 'false')
+        instance = self.service.read(self.user, 'demo', 'laboratorio', 'instance', 'lab-web')
+        self.service.mutate(self.user, 'demo', 'laboratorio', 'nic-update', 'lab-web', {
+            'confirmation': 'demo/laboratorio/lab-web', 'device': 'eth0',
+            'revision': instance['_devices_revision'], 'nic': {'network': 'emptybr'}})
+        self.assertEqual(self.service.read(self.user, 'demo', 'laboratorio', 'instance', 'lab-web')['devices']['eth0']['network'], 'emptybr')
+        with self.assertRaisesRegex(PanelError, 'Bridge em uso'):
+            self.action('network-delete', 'emptybr')
+
     def test_physical_or_external_bridges_cannot_be_modified(self):
         self.client.networks['laboratorio'].append({
             'name': 'end0', 'type': 'physical', 'managed': False, 'status': 'Created', 'config': {}})

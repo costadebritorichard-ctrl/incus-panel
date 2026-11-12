@@ -778,21 +778,23 @@ async function storageDetailView(scope,target,tab='summary'){
     panel('Detalhes',el('div',{class:'panel-body'},kv([['Nome',pool.name],['Driver',pool.driver],['Estado',pool.status],['Utilizado',bytes(space?.used)],['Capacidade',bytes(space?.total)],['Coletado em',date(usage.timestamp)]]))));
 }
 function canManageNetworks(){return !session.read_only&&session.role==='administrador'&&session.manage_networks;}
+function availableBridge(network){return network.type==='bridge'&&(network.managed===true&&network.status==='Created'||network.managed===false&&[undefined,null,'','Created'].includes(network.status));}
+function bridgeLabel(network){return network.name+(network.managed?' · Incus':' · Externa / LAN');}
 async function containerNetworksView(scope,item,state={}){
   const [networkResult,profileResult]=await Promise.all([read('networks',undefined,scope),read('profiles',undefined,scope)]);
-  const networks=networkResult.data.filter(n=>n.managed&&n.type==='bridge'&&n.status==='Created');
+  const networks=networkResult.data.filter(availableBridge);
   const inherited={};for(const profileName of item.profiles||[])Object.assign(inherited,profileResult.data.find(p=>p.name===profileName)?.devices||{});
   const devices={...item.expanded_devices};
   for(const [key,value]of Object.entries(item.devices||{}))if(value.type==='none')devices[key]=value;
   const editable=canManageNetworks()&&canMutate(item.name),filters=['security.mac_filtering','security.ipv4_filtering','security.ipv6_filtering'];
   const definition=(key,device)=>device.type==='none'?item._disconnected_nics?.[key]||inherited[key]||device:device;
-  const managed=device=>networks.some(network=>network.name===(device.network||device.parent));
+  const supported=device=>networks.some(network=>network.name===(device.network||device.parent));
   const gateway=network=>{const value=network?.config?.['ipv4.dhcp.gateway']||network?.config?.['ipv4.address'];return value&&value!=='none'?value.split('/')[0]:'';};
   const cidr=(value,network,family)=>value&&value!=='none'?(value.includes('/')?value:value+(network?.config?.[family+'.address']?.includes('/')?'/'+network.config[family+'.address'].split('/')[1]:'')):'';
   const action=(kind,device)=>openAction(kind,item.name,{device,revision:item._devices_revision});
   const entries=Object.entries(devices).filter(([,device])=>['nic','none'].includes(device.type)).sort(([a],[b])=>a.localeCompare(b,undefined,{numeric:true}));
   function edit(device='',raw={}){
-    const current=definition(device,raw),canEdit=editable&&(!device||managed(current));
+    const current=definition(device,raw),canEdit=editable&&(!device||supported(current));
     let next=0;while(Object.hasOwn(devices,'eth'+next))next++;
     const generated='eth'+next,selectedNetwork=current.network||current.parent||networks[0]?.name||'';
     const initialNetwork=networks.find(network=>network.name===selectedNetwork);
@@ -802,7 +804,7 @@ async function containerNetworksView(scope,item,state={}){
     const deviceName=input('device',device||generated,{required:'',maxlength:'63',readonly:device?'':null});
     const interfaceName=input('name',current.name||device||generated,{required:'',maxlength:'15'});
     const mac=input('hwaddr',current.hwaddr||'',{placeholder:runtime?.hwaddr||'auto',maxlength:'17'});
-    const bridge=el('select',{name:'network',required:''},networks.map(network=>el('option',{value:network.name,selected:network.name===selectedNetwork?'':null},network.name)));
+    const bridge=el('select',{name:'network',required:''},networks.map(network=>el('option',{value:network.name,selected:network.name===selectedNetwork?'':null},bridgeLabel(network))));
     if(selectedNetwork&&!initialNetwork)bridge.append(el('option',{value:selectedNetwork,selected:'',disabled:''},selectedNetwork));
     const vlan=input('vlan',current.vlan||'',{type:'number',min:'1',max:'4094',placeholder:'no VLAN'});
     const firewall=el('input',{type:'checkbox',name:'firewall',title:'Filtragem anti-spoofing de MAC e IP do Incus'});
@@ -811,11 +813,11 @@ async function containerNetworksView(scope,item,state={}){
     firewall.defaultChecked=firewall.checked;
     const modes={},addresses={},gateways={};
     const familyFields=family=>{
-      const initialMode=current[family+'.address']||!initialNetwork?.config?.[family+'.address']||initialNetwork.config[family+'.address']==='none'?'static':family==='ipv6'&&initialNetwork.config['ipv6.dhcp.stateful']!=='true'?'slaac':'dhcp';
+      const initialMode=current[family+'.address']?'static':!initialNetwork?.managed?'dhcp':!initialNetwork?.config?.[family+'.address']||initialNetwork.config[family+'.address']==='none'?'static':family==='ipv6'&&initialNetwork.config['ipv6.dhcp.stateful']!=='true'?'slaac':'dhcp';
       modes[family]=Object.fromEntries((family==='ipv4'?[['static','Estático'],['dhcp','DHCP']]:[['static','Estático'],['dhcp','DHCP'],['slaac','SLAAC']]).map(([value,label])=>[value,el('input',{type:'radio',name:family+'mode',value,checked:value===initialMode?'':null,'aria-label':family+' '+label})]));
       addresses[family]=input(family+'.address',cidr(current[family+'.address'],initialNetwork,family),{placeholder:'Nenhum'});
       gateways[family]=input(family+'.gateway','',{readonly:'',title:'Gateway herdado da ponte gerenciada pelo Incus'});
-      return [el('div',{class:'nic-field nic-radio-field'},el('span',{},family==='ipv4'?'IPv4:':'IPv6:'),el('div',{class:'nic-radio-group',role:'radiogroup','aria-label':family},Object.entries(modes[family]).map(([value,radio])=>el('label',{},radio,value==='static'?'Estático':value==='dhcp'?'DHCP':'SLAAC')))),field(family==='ipv4'?'IPv4/CIDR':'IPv6/CIDR',addresses[family]),field(family==='ipv4'?'Gateway (IPv4)':'Gateway (IPv6)',gateways[family])];
+      return [el('div',{class:'nic-field nic-radio-field'},el('span',{},family==='ipv4'?'IPv4:':'IPv6:'),el('div',{class:'nic-radio-group',role:'radiogroup','aria-label':family},Object.entries(modes[family]).map(([value,radio])=>el('label',{},radio,el('span',{'data-ip-mode':family+'-'+value},value==='static'?'Estático':value==='dhcp'?'DHCP':'SLAAC'))))),field(family==='ipv4'?'IPv4/CIDR':'IPv6/CIDR',addresses[family]),field(family==='ipv4'?'Gateway (IPv4)':'Gateway (IPv6)',gateways[family])];
     };
     const left=el('div',{class:'nic-editor-column'},field('Nome',interfaceName),field('Endereço MAC',mac),field('Ponte',bridge),field('Tag da VLAN',vlan),field('Firewall',firewall));
     const right=el('div',{class:'nic-editor-column'},...familyFields('ipv4'),el('div',{class:'nic-family-separator'}),...familyFields('ipv6'));
@@ -826,7 +828,7 @@ async function containerNetworksView(scope,item,state={}){
     const restore=el('button',{type:'button',class:'nic-restore',disabled:canEdit&&device&&item.devices?.[device]&&inherited[device]?.type==='nic'?null:'',onclick:()=>action('nic-reset',device)},'Restaurar do perfil');
     const advanced=el('div',{class:'nic-editor-columns nic-advanced',hidden:''},el('div',{class:'nic-editor-column'},field('Desconectado',disconnected),field('MTU',mtu),field('ID do dispositivo',deviceName),restore),el('div',{class:'nic-editor-column'},field('Limite (MB/s)',rate),field('Filtrar MAC',filterInputs[filters[0]]),field('Filtrar IPv4',filterInputs[filters[1]]),field('Filtrar IPv6',filterInputs[filters[2]])));
     const hint=el('p',{class:'nic-address-hint',hidden:''},'IP fixo via reserva DHCP; gateway herdado da ponte.');
-    const help=el('div',{class:'nic-editor-help',hidden:''},el('p',{},'O endereço fixo é reservado no DHCP da ponte. O container deve usar DHCP; alterações estáticas feitas dentro dele precisam ser ajustadas no próprio sistema. O prefixo CIDR deve ser o da ponte.'),el('p',{},'Firewall ativa filtros anti-spoofing de MAC e IP do Incus. VLAN e filtragem de IP não podem ser combinadas. Desconectado remove a conexão e guarda suas opções para reconectar; os perfis são preservados.'));
+    const help=el('div',{class:'nic-editor-help',hidden:''},el('p',{},'Em uma ponte Incus, o endereço fixo é reservado no DHCP e o prefixo CIDR deve ser o da ponte. Em uma ponte externa, IP, gateway e DNS vêm da rede física ou da configuração dentro do container. Filtros de IP externos apenas autorizam o endereço informado, sem configurar o sistema convidado.'),el('p',{},'Firewall ativa filtros anti-spoofing do Incus; em uma ponte externa, ativa somente o filtro MAC. Filtros de IP externos exigem o IP permitido em Avançado. VLAN e filtragem de IP não podem ser combinadas. Desconectado guarda as opções para reconectar; os perfis são preservados.'));
     const feedback=el('p',{class:'nic-editor-feedback',role:'alert'}),ok=el('button',{type:'submit',class:'primary',disabled:canEdit?null:''},'OK');
     const advancedToggle=el('input',{type:'checkbox',name:'advanced','aria-controls':'nic-advanced'});advanced.id='nic-advanced';
     advancedToggle.onchange=()=>{advanced.hidden=!advancedToggle.checked;};
@@ -834,31 +836,39 @@ async function containerNetworksView(scope,item,state={}){
     const form=el('form',{class:'nic-editor-form'},fields,help,feedback,el('div',{class:'nic-editor-footer'},el('button',{type:'button',class:'nic-help',onclick:()=>{help.hidden=!help.hidden;}},'? Ajuda'),el('label',{class:'nic-advanced-toggle'},'Avançado',advancedToggle),ok));
     const mode=family=>Object.entries(modes[family]).find(([,radio])=>radio.checked)?.[0];
     const selectedBridge=()=>networks.find(network=>network.name===bridge.value);
-    const hasAddress=family=>Boolean(selectedBridge()?.config?.[family+'.address']&&selectedBridge().config[family+'.address']!=='none');
+    const hasAddress=family=>selectedBridge()?.managed?Boolean(selectedBridge().config?.[family+'.address']&&selectedBridge().config[family+'.address']!=='none'):filterInputs['security.'+family+'_filtering'].value==='true';
     const values=()=>({network:bridge.value,name:interfaceName.value.trim(),hwaddr:mac.value.trim(),vlan:vlan.value,mtu:mtu.value,
       'limits.max':Number(rate.value)>0?Math.round(Number(rate.value)*8000)+'kbit':'',
       ...Object.fromEntries(filters.map(key=>[key,filterInputs[key].value])),disconnected:String(disconnected.checked),
       ...Object.fromEntries(['ipv4','ipv6'].map(family=>[family+'.address',hasAddress(family)&&mode(family)==='static'?(addresses[family].value.trim()||(current[family+'.address']==='none'?'none':'')):'']))});
     let baseline,busy=false;
     const update=()=>{
-      const network=selectedBridge(),config=network?.config||{};
+      const network=selectedBridge(),config=network?.config||{},external=network?.managed===false;
       interfaceName.setCustomValidity(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$/.test(interfaceName.value)?'':'Use até 15 caracteres: letras, números, ponto, hífen ou sublinhado.');
       mac.setCustomValidity(!mac.value||/^(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/.test(mac.value)?'':'Informe um endereço MAC válido.');
       for(const family of ['ipv4','ipv6']){
         const enabled=hasAddress(family),stateful=family==='ipv4'||config['ipv6.dhcp.stateful']==='true';
-        for(const [value,radio]of Object.entries(modes[family]))radio.disabled=!enabled||(value==='dhcp'&&(!stateful||config[family+'.dhcp']==='false'))||(value==='slaac'&&stateful);
+        if(external){for(const [value,radio]of Object.entries(modes[family]))radio.checked=value===(enabled?'static':'dhcp');}
+        for(const [value,radio]of Object.entries(modes[family]))radio.disabled=external?value==='static'?!enabled:value==='slaac'||enabled:!enabled||(value==='dhcp'&&(!stateful||config[family+'.dhcp']==='false'))||(value==='slaac'&&stateful);
+        form.querySelector(`[data-ip-mode="${family}-static"]`).textContent=external?'Filtro de IP':'Estático';
+        form.querySelector(`[data-ip-mode="${family}-dhcp"]`).textContent=external?'Rede externa':'DHCP';
         addresses[family].disabled=!enabled||mode(family)!=='static';
         addresses[family].required=!addresses[family].disabled&&current[family+'.address']!=='none';
-        gateways[family].value=enabled?(family==='ipv4'?gateway(network):''):'';
-        gateways[family].placeholder=enabled&&family==='ipv6'?'Herdado da ponte':'';
-        gateways[family].disabled=addresses[family].disabled;
+        addresses[family].closest('label').querySelector('span').textContent=(family==='ipv4'?'IPv4':'IPv6')+(external?' permitido:':'/CIDR:');
+        addresses[family].placeholder=external?'IP usado pelo container':'Nenhum';
+        gateways[family].value=!external&&enabled?(family==='ipv4'?gateway(network):''):'';
+        gateways[family].placeholder=external?'Definido pela rede externa':enabled&&family==='ipv6'?'Herdado da ponte':'';
+        gateways[family].title=external?'Gateway fornecido pela LAN ou configurado no container':'Gateway herdado da ponte gerenciada pelo Incus';
+        gateways[family].disabled=external||addresses[family].disabled;
       }
-      hint.hidden=!['ipv4','ipv6'].some(family=>hasAddress(family)&&mode(family)==='static');
+      hint.textContent=external?'Bridge externa: IP, gateway e DNS vêm do roteador da LAN ou do próprio container. IP fixo deve ser configurado nele ou reservado no roteador. Filtros de IP apenas permitem o endereço informado.':'IP fixo via reserva DHCP; gateway herdado da ponte.';
+      hint.hidden=!external&&!['ipv4','ipv6'].some(family=>hasAddress(family)&&mode(family)==='static');
       ok.disabled=busy||!canEdit||Boolean(device&&baseline===JSON.stringify(values()))||!form.checkValidity();
     };
-    firewall.onchange=()=>{firewall.indeterminate=false;for(const key of filters)filterInputs[key].value=String(firewall.checked);update();};
+    firewall.onchange=()=>{firewall.indeterminate=false;for(const key of filters)filterInputs[key].value=String(firewall.checked&&(selectedBridge()?.managed||key==='security.mac_filtering'));syncFirewall();update();};
     for(const control of Object.values(filterInputs))control.addEventListener('change',syncFirewall);
     bridge.onchange=()=>{
+      if(selectedBridge()?.managed===false){for(const key of filters.slice(1))filterInputs[key].value='false';syncFirewall();}
       for(const family of ['ipv4','ipv6']){addresses[family].value='';const automatic=family==='ipv6'&&selectedBridge()?.config?.['ipv6.dhcp.stateful']!=='true'?'slaac':'dhcp';for(const [value,radio]of Object.entries(modes[family]))radio.checked=value===automatic;}
       update();
     };
@@ -898,7 +908,7 @@ async function containerNetworksView(scope,item,state={}){
       el('span',{class:'nic-addresses',title:all.join(', ')||configured.join(', ')},addresses.join(', ')),gateway(network),device.mtu||'',raw.type==='none'?'Sim':'Não'];
   });
   const grid=table(['ID','Nome','Ponte','Firewall','Tag da VLAN','Endereço MAC','Endereço IP','Gateway','MTU','Desconectado'],rows,{activateOnClick:true,
-    onSelect:index=>{selected=entries[index];const allowed=editable&&managed(definition(...selected));remove.disabled=editButton.disabled=!allowed;},
+    onSelect:index=>{selected=entries[index];const allowed=editable&&supported(definition(...selected));remove.disabled=editButton.disabled=!allowed;},
     onActivate:index=>edit(...entries[index])});
   const gridTable=grid.querySelector('table');gridTable.classList.add('nic-table');
   gridTable.prepend(el('colgroup',{},[50,80,80,75,75,120,300,150,70,100].map(width=>el('col',{style:'width:'+width+'px'}))));
@@ -939,7 +949,7 @@ function bridgeOptions(config={}){
   }
   for(const input of inputs)input.addEventListener('input',update);
   update();
-  return {fields,values:()=>Object.fromEntries(inputs.map(input=>[input.name,input.disabled?(input===dhcp4||input===dhcp6||input===nat4||input===nat6?'false':''):input.value.trim()]))};
+  return {fields,setValues:values=>{for(const input of inputs)if(Object.hasOwn(values,input.name))input.value=values[input.name];update();},values:()=>Object.fromEntries(inputs.map(input=>[input.name,input.disabled?(input===dhcp4||input===dhcp6||input===nat4||input===nat6?'false':''):input.value.trim()]))};
 }
 function networkActionButton(label,action,target,extra={}){
   return el('button',{type:'button','data-action':action,class:'action-button'+(action==='network-delete'?' danger-button':''),disabled:canManageNetworks()?null:'',onclick:()=>openAction(action,target,extra)},...iconLabel(action==='network-delete'?'delete':'save',label));
@@ -960,12 +970,12 @@ async function networkDetailView(scope,target,tab='summary'){
   const external=Boolean(network.config?.['bridge.external_interfaces']);
   const managedBridge=network.managed&&network.type==='bridge';
   const body=propertiesGrid('Configuração da rede',['PROPRIEDADE','VALOR'],[
-    ['Nome',network.name],['Tipo',network.type],['Gerenciada',network.managed?'Sim':'Não'],['Estado',network.status],
+    ['Nome',network.name],['Tipo',network.type],['Gerenciada',network.managed?'Sim':'Não'],['Estado',network.status||(network.managed?'n/d':'Externa (Linux)')],
     ['Gateway / CIDR IPv4',network.config?.['ipv4.address']],['Faixa DHCP IPv4',network.config?.['ipv4.dhcp.ranges']],
     ['DHCP IPv4',network.config?.['ipv4.dhcp']],['NAT IPv4',network.config?.['ipv4.nat']],
     ['IPv6 / CIDR',network.config?.['ipv6.address']],['Domínio DNS',network.config?.['dns.domain']],['Projeto',scope.project]
   ],([label,value])=>[label,value??'n/d'],()=>openResourceProperties(network,'network'));
-  const result=el('div',{class:'dashboard-view'},el('div',{class:'grid dashboard-top'},healthView(network.name,network.status==='Created',network.type+' · '+(network.managed?'gerenciada pelo Incus':'externa')),body),panel('Containers conectados',instanceTable(attached)));
+  const result=el('div',{class:'dashboard-view'},el('div',{class:'grid dashboard-top'},healthView(network.name,availableBridge(network),network.type+' · '+(network.managed?'gerenciada pelo Incus':'externa')),body),panel('Containers conectados',instanceTable(attached)));
   if(dependencies.size)result.append(panel('Dependências da bridge',table(['RECURSO'],[...dependencies].map(value=>[value]))));
   if(dependencyError)result.append(notice('Não foi possível conferir todas as dependências. Atualize antes de excluir a bridge.',true));
   if(canManageNetworks()&&managedBridge&&!external){
@@ -978,7 +988,7 @@ async function networkDetailView(scope,target,tab='summary'){
     const edit=el('button',{type:'button','data-action':'network-edit',onclick:()=>openEditor('Editar: '+network.name,el('div',{},form,notice('Altere endereçamento, DHCP, NAT, DNS, MTU, roteamento e firewall. As mudanças são aplicadas ao salvar e podem interromper conexões dos containers.')))},...iconLabel('edit','Editar'));
     result.prepend(el('div',{class:'grid-toolbar'},edit,remove));
   }else if(!canManageNetworks())result.append(notice('A gestão de bridges exige habilitação explícita para administradores.'));
-  else if(external)result.append(notice('Esta bridge usa interface externa. O painel a mantém somente para consulta.'));
+  else if(external||availableBridge(network)&&!network.managed)result.append(notice('Para usar esta bridge, selecione-a em Container → Rede ou no assistente Criar CT. A configuração da bridge e das interfaces físicas é mantida no host.'));
   if(session.host_metrics&&managedBridge){
     const leases=await read('network-leases',network.name,scope).catch(error=>({error}));
     result.append(leases.error?errorNode(leases.error):panel('Leases DHCP',table(['HOSTNAME','MAC','IPv4','IPv6'],(leases.data||[]).map(item=>[item.hostname||'—',item.hwaddr||'—',item.ipv4||(item.address&&!item.address.includes(':')?item.address:'—'),item.ipv6||(item.address?.includes(':')?item.address:'—')]))));
@@ -1110,9 +1120,11 @@ async function networksView(scope){
       const networkName=el('input',{name:'network-name',maxlength:'15',pattern:'[A-Za-z0-9][A-Za-z0-9_\\-]{0,14}',required:'',placeholder:'Ex.: bridge-lab',title:'Até 15 caracteres: letras, números, hífen ou sublinhado.'});
       const description=el('input',{name:'description',maxlength:'1024',placeholder:'Opcional'});
       const editor=bridgeOptions({'ipv4.address':'auto','ipv4.dhcp':'true','ipv4.nat':'true','ipv6.address':'none','ipv6.dhcp':'false','ipv6.nat':'false'});
-      const form=el('form',{class:'network-form'},el('label',{class:'full'},'Nome da bridge',networkName),...editor.fields,el('label',{class:'full'},'Descrição',description),el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},...iconLabel('plus','Criar bridge')),el('button',{type:'button',onclick:closeEditor},'Cancelar')));
+      const mode=el('select',{name:'bridge-mode'},el('option',{value:'nat'},'Rede privada com NAT e DHCP'),el('option',{value:'isolated'},'Bridge vazia (sem IP, DHCP ou NAT)'));
+      mode.onchange=()=>editor.setValues({'ipv4.address':mode.value==='isolated'?'none':'auto','ipv4.dhcp':String(mode.value!=='isolated'),'ipv4.nat':String(mode.value!=='isolated'),'ipv4.dhcp.ranges':'','ipv6.address':'none','ipv6.dhcp':'false','ipv6.nat':'false','ipv6.dhcp.ranges':'','ipv6.dhcp.stateful':'false'});
+      const form=el('form',{class:'network-form'},el('label',{class:'full'},'Nome da bridge',networkName),el('label',{class:'full'},'Configuração inicial',mode),...editor.fields,el('label',{class:'full'},'Descrição',description),el('div',{class:'network-form-actions'},el('button',{type:'submit',class:'primary'},...iconLabel('plus','Criar bridge')),el('button',{type:'button',onclick:closeEditor},'Cancelar')));
       form.onsubmit=event=>{event.preventDefault();openAction('network-create',networkName.value.trim(),{config:editor.values(),description:description.value});};
-      content.prepend(el('div',{class:'grid-toolbar'},el('button',{type:'button','data-action':'network-create',onclick:()=>openEditor('Criar: Linux Bridge (Incus)',el('div',{},form,notice('A bridge será gerenciada pelo Incus. Interfaces físicas não são adicionadas.')))},...iconLabel('plus','Criar bridge'))));
+      content.prepend(el('div',{class:'grid-toolbar'},el('button',{type:'button','data-action':'network-create',onclick:()=>openEditor('Criar: Linux Bridge (Incus)',el('div',{},form,notice('Escolha NAT/DHCP ou uma bridge vazia para conectar containers. Bridges externas existentes, inclusive ligadas à placa física, podem ser selecionadas em Container → Rede.')))},...iconLabel('plus','Criar bridge'))));
     }else content.append(notice('A criação e edição de bridges exige manage_networks habilitado para administradores.'));
     if(session.host_metrics){
       const bridges=data.filter(item=>item.managed&&item.type==='bridge');
@@ -1835,7 +1847,7 @@ async function createView(scope,server,request=createRequest) {
   const owner=session;
   const [catalog,poolsResult,networksResult,profilesResult,instancesResult]=await Promise.all([read('creation-images',undefined,scope),session.host_metrics?read('pools',undefined,scope):Promise.resolve({data:[]}),read('networks',undefined,scope),read('profiles',undefined,scope),read('instance-list',undefined,scope)]);
   if(session!==owner||request!==createRequest||host!==scope.host||project!==scope.project)return el('div');
-  const images=catalog.data.images,pools=poolsResult.data.filter(p=>p.status==='Created'),networks=networksResult.data.filter(n=>n.managed&&n.type==='bridge'&&n.status==='Created');
+  const images=catalog.data.images,pools=poolsResult.data.filter(p=>p.status==='Created'),networks=networksResult.data.filter(availableBridge);
   const profile=profilesResult.data.find(p=>p.name==='default');
   const target=el('input',{name:'container-name',maxlength:'63',pattern:'[a-zA-Z0-9]([a-zA-Z0-9\\-]*[a-zA-Z0-9])?',placeholder:'Ex.: servidor-web',autocomplete:'off',required:''});
   const description=el('textarea',{name:'description',rows:'2',maxlength:'1024'});
@@ -1848,8 +1860,8 @@ async function createView(scope,server,request=createRequest) {
   const cores=el('input',{name:'cpu-cores',type:'number',min:'1',max:'1024',value:'1',required:''});
   const allowance=el('input',{name:'cpu-allowance',type:'number',min:'1',max:'100',value:session.low_resource?'50':'100',required:''});
   const memory=el('input',{name:'memory-mib',type:'number',min:'32',max:'1048576',value:'128',required:''});
-  const network=el('select',{name:'network',required:''},networks.map(n=>el('option',{value:n.name},n.name)));
-  const defaultNicEntry=Object.entries(profile?.devices||{}).find(([,d])=>d.type==='nic'),defaultNic=defaultNicEntry?.[1];if(networks.some(n=>n.name===defaultNic?.network))network.value=defaultNic.network;
+  const network=el('select',{name:'network',required:''},networks.map(n=>el('option',{value:n.name},bridgeLabel(n))));
+  const defaultNicEntry=Object.entries(profile?.devices||{}).find(([,d])=>d.type==='nic'),defaultNic=defaultNicEntry?.[1],defaultBridge=defaultNic?.network||defaultNic?.parent;if(networks.some(n=>n.name===defaultBridge))network.value=defaultBridge;
   const ipv4Mode=el('select',{name:'ipv4-mode'},el('option',{value:'dhcp'},'DHCP'),el('option',{value:'static'},'Reserva IPv4 no DHCP'));
   const ipv4=el('input',{name:'ipv4',placeholder:'Ex.: 10.100.0.10',disabled:''});
   const subnet=el('input',{readonly:'','aria-label':'Sub-rede IPv4'}),domain=el('input',{readonly:''}),dnsMode=el('input',{readonly:''});
@@ -1865,8 +1877,8 @@ async function createView(scope,server,request=createRequest) {
     page(fields(field('Armazenamento',pool),field('Disco (GiB)',disk),diskHelp),notice('O disco raiz usa o pool selecionado. Sem cota explícita, utiliza a capacidade disponível do pool.')),
     page(fields(field('Núcleos',cores),field('Limite CPU (%)',allowance)),notice('No modo leve, o padrão é um núcleo com 50% de tempo de CPU.')),
     page(fields(field('Memória (MiB)',memory)),notice('O limite é aplicado ao container. Download e extração de imagens também usam memória no host.')),
-    page(fields(field('Interface',el('input',{readonly:'',value:defaultNic?.name||defaultNicEntry?.[0]||'eth0'})),field('Bridge',network),field('IPv4',ipv4Mode),field('Endereço IPv4',ipv4),field('Sub-rede',subnet,'full')),notice('A reserva IPv4 precisa pertencer à sub-rede e estar livre. Gateway, DNS e IPv6 são recebidos da bridge.')),
-    page(fields(field('Domínio DNS',domain,'full'),field('Modo DNS',dnsMode,'full')),notice('Configuração herdada da bridge do Incus. O assistente preserva o DNS entregue por DHCP.')),
+    page(fields(field('Interface',el('input',{readonly:'',value:defaultNic?.name||defaultNicEntry?.[0]||'eth0'})),field('Bridge',network),field('IPv4',ipv4Mode),field('Endereço IPv4',ipv4),field('Sub-rede',subnet,'full')),notice('Bridges Incus permitem reserva IPv4 via DHCP. Bridges externas usam o DHCP da rede física ou a configuração dentro do container; reserve IP fixo no roteador ou configure no convidado.')),
+    page(fields(field('Domínio DNS',domain,'full'),field('Modo DNS',dnsMode,'full')),notice('DNS é recebido pelo container via DHCP ou definido no próprio sistema. Em bridges externas, o servidor DHCP é o da rede física.')),
     page(review,fields(field('Iniciar após criar',start,'full')))
   ];
   const titles=['Geral','Template','Disco','CPU','Memória','Rede','DNS','Confirmar'];
@@ -1930,7 +1942,17 @@ async function createView(scope,server,request=createRequest) {
   tabs.onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const index=Math.max(0,Math.min(reached,event.key==='Home'?0:event.key==='End'?reached:step+(event.key==='ArrowRight'?1:-1)));if(index<=step||validateThrough(index))show(index);}};
   form.addEventListener('input',updateValidity);form.addEventListener('change',updateValidity);
   function updatePool(){const supportsQuota=['btrfs','zfs','lvm','ceph'].includes(pools.find(p=>p.name===pool.value)?.driver);disk.disabled=!supportsQuota||!session.manage_all_instances;diskHelp.textContent=supportsQuota?'Cota opcional de disco raiz em GiB.':'Este driver utiliza a capacidade do pool. Cota de disco indisponível neste assistente.';}
-  function updateNetwork(){const config=networks.find(n=>n.name===network.value)?.config||{};subnet.value=config['ipv4.address']||'Não informado';domain.value=config['dns.domain']||'Padrão do Incus';dnsMode.value=config['dns.mode']||'Padrão do Incus';ipv4.disabled=ipv4Mode.value!=='static';ipv4.required=!ipv4.disabled;}
+  function updateNetwork(){
+    const selected=networks.find(n=>n.name===network.value),config=selected?.config||{},external=selected?.managed===false;
+    const reserve=Boolean(selected?.managed&&config['ipv4.address']?.includes('/')&&config['ipv4.dhcp']!=='false');
+    ipv4Mode.querySelector('[value=static]').disabled=!reserve;
+    ipv4Mode.querySelector('[value=dhcp]').textContent=external?'DHCP da LAN / configuração no container':'Automático / configuração no container';
+    if(!reserve){ipv4Mode.value='dhcp';ipv4.value='';}
+    subnet.value=external?'Definida pela rede externa':config['ipv4.address']||'Não informado';
+    domain.value=external?'DHCP da LAN / configuração no container':config['dns.domain']||'Padrão do Incus';
+    dnsMode.value=external?'Rede externa':config['dns.mode']||'Padrão do Incus';
+    ipv4.disabled=!reserve||ipv4Mode.value!=='static';ipv4.required=!ipv4.disabled;
+  }
   pool.onchange=updatePool;network.onchange=updateNetwork;ipv4Mode.onchange=updateNetwork;updatePool();updateNetwork();
   if(!session.manage_all_instances){start.checked=false;for(const input of [description,pool,disk,cores,allowance,memory,network,ipv4Mode,ipv4,autostart,start])input.disabled=true;sections[0].append(notice('Neste escopo, a criação usa a configuração do perfil default e exige um nome autorizado. Ajustes de recursos ficam disponíveis após criar.'));}
   form.onsubmit=async event=>{

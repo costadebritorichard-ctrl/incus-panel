@@ -8,6 +8,12 @@ from incus_panel.server import demo_config, password_hash, serve
 class Fixture(Demo):
     count = 0
     progress_reads = {}
+    def __init__(self):
+        super().__init__()
+        self.networks['laboratorio'].extend([
+            {'name': 'br-lan', 'type': 'bridge', 'managed': False, 'status': '', 'config': {}, 'used_by': []},
+            {'name': 'end0', 'type': 'physical', 'managed': False, 'status': '', 'config': {}, 'used_by': []}])
+
     def _request(self, method, path, project, body):
         if method == 'GET' and path == '/1.0':
             time.sleep(0.2)

@@ -22,6 +22,93 @@ class NetworkDevices(unittest.TestCase):
                 'revision': self.current()['_devices_revision'], **extra}
         return self.service.mutate(self.user, 'demo', 'laboratorio', action, 'lab-web', body)
 
+    def external_bridge(self):
+        bridge = {'name': 'br-lan', 'type': 'bridge', 'managed': False, 'status': '', 'config': {}}
+        self.client.networks['laboratorio'].append(bridge)
+        return bridge
+
+    def test_switch_existing_container_between_incus_and_lan_without_changing_host_or_profiles(self):
+        self.external_bridge()
+        networks = copy.deepcopy(self.client.networks)
+        profiles = copy.deepcopy(self.client.request('GET', '/1.0/profiles', 'laboratorio')['metadata'])
+        for state in ('Running', 'Stopped'):
+            self.client.instances['laboratorio', 'lab-web']['status'] = state
+            self.change('nic-update', nic={'network': 'labbr0', 'ipv4.address': '10.100.0.30',
+                                          'security.ipv4_filtering': 'true', 'mtu': '1400'})
+            before = self.current()
+            with patch.object(self.client, 'request', wraps=self.client.request) as calls:
+                self.change('nic-update', nic={'network': 'br-lan'})
+            nic = self.current()['devices']['eth0']
+            self.assertEqual((nic['parent'], nic['nictype'], nic['mtu']), ('br-lan', 'bridged', '1400'))
+            self.assertNotIn('network', nic)
+            self.assertNotIn('ipv4.address', nic)
+            self.assertNotIn('security.ipv4_filtering', nic)
+            self.assertEqual(self.current()['config'], before['config'])
+            self.assertEqual(self.current()['profiles'], before['profiles'])
+            self.assertEqual(self.current()['status'], state)
+            self.assertTrue(all(call.args[0] == 'GET' or call.args[1] == '/1.0/instances/lab-web' for call in calls.call_args_list))
+            self.change('nic-update', nic={'network': 'labbr0', 'mtu': ''})
+            self.assertEqual(self.current()['devices']['eth0']['network'], 'labbr0')
+            self.assertNotIn('parent', self.current()['devices']['eth0'])
+        self.assertEqual(self.client.networks, networks)
+        self.assertEqual(self.client.request('GET', '/1.0/profiles', 'laboratorio')['metadata'], profiles)
+
+    def test_container_created_outside_panel_can_switch_from_external_bridge(self):
+        self.external_bridge()
+        instance = self.client.instances['laboratorio', 'lab-web']
+        instance['devices']['eth0'] = {'type': 'nic', 'nictype': 'bridged', 'parent': 'br-lan',
+                                     'name': 'ens18', 'hwaddr': '10:66:6a:11:22:33', 'limits.ingress': '10Mbit'}
+        instance['expanded_devices']['eth0'] = copy.deepcopy(instance['devices']['eth0'])
+        before = self.current()
+        self.change('nic-update', nic={'network': 'labbr0'})
+        nic = self.current()['devices']['eth0']
+        self.assertEqual(nic['network'], 'labbr0')
+        for key in ('name', 'hwaddr', 'limits.ingress'):
+            self.assertEqual(nic[key], before['devices']['eth0'][key])
+        self.assertEqual(self.current()['expanded_devices']['root'], before['expanded_devices']['root'])
+        self.change('nic-update', nic={'network': 'br-lan', 'disconnected': 'true'})
+        self.assertEqual(self.current()['_disconnected_nics']['eth0']['parent'], 'br-lan')
+        self.change('nic-update', nic={'network': 'br-lan'})
+        self.assertEqual(self.current()['devices']['eth0']['parent'], 'br-lan')
+        self.change('nic-reset')
+        self.assertEqual(self.current()['expanded_devices']['eth0']['network'], 'labbr0')
+
+    def test_external_add_remove_and_ip_filters_do_not_claim_dhcp_reservations(self):
+        self.external_bridge()
+        self.change('nic-add', 'eth1', nic={'network': 'br-lan', 'security.mac_filtering': 'true'})
+        self.assertEqual(self.current()['devices']['eth1']['parent'], 'br-lan')
+        for nic in ({'ipv4.address': '192.168.1.30'}, {'security.ipv4_filtering': 'true'},
+                    {'security.ipv6_filtering': 'true', 'ipv6.address': 'invalid'}):
+            with self.subTest(nic=nic), patch.object(self.client, 'request', wraps=self.client.request) as calls:
+                with self.assertRaises(PanelError):
+                    self.change('nic-update', 'eth1', nic={'network': 'br-lan', **nic})
+                self.assertTrue(all(call.args[0] == 'GET' for call in calls.call_args_list))
+        self.change('nic-update', 'eth1', nic={'network': 'br-lan', 'ipv4.address': '192.168.1.30',
+                    'security.ipv4_filtering': 'true', 'ipv6.address': 'fd42::30', 'security.ipv6_filtering': 'true'})
+        self.change('nic-update', 'eth1', nic={'network': 'br-lan', 'mtu': '1400'})
+        self.assertEqual(self.current()['devices']['eth1']['ipv4.address'], '192.168.1.30')
+        self.change('nic-delete', 'eth1')
+        self.assertNotIn('eth1', self.current()['devices'])
+
+    def test_physical_interfaces_and_unavailable_bridges_are_never_attached(self):
+        for kind, managed, status in (('physical', False, ''), ('loopback', False, ''),
+                                      ('bridge', True, 'Pending'), ('bridge', True, 'Unavailable'),
+                                      ('bridge', False, 'Errored')):
+            with self.subTest(kind=kind, managed=managed, status=status):
+                self.client.networks['laboratorio'].append({'name': 'badnet', 'type': kind,
+                    'managed': managed, 'status': status, 'config': {}})
+                with patch.object(self.client, 'request', wraps=self.client.request) as calls:
+                    with self.assertRaises(PanelError):
+                        self.change('nic-update', nic={'network': 'badnet'})
+                    self.assertTrue(all(call.args[0] == 'GET' for call in calls.call_args_list))
+                self.client.networks['laboratorio'].pop()
+
+    def test_managed_bridge_with_physical_uplink_can_be_used_by_container(self):
+        self.client.networks['laboratorio'].append({'name': 'uplinkbr', 'type': 'bridge',
+            'managed': True, 'status': 'Created', 'config': {'bridge.external_interfaces': 'end0'}})
+        self.change('nic-update', nic={'network': 'uplinkbr'})
+        self.assertEqual(self.current()['devices']['eth0']['network'], 'uplinkbr')
+
     def test_override_restore_disable_and_restore_inherited_nic(self):
         before = self.current()
         self.change('nic-update', nic={'network': 'labbr0', 'name': 'eth0', 'limits.max': '20Mbit'})

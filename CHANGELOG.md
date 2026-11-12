@@ -1,5 +1,12 @@
 # Changelog
 
+## Bridges externas e teste com duas redes — 2026-11-12
+
+- Editor de interfaces e assistente Criar CT aceitam bridges Linux externas, inclusive ligadas à LAN, além das bridges gerenciadas pelo Incus. A configuração usa `parent`/`nictype` para redes externas e preserva os perfis compartilhados e os demais dispositivos.
+- Corrigido o bloqueio de edição de interfaces já associadas a bridges externas. Trocas descartam reservas da sub-rede anterior e distinguem DHCP do Incus, DHCP da LAN e filtros de IP.
+- Criação de bridge com opções iniciais NAT/DHCP ou vazia, sem IP, DHCP ou NAT, para testes e associação de containers.
+- Regressões Python/DOM para troca nos dois sentidos, containers criados fora do painel, desconexão/reconexão e assistente. Verificador `--bridges` adicionado à CI para Incus real; execução real e conectividade LAN não validadas nesta sessão Windows.
+
 ## Fluxo de tarefas de snapshot no padrão Proxmox — 2026-11-07
 
 - Máscara Aguarde no carregamento e envio; criação abre diretamente o visualizador com Saída/Status, Download e resultado confirmado.

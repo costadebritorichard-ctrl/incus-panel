@@ -1,4 +1,4 @@
-"""Validated managed-bridge NIC changes, preserving unrelated instance settings."""
+"""Validated bridge NIC changes, preserving unrelated instance settings."""
 import copy
 import hashlib
 import ipaddress
@@ -8,6 +8,26 @@ import re
 from .core import PanelError, name
 
 DISCONNECTED_NICS = 'user.incus-panel.disconnected-nics'
+
+
+def available_bridge(network):
+    """Unmanaged host bridges have no Incus lifecycle status."""
+    return network.get('type') == 'bridge' and (
+        network.get('managed') is True and network.get('status') == 'Created'
+        or network.get('managed') is False and network.get('status') in (None, '', 'Created'))
+
+
+def bridge_attachment(nic, network):
+    nic = copy.deepcopy(nic)
+    for key in ('network', 'parent', 'nictype'):
+        nic.pop(key, None)
+    if not network.get('managed') or nic.get('mtu'):
+        # Incus 6 does not accept mtu together with network.
+        nic.update(parent=network['name'], nictype='bridged')
+    else:
+        nic['network'] = network['name']
+    nic['type'] = 'nic'
+    return nic
 
 
 def disconnected_nics(instance):
@@ -78,8 +98,8 @@ def nic_payload(client, project, target, instance, action, body):
             raise PanelError(400, 'O estado desconectado deve estar ativado ou desativado.')
         network_name = name(values.get('network'))
         network = client.request('GET', '/1.0/networks/' + network_name, project)['metadata']
-        if not network.get('managed') or network.get('type') != 'bridge' or network.get('status') != 'Created':
-            raise PanelError(400, 'Selecione uma bridge gerenciada disponível.')
+        if not available_bridge(network):
+            raise PanelError(400, 'Selecione uma bridge disponível, gerenciada pelo Incus ou externa.')
         nic = copy.deepcopy(old) if old and old.get('type') == 'nic' else {}
         previous_network = nic.get('network') or nic.get('parent')
         for key in ('parent', 'nictype'):
@@ -88,19 +108,15 @@ def nic_payload(client, project, target, instance, action, body):
         if previous_network != network_name:
             for key in ('ipv4.address', 'ipv6.address'):
                 nic.pop(key, None)
+            if not network.get('managed'):
+                for key in ('security.ipv4_filtering', 'security.ipv6_filtering'):
+                    nic.pop(key, None)
         for key, value in values.items():
             if value:
                 nic[key] = value
             else:
                 nic.pop(key, None)
-        nic['type'] = 'nic'
-        if nic.get('mtu'):
-            # Incus 6 rejects mtu together with network; a validated managed
-            # bridge can also be referenced through parent + nictype.
-            nic.pop('network', None)
-            nic.update(parent=network_name, nictype='bridged')
-        else:
-            nic['network'] = network_name
+        nic = bridge_attachment(nic, network)
         nic.setdefault('name', device)
         if is_disconnected == 'true' and not nic.get('hwaddr'):
             generated_mac = instance.get('config', {}).get('volatile.' + device + '.hwaddr')
@@ -124,6 +140,19 @@ def nic_payload(client, project, target, instance, action, body):
             raise PanelError(400, 'O Incus não permite filtragem de IP junto com VLAN nesta interface.')
         for family in ('ipv4', 'ipv6'):
             value = nic.get(family + '.address')
+            if not network.get('managed'):
+                filtering = nic.get('security.' + family + '_filtering') == 'true'
+                if bool(value) != filtering:
+                    raise PanelError(400, 'Bridge externa não oferece reserva DHCP pelo Incus. Para filtrar ' + family + ', informe o IP permitido e ative a filtragem; configure o endereço no container ou no roteador.')
+                if value and value != 'none':
+                    try:
+                        address = ipaddress.ip_address(value)
+                        if address.version != (4 if family == 'ipv4' else 6) or address.is_multicast or address.is_unspecified:
+                            raise ValueError()
+                    except ValueError as exc:
+                        raise PanelError(400, 'IP permitido inválido para o filtro ' + family + ' da bridge externa; informe somente o endereço, sem CIDR.') from exc
+                    nic[family + '.address'] = str(address)
+                continue
             if not value:
                 continue
             if value == 'none':
